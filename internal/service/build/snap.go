@@ -13,7 +13,7 @@ type SnapStrategy struct{}
 
 func (s *SnapStrategy) ArtifactType() port.ArtifactType { return port.ArtifactSnap }
 func (s *SnapStrategy) MetadataFileName() string        { return "snapcraft.yaml" }
-func (s *SnapStrategy) BuildPath(name string) string     { return "" }
+func (s *SnapStrategy) BuildPath(name string) string    { return "" }
 
 func (s *SnapStrategy) TempRecipeName(name, sha, prefix string) string {
 	short := sha
@@ -24,7 +24,7 @@ func (s *SnapStrategy) TempRecipeName(name, sha, prefix string) string {
 }
 
 type snapcraftYAML struct {
-	Architectures []snapArchitecture         `yaml:"architectures"`
+	Architectures []snapArchitecture            `yaml:"architectures"`
 	Platforms     map[string]*snapPlatformEntry `yaml:"platforms"`
 }
 

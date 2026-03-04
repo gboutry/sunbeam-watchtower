@@ -64,16 +64,16 @@ func (c *Client) SearchBugTasks(ctx context.Context, projectName string, opts Bu
 
 // BugTaskSearchOpts holds optional filters for searchTasks.
 type BugTaskSearchOpts struct {
-	Status       []string
-	Importance   []string
-	Assignee     string
-	Tags         []string
+	Status         []string
+	Importance     []string
+	Assignee       string
+	Tags           []string
 	TagsCombinator string // "Any" or "All"
-	SearchText   string
-	Milestone    string
-	OrderBy      []string
-	CreatedSince string
-	ModifiedSince string
+	SearchText     string
+	Milestone      string
+	OrderBy        []string
+	CreatedSince   string
+	ModifiedSince  string
 	OmitDuplicates bool
 }
 
@@ -123,14 +123,14 @@ func (c *Client) GetProjectSeries(ctx context.Context, projectName string) (*Col
 
 // ProjectSeries represents a project series (e.g. "trunk", "2.0").
 type ProjectSeries struct {
-	Name         string `json:"name"`
-	Summary      string `json:"summary"`
-	Status       string `json:"status"`
-	Active       bool   `json:"active"`
-	SelfLink     string `json:"self_link"`
-	WebLink      string `json:"web_link"`
-	ProjectLink  string `json:"project_link"`
-	OwnerLink    string `json:"owner_link"`
-	DriverLink   string `json:"driver_link"`
-	DateCreated  *Time  `json:"date_created,omitempty"`
+	Name        string `json:"name"`
+	Summary     string `json:"summary"`
+	Status      string `json:"status"`
+	Active      bool   `json:"active"`
+	SelfLink    string `json:"self_link"`
+	WebLink     string `json:"web_link"`
+	ProjectLink string `json:"project_link"`
+	OwnerLink   string `json:"owner_link"`
+	DriverLink  string `json:"driver_link"`
+	DateCreated *Time  `json:"date_created,omitempty"`
 }

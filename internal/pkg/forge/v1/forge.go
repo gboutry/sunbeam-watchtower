@@ -14,7 +14,7 @@ import (
 type ForgeType int
 
 const (
-	ForgeGitHub    ForgeType = iota
+	ForgeGitHub ForgeType = iota
 	ForgeLaunchpad
 	ForgeGerrit
 )

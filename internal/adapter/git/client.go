@@ -100,4 +100,3 @@ func (c *Client) RemoveRemote(path, name string) error {
 	}
 	return nil
 }
-

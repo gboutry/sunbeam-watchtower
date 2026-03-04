@@ -17,8 +17,8 @@ import (
 // mockRecipeBuilder implements port.RecipeBuilder for testing.
 type mockRecipeBuilder struct {
 	artifactType port.ArtifactType
-	recipes      map[string]*port.Recipe      // name → recipe
-	builds       map[string][]port.Build      // recipe SelfLink → builds
+	recipes      map[string]*port.Recipe       // name → recipe
+	builds       map[string][]port.Build       // recipe SelfLink → builds
 	buildReqs    map[string]*port.BuildRequest // recipe SelfLink → request
 	fileURLs     map[string][]string           // build SelfLink → file URLs
 	createErr    error
@@ -130,8 +130,8 @@ type mockGitClient struct {
 	pushErr     error
 }
 
-func (m *mockGitClient) IsRepo(_ string) bool                        { return m.isRepo }
-func (m *mockGitClient) HeadSHA(_ string) (string, error)            { return m.headSHA, nil }
+func (m *mockGitClient) IsRepo(_ string) bool                         { return m.isRepo }
+func (m *mockGitClient) HeadSHA(_ string) (string, error)             { return m.headSHA, nil }
 func (m *mockGitClient) HasUncommittedChanges(_ string) (bool, error) { return m.uncommitted, nil }
 func (m *mockGitClient) Push(_, _, _, _ string, _ bool) error         { return m.pushErr }
 func (m *mockGitClient) AddRemote(_, _, _ string) error               { return nil }
@@ -142,10 +142,10 @@ type mockStrategy struct {
 	artifactType port.ArtifactType
 }
 
-func (m *mockStrategy) ArtifactType() port.ArtifactType              { return m.artifactType }
-func (m *mockStrategy) MetadataFileName() string                     { return "rockcraft.yaml" }
-func (m *mockStrategy) BuildPath(name string) string                 { return "rocks/" + name }
-func (m *mockStrategy) ParsePlatforms(_ []byte) ([]string, error)    { return []string{"amd64"}, nil }
+func (m *mockStrategy) ArtifactType() port.ArtifactType           { return m.artifactType }
+func (m *mockStrategy) MetadataFileName() string                  { return "rockcraft.yaml" }
+func (m *mockStrategy) BuildPath(name string) string              { return "rocks/" + name }
+func (m *mockStrategy) ParsePlatforms(_ []byte) ([]string, error) { return []string{"amd64"}, nil }
 func (m *mockStrategy) TempRecipeName(name, sha, prefix string) string {
 	return prefix + "-" + sha[:8] + "-" + name
 }

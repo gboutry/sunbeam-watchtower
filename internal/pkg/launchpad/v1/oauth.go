@@ -22,8 +22,8 @@ var (
 
 // Credentials holds the OAuth 1.0 tokens needed to authenticate with Launchpad.
 type Credentials struct {
-	ConsumerKey      string
-	AccessToken      string
+	ConsumerKey       string
+	AccessToken       string
 	AccessTokenSecret string
 }
 

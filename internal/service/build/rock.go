@@ -13,7 +13,7 @@ type RockStrategy struct{}
 
 func (s *RockStrategy) ArtifactType() port.ArtifactType { return port.ArtifactRock }
 func (s *RockStrategy) MetadataFileName() string        { return "rockcraft.yaml" }
-func (s *RockStrategy) BuildPath(name string) string     { return "rocks/" + name }
+func (s *RockStrategy) BuildPath(name string) string    { return "rocks/" + name }
 
 func (s *RockStrategy) TempRecipeName(name, sha, prefix string) string {
 	short := sha

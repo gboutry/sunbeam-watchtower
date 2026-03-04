@@ -13,7 +13,7 @@ type CharmStrategy struct{}
 
 func (s *CharmStrategy) ArtifactType() port.ArtifactType { return port.ArtifactCharm }
 func (s *CharmStrategy) MetadataFileName() string        { return "charmcraft.yaml" }
-func (s *CharmStrategy) BuildPath(name string) string     { return "charms/" + name }
+func (s *CharmStrategy) BuildPath(name string) string    { return "charms/" + name }
 
 func (s *CharmStrategy) TempRecipeName(name, sha, prefix string) string {
 	short := sha
@@ -24,9 +24,9 @@ func (s *CharmStrategy) TempRecipeName(name, sha, prefix string) string {
 }
 
 type charmcraftBase struct {
-	Name           string   `yaml:"name"`
-	Channel        string   `yaml:"channel"`
-	Architectures  []string `yaml:"architectures"`
+	Name          string   `yaml:"name"`
+	Channel       string   `yaml:"channel"`
+	Architectures []string `yaml:"architectures"`
 }
 
 type charmcraftBaseEntry struct {

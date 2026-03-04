@@ -135,12 +135,12 @@ func (g *GitHubForge) ListCommits(ctx context.Context, repo string, opts ListCom
 
 func (g *GitHubForge) prToMergeRequest(repo string, pr *github.PullRequest) MergeRequest {
 	mr := MergeRequest{
-		Forge: ForgeGitHub,
-		Repo:  repo,
-		ID:    fmt.Sprintf("#%d", pr.GetNumber()),
-		Title: pr.GetTitle(),
+		Forge:       ForgeGitHub,
+		Repo:        repo,
+		ID:          fmt.Sprintf("#%d", pr.GetNumber()),
+		Title:       pr.GetTitle(),
 		Description: pr.GetBody(),
-		URL:   pr.GetHTMLURL(),
+		URL:         pr.GetHTMLURL(),
 	}
 
 	if pr.User != nil {

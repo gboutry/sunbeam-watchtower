@@ -39,15 +39,15 @@ func TestGitHubForge_ListMergeRequests(t *testing.T) {
 		}
 		prs := []*github.PullRequest{
 			{
-				Number:  ptr(42),
-				Title:   ptr("Fix the thing"),
-				Body:    ptr("A detailed description"),
-				State:   ptr("open"),
-				Draft:   ptr(false),
-				HTMLURL: ptr("https://github.com/canonical/sunbeam/pull/42"),
-				User:    &github.User{Login: ptr("alice")},
-				Head:    &github.PullRequestBranch{Ref: ptr("fix-thing")},
-				Base:    &github.PullRequestBranch{Ref: ptr("main")},
+				Number:    ptr(42),
+				Title:     ptr("Fix the thing"),
+				Body:      ptr("A detailed description"),
+				State:     ptr("open"),
+				Draft:     ptr(false),
+				HTMLURL:   ptr("https://github.com/canonical/sunbeam/pull/42"),
+				User:      &github.User{Login: ptr("alice")},
+				Head:      &github.PullRequestBranch{Ref: ptr("fix-thing")},
+				Base:      &github.PullRequestBranch{Ref: ptr("main")},
 				CreatedAt: &github.Timestamp{Time: time.Date(2024, 3, 1, 12, 0, 0, 0, time.UTC)},
 				UpdatedAt: &github.Timestamp{Time: time.Date(2024, 3, 2, 12, 0, 0, 0, time.UTC)},
 			},
@@ -352,9 +352,9 @@ func TestParseOwnerRepo(t *testing.T) {
 
 func TestGhMergeState(t *testing.T) {
 	tests := []struct {
-		name  string
-		pr    *github.PullRequest
-		want  MergeState
+		name string
+		pr   *github.PullRequest
+		want MergeState
 	}{
 		{"open", &github.PullRequest{State: ptr("open")}, MergeStateOpen},
 		{"closed", &github.PullRequest{State: ptr("closed")}, MergeStateClosed},

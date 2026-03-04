@@ -25,11 +25,11 @@ type Bug struct {
 // BugTask is a forge-agnostic bug task.
 type BugTask struct {
 	Forge      ForgeType
-	Project    string   // watchtower project name
-	BugID      string   // bug identifier ("12345" for LP, "#123" for GH)
+	Project    string // watchtower project name
+	BugID      string // bug identifier ("12345" for LP, "#123" for GH)
 	Title      string
-	Status     string   // "New", "Confirmed", "In Progress", etc.
-	Importance string   // "Critical", "High", "Medium", "Low", etc.
+	Status     string // "New", "Confirmed", "In Progress", etc.
+	Importance string // "Critical", "High", "Medium", "Low", etc.
 	Assignee   string
 	Tags       []string
 	URL        string
