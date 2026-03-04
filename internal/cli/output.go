@@ -286,6 +286,57 @@ func renderRecipes(w io.Writer, format string, recipes []port.Recipe) error {
 	}
 }
 
+// renderCommits writes commits in the requested format.
+func renderCommits(w io.Writer, format string, commits []forge.Commit) error {
+	switch format {
+	case "json":
+		return renderJSON(w, commits)
+	case "yaml":
+		return renderYAML(w, commits)
+	default:
+		return renderCommitTable(w, commits)
+	}
+}
+
+func renderCommitTable(w io.Writer, commits []forge.Commit) error {
+	if len(commits) == 0 {
+		fmt.Fprintln(w, "No commits found.")
+		return nil
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "PROJECT\tFORGE\tSHA\tAUTHOR\tDATE\tMESSAGE")
+	for _, c := range commits {
+		msg := c.Message
+		if idx := strings.Index(msg, "\n"); idx != -1 {
+			msg = msg[:idx]
+		}
+		if len(msg) > 60 {
+			msg = msg[:57] + "..."
+		}
+		msg = strings.ReplaceAll(msg, "\t", " ")
+
+		date := ""
+		if !c.Date.IsZero() {
+			date = c.Date.Format("2006-01-02 15:04")
+		}
+		sha := c.SHA
+		if len(sha) > 10 {
+			sha = sha[:10]
+		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			c.Repo,
+			c.Forge,
+			sha,
+			c.Author,
+			date,
+			msg,
+		)
+	}
+	return tw.Flush()
+}
+
 func renderRecipesTable(w io.Writer, recipes []port.Recipe) error {
 	if len(recipes) == 0 {
 		fmt.Fprintln(w, "No recipes found.")
