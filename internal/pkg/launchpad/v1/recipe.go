@@ -253,6 +253,92 @@ func (c *Client) GetSnapBuildFileURLs(ctx context.Context, buildSelfLink string)
 	return urls, nil
 }
 
+// CreateRockRecipeOpts holds parameters for creating a new rock recipe.
+type CreateRockRecipeOpts struct {
+	Name        string
+	OwnerLink   string // self_link of the owner (e.g. "https://api.launchpad.net/devel/~team")
+	ProjectLink string // self_link of the LP project
+	GitRefLink  string // self_link of the git ref
+	BuildPath   string // e.g. "rocks/keystone"
+	Description string
+}
+
+// CreateRockRecipe creates a new rock recipe on Launchpad.
+func (c *Client) CreateRockRecipe(ctx context.Context, opts CreateRockRecipeOpts) (RockRecipe, error) {
+	form := url.Values{
+		"ws.op":      {"new"},
+		"name":       {opts.Name},
+		"owner":      {opts.OwnerLink},
+		"project":    {opts.ProjectLink},
+		"git_ref":    {opts.GitRefLink},
+		"build_path": {opts.BuildPath},
+	}
+	if opts.Description != "" {
+		form.Set("description", opts.Description)
+	}
+	var r RockRecipe
+	if err := c.PostJSON(ctx, "/+rock-recipes", form, &r); err != nil {
+		return RockRecipe{}, fmt.Errorf("creating rock recipe: %w", err)
+	}
+	return r, nil
+}
+
+// CreateCharmRecipeOpts holds parameters for creating a new charm recipe.
+type CreateCharmRecipeOpts struct {
+	Name        string
+	OwnerLink   string
+	ProjectLink string
+	GitRefLink  string
+	BuildPath   string
+	Description string
+}
+
+// CreateCharmRecipe creates a new charm recipe on Launchpad.
+func (c *Client) CreateCharmRecipe(ctx context.Context, opts CreateCharmRecipeOpts) (CharmRecipe, error) {
+	form := url.Values{
+		"ws.op":      {"new"},
+		"name":       {opts.Name},
+		"owner":      {opts.OwnerLink},
+		"project":    {opts.ProjectLink},
+		"git_ref":    {opts.GitRefLink},
+		"build_path": {opts.BuildPath},
+	}
+	if opts.Description != "" {
+		form.Set("description", opts.Description)
+	}
+	var r CharmRecipe
+	if err := c.PostJSON(ctx, "/+charm-recipes", form, &r); err != nil {
+		return CharmRecipe{}, fmt.Errorf("creating charm recipe: %w", err)
+	}
+	return r, nil
+}
+
+// CreateSnapOpts holds parameters for creating a new snap.
+type CreateSnapOpts struct {
+	Name        string
+	OwnerLink   string
+	GitRefLink  string
+	Description string
+}
+
+// CreateSnap creates a new snap on Launchpad.
+func (c *Client) CreateSnap(ctx context.Context, opts CreateSnapOpts) (Snap, error) {
+	form := url.Values{
+		"ws.op":   {"new"},
+		"name":    {opts.Name},
+		"owner":   {opts.OwnerLink},
+		"git_ref": {opts.GitRefLink},
+	}
+	if opts.Description != "" {
+		form.Set("description", opts.Description)
+	}
+	var s Snap
+	if err := c.PostJSON(ctx, "/+snaps", form, &s); err != nil {
+		return Snap{}, fmt.Errorf("creating snap: %w", err)
+	}
+	return s, nil
+}
+
 // DeleteRockRecipe deletes a rock recipe.
 func (c *Client) DeleteRockRecipe(ctx context.Context, recipeSelfLink string) error {
 	return c.Delete(ctx, recipeSelfLink)

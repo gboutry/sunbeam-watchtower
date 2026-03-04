@@ -9,6 +9,21 @@ import (
 	"net/url"
 )
 
+// CreateGitRepository creates a new Git repository on Launchpad.
+func (c *Client) CreateGitRepository(ctx context.Context, owner, project, name string) (GitRepository, error) {
+	form := url.Values{
+		"ws.op":  {"new"},
+		"owner":  {c.resolveURL("/~" + owner)},
+		"target": {c.resolveURL("/" + project)},
+		"name":   {name},
+	}
+	var r GitRepository
+	if err := c.PostJSON(ctx, "/+git", form, &r); err != nil {
+		return GitRepository{}, fmt.Errorf("creating git repo ~%s/%s/+git/%s: %w", owner, project, name, err)
+	}
+	return r, nil
+}
+
 // GetGitRepository fetches a Git repository by owner, project, and repo name.
 // Path: /~<owner>/<project>/+git/<name>
 func (c *Client) GetGitRepository(ctx context.Context, owner, project, name string) (GitRepository, error) {

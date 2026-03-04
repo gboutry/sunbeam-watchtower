@@ -185,3 +185,53 @@ func TestService_List_GracefulDegradation(t *testing.T) {
 		t.Error("expected at least one project result with error")
 	}
 }
+
+func TestService_Get(t *testing.T) {
+	f := &mockForge{
+		forgeType: forge.ForgeGitHub,
+		mrs: []forge.MergeRequest{
+			{ID: "#1", Title: "Fix the thing", Author: "alice"},
+			{ID: "#2", Title: "Add feature", Author: "bob"},
+		},
+	}
+
+	svc := NewService(map[string]ProjectForge{
+		"my-project": {Forge: f, ProjectID: "org/repo"},
+	})
+
+	mr, err := svc.Get(context.Background(), "my-project", "#1")
+	if err != nil {
+		t.Fatalf("Get() error: %v", err)
+	}
+	if mr.Title != "Fix the thing" {
+		t.Errorf("Title = %q, want 'Fix the thing'", mr.Title)
+	}
+	if mr.Repo != "my-project" {
+		t.Errorf("Repo = %q, want 'my-project'", mr.Repo)
+	}
+}
+
+func TestService_Get_UnknownProject(t *testing.T) {
+	svc := NewService(map[string]ProjectForge{})
+
+	_, err := svc.Get(context.Background(), "nonexistent", "#1")
+	if err == nil {
+		t.Fatal("expected error for unknown project")
+	}
+}
+
+func TestService_Get_NotFound(t *testing.T) {
+	f := &mockForge{
+		forgeType: forge.ForgeGitHub,
+		mrs:       []forge.MergeRequest{{ID: "#1", Title: "PR"}},
+	}
+
+	svc := NewService(map[string]ProjectForge{
+		"my-project": {Forge: f, ProjectID: "org/repo"},
+	})
+
+	_, err := svc.Get(context.Background(), "my-project", "#999")
+	if err == nil {
+		t.Fatal("expected error for not found MR")
+	}
+}

@@ -16,6 +16,40 @@ func newReviewCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.AddCommand(newReviewListCmd(opts))
+	cmd.AddCommand(newReviewShowCmd(opts))
+	return cmd
+}
+
+func newReviewShowCmd(opts *Options) *cobra.Command {
+	var project string
+
+	cmd := &cobra.Command{
+		Use:   "show <id>",
+		Short: "Show a merge request",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if project == "" {
+				return fmt.Errorf("--project is required for review show")
+			}
+
+			clients, err := buildForgeClients(opts)
+			if err != nil {
+				return err
+			}
+
+			svc := review.NewService(clients)
+
+			mr, err := svc.Get(cmd.Context(), project, args[0])
+			if err != nil {
+				return err
+			}
+
+			return renderMergeRequestDetail(opts.Out, opts.Output, mr)
+		},
+	}
+
+	cmd.Flags().StringVar(&project, "project", "", "project name (required)")
+
 	return cmd
 }
 

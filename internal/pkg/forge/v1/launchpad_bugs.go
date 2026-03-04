@@ -25,6 +25,45 @@ func (l *LaunchpadBugTracker) Type() ForgeType {
 	return ForgeLaunchpad
 }
 
+func (l *LaunchpadBugTracker) GetBug(ctx context.Context, id string) (*Bug, error) {
+	bugID, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid LP bug ID %q: %w", id, err)
+	}
+
+	lpBug, err := l.client.GetBug(ctx, bugID)
+	if err != nil {
+		return nil, err
+	}
+
+	lpTasks, err := l.client.GetBugTasks(ctx, bugID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching tasks for bug %d: %w", bugID, err)
+	}
+
+	b := &Bug{
+		Forge:       ForgeLaunchpad,
+		ID:          id,
+		Title:       lpBug.Title,
+		Description: lpBug.Description,
+		Owner:       lpExtractName(lpBug.OwnerLink),
+		Tags:        lpBug.Tags,
+		URL:         lpBug.WebLink,
+	}
+	if lpBug.DateCreated != nil {
+		b.CreatedAt = lpBug.DateCreated.Time
+	}
+	if lpBug.DateLastUpdated != nil {
+		b.UpdatedAt = lpBug.DateLastUpdated.Time
+	}
+
+	for _, t := range lpTasks {
+		b.Tasks = append(b.Tasks, lpBugTaskToBugTask(&t))
+	}
+
+	return b, nil
+}
+
 func (l *LaunchpadBugTracker) ListBugTasks(ctx context.Context, project string, opts ListBugTasksOpts) ([]BugTask, error) {
 	lpOpts := lp.BugTaskSearchOpts{
 		Status:         opts.Status,

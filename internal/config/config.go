@@ -45,11 +45,20 @@ type BugTrackerConfig struct {
 	Project string `mapstructure:"project" yaml:"project"`
 }
 
+// ProjectBuildConfig holds per-project build settings.
+type ProjectBuildConfig struct {
+	Owner          string   `mapstructure:"owner" yaml:"owner"`
+	Recipes        []string `mapstructure:"recipes" yaml:"recipes,omitempty"`
+	PrepareCommand string   `mapstructure:"prepare_command" yaml:"prepare_command,omitempty"`
+}
+
 // ProjectConfig defines a project tracked across forges.
 type ProjectConfig struct {
-	Name string             `mapstructure:"name" yaml:"name"`
-	Code CodeConfig         `mapstructure:"code" yaml:"code"`
-	Bugs []BugTrackerConfig `mapstructure:"bugs" yaml:"bugs,omitempty"`
+	Name         string              `mapstructure:"name" yaml:"name"`
+	ArtifactType string              `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
+	Code         CodeConfig          `mapstructure:"code" yaml:"code"`
+	Bugs         []BugTrackerConfig  `mapstructure:"bugs" yaml:"bugs,omitempty"`
+	Build        *ProjectBuildConfig `mapstructure:"build" yaml:"build,omitempty"`
 }
 
 // BuildConfig holds build pipeline settings.
@@ -126,6 +135,19 @@ func (c *Config) Validate() error {
 		for j, bug := range p.Bugs {
 			if err := validateForgeRef(fmt.Sprintf("projects[%d] (%s) bugs[%d]", i, p.Name, j), bug.Forge, bug.Owner, bug.Host, bug.Project); err != nil {
 				return err
+			}
+		}
+
+		validArtifactTypes := map[string]bool{"rock": true, "charm": true, "snap": true}
+		if p.ArtifactType != "" && !validArtifactTypes[p.ArtifactType] {
+			return fmt.Errorf("projects[%d] (%s): invalid artifact_type %q (must be rock, charm, or snap)", i, p.Name, p.ArtifactType)
+		}
+		if p.Build != nil {
+			if p.ArtifactType == "" {
+				return fmt.Errorf("projects[%d] (%s): artifact_type is required when build is set", i, p.Name)
+			}
+			if p.Build.Owner == "" {
+				return fmt.Errorf("projects[%d] (%s): build.owner is required", i, p.Name)
 			}
 		}
 	}

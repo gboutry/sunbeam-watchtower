@@ -9,6 +9,25 @@ import (
 	"net/url"
 )
 
+// CreateProject registers a new project on Launchpad.
+func (c *Client) CreateProject(ctx context.Context, name, displayName, summary, description string) (Project, error) {
+	form := url.Values{
+		"ws.op":        {"new_project"},
+		"name":         {name},
+		"display_name": {displayName},
+		"title":        {displayName},
+		"summary":      {summary},
+	}
+	if description != "" {
+		form.Set("description", description)
+	}
+	var p Project
+	if err := c.PostJSON(ctx, "/projects", form, &p); err != nil {
+		return Project{}, fmt.Errorf("creating project %q: %w", name, err)
+	}
+	return p, nil
+}
+
 // GetProject fetches a project by name.
 func (c *Client) GetProject(ctx context.Context, name string) (Project, error) {
 	var p Project

@@ -12,10 +12,21 @@ import (
 type mockBugTracker struct {
 	forgeType forge.ForgeType
 	tasks     []forge.BugTask
+	bug       *forge.Bug
 	err       error
 }
 
 func (m *mockBugTracker) Type() forge.ForgeType { return m.forgeType }
+
+func (m *mockBugTracker) GetBug(_ context.Context, id string) (*forge.Bug, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.bug != nil {
+		return m.bug, nil
+	}
+	return nil, fmt.Errorf("bug %s not found", id)
+}
 
 func (m *mockBugTracker) ListBugTasks(_ context.Context, _ string, _ forge.ListBugTasksOpts) ([]forge.BugTask, error) {
 	if m.err != nil {
@@ -168,7 +179,58 @@ type countingBugTracker struct {
 
 func (c *countingBugTracker) Type() forge.ForgeType { return c.inner.Type() }
 
+func (c *countingBugTracker) GetBug(ctx context.Context, id string) (*forge.Bug, error) {
+	return c.inner.GetBug(ctx, id)
+}
+
 func (c *countingBugTracker) ListBugTasks(ctx context.Context, project string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error) {
 	*c.count++
 	return c.inner.ListBugTasks(ctx, project, opts)
+}
+
+func TestService_Get(t *testing.T) {
+	tracker := &mockBugTracker{
+		forgeType: forge.ForgeLaunchpad,
+		bug: &forge.Bug{
+			ID:    "12345",
+			Title: "Test bug",
+			Tags:  []string{"sunbeam"},
+			Tasks: []forge.BugTask{
+				{BugID: "12345", Status: "New", Importance: "High"},
+				{BugID: "12345", Status: "Confirmed", Importance: "Medium"},
+			},
+		},
+	}
+
+	svc := NewService(
+		map[string]ProjectBugTracker{
+			"launchpad:snap-openstack": {Tracker: tracker, ProjectID: "snap-openstack"},
+		},
+		map[string][]string{
+			"launchpad:snap-openstack": {"sunbeam"},
+		},
+	)
+
+	bug, err := svc.Get(context.Background(), "12345")
+	if err != nil {
+		t.Fatalf("Get() error: %v", err)
+	}
+	if bug.ID != "12345" {
+		t.Errorf("ID = %q, want 12345", bug.ID)
+	}
+	if len(bug.Tasks) != 2 {
+		t.Errorf("len(Tasks) = %d, want 2", len(bug.Tasks))
+	}
+}
+
+func TestService_Get_NotConfigured(t *testing.T) {
+	svc := NewService(
+		map[string]ProjectBugTracker{},
+		map[string][]string{},
+	)
+
+	_, err := svc.Get(context.Background(), "12345")
+	if err == nil {
+		t.Fatal("expected error when no trackers configured")
+	}
 }

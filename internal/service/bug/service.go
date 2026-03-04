@@ -6,11 +6,12 @@ import (
 	"sort"
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
+	port "github.com/gboutry/sunbeam-watchtower/internal/port"
 )
 
 // ProjectBugTracker pairs a BugTracker with the project identifier it expects.
 type ProjectBugTracker struct {
-	Tracker   forge.BugTracker
+	Tracker   port.BugTracker
 	ProjectID string // e.g. LP project name
 }
 
@@ -42,6 +43,27 @@ type Service struct {
 // trackers maps dedup key to the tracker, projectMap maps dedup key to watchtower project names.
 func NewService(trackers map[string]ProjectBugTracker, projectMap map[string][]string) *Service {
 	return &Service{trackers: trackers, projectMap: projectMap}
+}
+
+// Get fetches a single bug by ID. It tries each configured tracker until one succeeds.
+func (s *Service) Get(ctx context.Context, id string) (*forge.Bug, error) {
+	// Try each unique tracker (deduplicated).
+	seen := make(map[port.BugTracker]bool)
+	for _, pt := range s.trackers {
+		if seen[pt.Tracker] {
+			continue
+		}
+		seen[pt.Tracker] = true
+
+		bug, err := pt.Tracker.GetBug(ctx, id)
+		if err == nil {
+			return bug, nil
+		}
+	}
+	if len(seen) == 0 {
+		return nil, fmt.Errorf("no bug trackers configured")
+	}
+	return nil, fmt.Errorf("bug %s not found", id)
 }
 
 // List returns bug tasks across all configured trackers, applying filters.

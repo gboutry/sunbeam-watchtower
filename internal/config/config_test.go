@@ -242,6 +242,84 @@ func TestValidate_BugMissingProject(t *testing.T) {
 	}
 }
 
+func TestValidate_ValidArtifactTypeAndBuild(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{
+			{
+				Name:         "p1",
+				ArtifactType: "rock",
+				Code:         CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+				Build:        &ProjectBuildConfig{Owner: "team", Recipes: []string{"recipe1"}},
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() error: %v", err)
+	}
+}
+
+func TestValidate_InvalidArtifactType(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{
+			{
+				Name:         "p1",
+				ArtifactType: "docker",
+				Code:         CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+			},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should error for invalid artifact_type")
+	}
+}
+
+func TestValidate_BuildWithoutArtifactType(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{
+			{
+				Name:  "p1",
+				Code:  CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+				Build: &ProjectBuildConfig{Owner: "team"},
+			},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should error for build without artifact_type")
+	}
+}
+
+func TestValidate_BuildWithoutOwner(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{
+			{
+				Name:         "p1",
+				ArtifactType: "charm",
+				Code:         CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+				Build:        &ProjectBuildConfig{},
+			},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should error for build without owner")
+	}
+}
+
+func TestValidate_BuildWithPrepareCommand(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{
+			{
+				Name:         "p1",
+				ArtifactType: "snap",
+				Code:         CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+				Build:        &ProjectBuildConfig{Owner: "team", PrepareCommand: "make prepare"},
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() error: %v", err)
+	}
+}
+
 func TestValidate_EmptyConfig(t *testing.T) {
 	cfg := &Config{}
 	if err := cfg.Validate(); err != nil {

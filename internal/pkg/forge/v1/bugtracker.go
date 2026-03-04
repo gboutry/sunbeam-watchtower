@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+// Bug is a forge-agnostic bug with its associated tasks.
+type Bug struct {
+	Forge       ForgeType
+	ID          string // "12345" for LP, "#123" for GH
+	Title       string
+	Description string
+	Owner       string
+	Tags        []string
+	URL         string
+	Tasks       []BugTask
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 // BugTask is a forge-agnostic bug task.
 type BugTask struct {
 	Forge      ForgeType
@@ -35,6 +49,9 @@ type ListBugTasksOpts struct {
 type BugTracker interface {
 	// Type returns which forge this bug tracker represents.
 	Type() ForgeType
+
+	// GetBug returns a bug by ID with its tasks.
+	GetBug(ctx context.Context, id string) (*Bug, error)
 
 	// ListBugTasks returns bug tasks for the given project.
 	ListBugTasks(ctx context.Context, project string, opts ListBugTasksOpts) ([]BugTask, error)

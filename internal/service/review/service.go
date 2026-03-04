@@ -6,11 +6,12 @@ import (
 	"sort"
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
+	port "github.com/gboutry/sunbeam-watchtower/internal/port"
 )
 
 // ProjectForge pairs a Forge client with the project identifier it expects.
 type ProjectForge struct {
-	Forge     forge.Forge
+	Forge     port.Forge
 	ProjectID string // e.g. "owner/repo" for GitHub, project path for Gerrit/LP
 }
 
@@ -37,6 +38,21 @@ type Service struct {
 // NewService creates a review service with the given project-to-forge mappings.
 func NewService(projects map[string]ProjectForge) *Service {
 	return &Service{projects: projects}
+}
+
+// Get returns a single merge request by project name and ID.
+func (s *Service) Get(ctx context.Context, project string, id string) (*forge.MergeRequest, error) {
+	pf, ok := s.projects[project]
+	if !ok {
+		return nil, fmt.Errorf("unknown project %q", project)
+	}
+
+	mr, err := pf.Forge.GetMergeRequest(ctx, pf.ProjectID, id)
+	if err != nil {
+		return nil, err
+	}
+	mr.Repo = project
+	return mr, nil
 }
 
 // List returns merge requests across all configured projects, applying filters.

@@ -227,6 +227,63 @@ func TestBugListCommand_OutputFormats(t *testing.T) {
 	}
 }
 
+func TestReviewShowCommand_MissingProject(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &errOut}
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"review", "show", "--config", cfgFile, "#1"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for missing --project flag")
+	}
+	if !strings.Contains(err.Error(), "--project") {
+		t.Errorf("error should mention --project, got: %v", err)
+	}
+}
+
+func TestReviewShowCommand_UnknownProject(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &errOut}
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"review", "show", "--config", cfgFile, "--project", "nonexistent", "#1"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown project")
+	}
+}
+
+func TestBugShowCommand_NoArgs(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &errOut}
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"bug", "show", "--config", cfgFile})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for missing bug ID argument")
+	}
+}
+
 func TestVerboseFlag(t *testing.T) {
 	dir := t.TempDir()
 	cfgFile := filepath.Join(dir, "config.yaml")

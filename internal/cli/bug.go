@@ -14,6 +14,32 @@ func newBugCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.AddCommand(newBugListCmd(opts))
+	cmd.AddCommand(newBugShowCmd(opts))
+	return cmd
+}
+
+func newBugShowCmd(opts *Options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "show <id>",
+		Short: "Show a bug and its tasks",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			trackers, projectMap, err := buildBugTrackers(opts)
+			if err != nil {
+				return err
+			}
+
+			svc := bug.NewService(trackers, projectMap)
+
+			b, err := svc.Get(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+
+			return renderBugDetail(opts.Out, opts.Output, b)
+		},
+	}
+
 	return cmd
 }
 

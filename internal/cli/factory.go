@@ -7,10 +7,13 @@ import (
 	"github.com/andygrunwald/go-gerrit"
 	"github.com/google/go-github/v68/github"
 
+	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/launchpad"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/internal/pkg/launchpad/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/bug"
+	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/review"
 )
 
@@ -135,4 +138,73 @@ func newLaunchpadForge(lpCfg config.LaunchpadConfig, opts *Options) *forge.Launc
 	_ = lpCfg
 	client := lp.NewClient(&lp.Credentials{ConsumerKey: "sunbeam-watchtower"}, opts.Logger)
 	return forge.NewLaunchpadForge(client)
+}
+
+// buildRecipeBuilders creates per-project RecipeBuilder instances from config.
+func buildRecipeBuilders(opts *Options) (map[string]build.ProjectBuilder, error) {
+	cfg := opts.Config
+	if cfg == nil {
+		return nil, fmt.Errorf("no configuration loaded")
+	}
+
+	result := make(map[string]build.ProjectBuilder)
+	var lpClient *lp.Client
+
+	for _, proj := range cfg.Projects {
+		if proj.Build == nil {
+			continue
+		}
+
+		if lpClient == nil {
+			lpClient = newLaunchpadClient(cfg.Launchpad, opts)
+			if lpClient == nil {
+				opts.Logger.Warn("skipping build projects (no LP auth configured)")
+				return result, nil
+			}
+		}
+
+		artifactType := proj.ArtifactType
+
+		var builder port.RecipeBuilder
+		var strategy build.ArtifactStrategy
+		switch artifactType {
+		case "rock":
+			builder = lpadapter.NewRockBuilder(lpClient)
+			strategy = &build.RockStrategy{}
+		case "charm":
+			builder = lpadapter.NewCharmBuilder(lpClient)
+			strategy = &build.CharmStrategy{}
+		case "snap":
+			builder = lpadapter.NewSnapBuilder(lpClient, "", "")
+			strategy = &build.SnapStrategy{}
+		default:
+			return nil, fmt.Errorf("unsupported artifact type %q for project %s", artifactType, proj.Name)
+		}
+
+		owner := proj.Build.Owner
+
+		result[proj.Name] = build.ProjectBuilder{
+			Builder:  builder,
+			Owner:    owner,
+			Project:  proj.Code.Project,
+			Recipes:  proj.Build.Recipes,
+			Strategy: strategy,
+		}
+	}
+
+	return result, nil
+}
+
+// buildRepoManager creates a RepoManager backed by Launchpad.
+func buildRepoManager(opts *Options) (port.RepoManager, error) {
+	if opts.Config == nil {
+		return nil, fmt.Errorf("no configuration loaded")
+	}
+
+	lpClient := newLaunchpadClient(opts.Config.Launchpad, opts)
+	if lpClient == nil {
+		return nil, nil
+	}
+
+	return lpadapter.NewRepoManager(lpClient, opts.Logger), nil
 }
