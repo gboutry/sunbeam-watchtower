@@ -102,6 +102,9 @@ type Service struct {
 
 // NewService creates a build service with the given project-to-builder mappings.
 func NewService(projects map[string]ProjectBuilder, repoManager port.RepoManager, gitClient port.GitClient, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	return &Service{
 		projects:    projects,
 		repoManager: repoManager,

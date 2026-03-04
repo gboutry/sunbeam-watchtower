@@ -34,7 +34,7 @@ type Client struct {
 // NewClient creates a Client from existing credentials.
 func NewClient(creds *Credentials, logger *slog.Logger) *Client {
 	if logger == nil {
-		logger = slog.Default()
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Client{
 		creds:  creds,
@@ -56,7 +56,7 @@ func NewClient(creds *Credentials, logger *slog.Logger) *Client {
 // is used.
 func Login(consumerKey string, promptFn func(authorizeURL string) error, logger *slog.Logger) (*Client, *Credentials, error) {
 	if logger == nil {
-		logger = slog.Default()
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
 	logger.Info("starting Launchpad OAuth flow")

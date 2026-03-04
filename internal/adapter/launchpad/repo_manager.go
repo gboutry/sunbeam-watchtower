@@ -6,6 +6,7 @@ package launchpad
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -25,6 +26,9 @@ type RepoManager struct {
 var _ port.RepoManager = (*RepoManager)(nil)
 
 func NewRepoManager(client *lp.Client, logger *slog.Logger) *RepoManager {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	return &RepoManager{client: client, logger: logger}
 }
 
