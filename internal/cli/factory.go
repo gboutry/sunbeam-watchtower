@@ -10,6 +10,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/internal/pkg/launchpad/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/service/bug"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/review"
 )
 
@@ -77,6 +78,55 @@ func buildForgeClients(opts *Options) (map[string]review.ProjectForge, error) {
 	}
 
 	return result, nil
+}
+
+// buildBugTrackers creates bug tracker clients from config, deduplicating by (forge, project).
+func buildBugTrackers(opts *Options) (map[string]bug.ProjectBugTracker, map[string][]string, error) {
+	cfg := opts.Config
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("no configuration loaded")
+	}
+
+	trackers := make(map[string]bug.ProjectBugTracker)
+	projectMap := make(map[string][]string)
+
+	var lpBugTracker *forge.LaunchpadBugTracker
+
+	for _, proj := range cfg.Projects {
+		for _, b := range proj.Bugs {
+			switch b.Forge {
+			case "launchpad":
+				if lpBugTracker == nil {
+					lpClient := newLaunchpadClient(cfg.Launchpad, opts)
+					if lpClient == nil {
+						opts.Logger.Warn("skipping Launchpad bug tracker (no auth configured)", "project", proj.Name)
+						continue
+					}
+					lpBugTracker = forge.NewLaunchpadBugTracker(lpClient)
+				}
+
+				key := "launchpad:" + b.Project
+				if _, ok := trackers[key]; !ok {
+					trackers[key] = bug.ProjectBugTracker{
+						Tracker:   lpBugTracker,
+						ProjectID: b.Project,
+					}
+				}
+				projectMap[key] = append(projectMap[key], proj.Name)
+
+			default:
+				return nil, nil, fmt.Errorf("unsupported bug tracker forge %q for project %s", b.Forge, proj.Name)
+			}
+		}
+	}
+
+	return trackers, projectMap, nil
+}
+
+// newLaunchpadClient creates an LP client (shared between forge and bug tracker).
+func newLaunchpadClient(lpCfg config.LaunchpadConfig, opts *Options) *lp.Client {
+	_ = lpCfg
+	return lp.NewClient(&lp.Credentials{ConsumerKey: "sunbeam-watchtower"}, opts.Logger)
 }
 
 func newLaunchpadForge(lpCfg config.LaunchpadConfig, opts *Options) *forge.LaunchpadForge {

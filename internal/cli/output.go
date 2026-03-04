@@ -38,6 +38,46 @@ func renderYAML(w io.Writer, v any) error {
 	return err
 }
 
+// renderBugTasks writes bug tasks in the requested format.
+func renderBugTasks(w io.Writer, format string, tasks []forge.BugTask) error {
+	switch format {
+	case "json":
+		return renderJSON(w, tasks)
+	case "yaml":
+		return renderYAML(w, tasks)
+	default:
+		return renderBugTable(w, tasks)
+	}
+}
+
+func renderBugTable(w io.Writer, tasks []forge.BugTask) error {
+	if len(tasks) == 0 {
+		fmt.Fprintln(w, "No bug tasks found.")
+		return nil
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "PROJECT\tID\tSTATUS\tIMPORTANCE\tASSIGNEE\tTITLE\tURL")
+	for _, t := range tasks {
+		title := t.Title
+		if len(title) > 60 {
+			title = title[:57] + "..."
+		}
+		title = strings.ReplaceAll(title, "\t", " ")
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			t.Project,
+			t.BugID,
+			t.Status,
+			t.Importance,
+			t.Assignee,
+			title,
+			t.URL,
+		)
+	}
+	return tw.Flush()
+}
+
 func renderTable(w io.Writer, mrs []forge.MergeRequest) error {
 	if len(mrs) == 0 {
 		fmt.Fprintln(w, "No merge requests found.")
