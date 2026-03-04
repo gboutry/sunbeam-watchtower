@@ -5,10 +5,14 @@ package git
 
 import (
 	"fmt"
+	"net/url"
+	"os/user"
+	"strings"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
 // Client implements port.GitClient using go-git.
@@ -60,16 +64,61 @@ func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) erro
 	if err != nil {
 		return fmt.Errorf("get remote %s for %s: %w", remote, path, err)
 	}
+
+	remoteURL := r.Config().URLs[0]
+	sshUser, err := sshUserFromURL(remoteURL)
+	if err != nil {
+		return err
+	}
+
+	authMethod, err := gitssh.DefaultAuthBuilder(sshUser)
+	if err != nil {
+		return fmt.Errorf("ssh auth: %w", err)
+	}
+
 	refspec := config.RefSpec(fmt.Sprintf("%s:%s", localRef, remoteRef))
 	opts := &gogit.PushOptions{
 		RemoteName: r.Config().Name,
 		RefSpecs:   []config.RefSpec{refspec},
+		Auth:       authMethod,
 		Force:      force,
 	}
 	if err := r.Push(opts); err != nil {
 		return fmt.Errorf("push %s to %s for %s: %w", localRef, remoteRef, path, err)
 	}
 	return nil
+}
+
+// sshUserFromURL extracts the SSH user from a remote URL.
+// Returns an error for HTTPS remotes (unsupported).
+// Falls back to the effective unix user if no user is present.
+func sshUserFromURL(remoteURL string) (string, error) {
+	if strings.HasPrefix(remoteURL, "https://") || strings.HasPrefix(remoteURL, "http://") {
+		return "", fmt.Errorf("HTTPS remotes are not supported for push; use an SSH remote")
+	}
+
+	// SCP-style: user@host:path
+	if !strings.Contains(remoteURL, "://") {
+		if at := strings.Index(remoteURL, "@"); at > 0 {
+			return remoteURL[:at], nil
+		}
+		return effectiveUser()
+	}
+
+	// URL-style: ssh://user@host/path
+	u, err := url.Parse(remoteURL)
+	if err == nil && u.User != nil && u.User.Username() != "" {
+		return u.User.Username(), nil
+	}
+	return effectiveUser()
+}
+
+func effectiveUser() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("determining current user: %w", err)
+	}
+	return u.Username, nil
 }
 
 func (c *Client) AddRemote(path, name, url string) error {
