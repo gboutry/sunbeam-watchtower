@@ -10,6 +10,7 @@ import (
 )
 
 // CreateProject registers a new project on Launchpad.
+// LP returns 201 with an empty body, so we POST then GET the new resource.
 func (c *Client) CreateProject(ctx context.Context, name, displayName, summary, description string) (Project, error) {
 	form := url.Values{
 		"ws.op":        {"new_project"},
@@ -17,15 +18,15 @@ func (c *Client) CreateProject(ctx context.Context, name, displayName, summary, 
 		"display_name": {displayName},
 		"title":        {displayName},
 		"summary":      {summary},
+		"licenses":     {"Apache Licence"},
 	}
 	if description != "" {
 		form.Set("description", description)
 	}
-	var p Project
-	if err := c.PostJSON(ctx, "/projects", form, &p); err != nil {
+	if _, err := c.Post(ctx, "/projects", form); err != nil {
 		return Project{}, fmt.Errorf("creating project %q: %w", name, err)
 	}
-	return p, nil
+	return c.GetProject(ctx, name)
 }
 
 // GetProject fetches a project by name.

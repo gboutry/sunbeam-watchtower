@@ -17,11 +17,12 @@ func (c *Client) CreateGitRepository(ctx context.Context, owner, project, name s
 		"target": {c.resolveURL("/" + project)},
 		"name":   {name},
 	}
-	var r GitRepository
-	if err := c.PostJSON(ctx, "/+git", form, &r); err != nil {
+	// LP returns 201 with an empty body and a Location header, so we
+	// cannot use PostJSON.  Instead we POST, then GET the new resource.
+	if _, err := c.Post(ctx, "/+git", form); err != nil {
 		return GitRepository{}, fmt.Errorf("creating git repo ~%s/%s/+git/%s: %w", owner, project, name, err)
 	}
-	return r, nil
+	return c.GetGitRepository(ctx, owner, project, name)
 }
 
 // GetGitRepository fetches a Git repository by owner, project, and repo name.

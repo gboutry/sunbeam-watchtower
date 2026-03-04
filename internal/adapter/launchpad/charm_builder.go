@@ -38,11 +38,11 @@ func (b *CharmBuilder) GetRecipe(ctx context.Context, owner, project, name strin
 
 func (b *CharmBuilder) CreateRecipe(ctx context.Context, opts port.CreateRecipeOpts) (*port.Recipe, error) {
 	r, err := b.client.CreateCharmRecipe(ctx, lp.CreateCharmRecipeOpts{
-		Name:        opts.Name,
-		OwnerLink:   opts.Owner,
-		ProjectLink: opts.Project,
-		GitRefLink:  opts.GitRefLink,
-		BuildPath:   opts.BuildPath,
+		Name:       opts.Name,
+		Owner:      opts.Owner,
+		Project:    opts.Project,
+		GitRefLink: opts.GitRefLink,
+		BuildPath:  opts.BuildPath,
 	})
 	if err != nil {
 		return nil, err

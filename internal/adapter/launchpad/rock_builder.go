@@ -35,11 +35,11 @@ func (c *RockBuilder) GetRecipe(ctx context.Context, owner, project, name string
 
 func (c *RockBuilder) CreateRecipe(ctx context.Context, opts port.CreateRecipeOpts) (*port.Recipe, error) {
 	r, err := c.client.CreateRockRecipe(ctx, lp.CreateRockRecipeOpts{
-		Name:        opts.Name,
-		OwnerLink:   opts.Owner,
-		ProjectLink: opts.Project,
-		GitRefLink:  opts.GitRefLink,
-		BuildPath:   opts.BuildPath,
+		Name:       opts.Name,
+		Owner:      opts.Owner,
+		Project:    opts.Project,
+		GitRefLink: opts.GitRefLink,
+		BuildPath:  opts.BuildPath,
 	})
 	if err != nil {
 		return nil, err

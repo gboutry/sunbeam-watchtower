@@ -45,7 +45,7 @@ func (s *SnapBuilder) GetRecipe(ctx context.Context, owner, _ string, name strin
 func (s *SnapBuilder) CreateRecipe(ctx context.Context, opts port.CreateRecipeOpts) (*port.Recipe, error) {
 	snap, err := s.client.CreateSnap(ctx, lp.CreateSnapOpts{
 		Name:        opts.Name,
-		OwnerLink:   opts.Owner,
+		Owner:       opts.Owner,
 		GitRefLink:  opts.GitRefLink,
 		Description: opts.Name,
 	})

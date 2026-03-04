@@ -256,87 +256,87 @@ func (c *Client) GetSnapBuildFileURLs(ctx context.Context, buildSelfLink string)
 // CreateRockRecipeOpts holds parameters for creating a new rock recipe.
 type CreateRockRecipeOpts struct {
 	Name        string
-	OwnerLink   string // self_link of the owner (e.g. "https://api.launchpad.net/devel/~team")
-	ProjectLink string // self_link of the LP project
+	Owner       string // LP username (e.g. "team")
+	Project     string // LP project name
 	GitRefLink  string // self_link of the git ref
 	BuildPath   string // e.g. "rocks/keystone"
 	Description string
 }
 
 // CreateRockRecipe creates a new rock recipe on Launchpad.
+// LP returns 201 with an empty body, so we POST then GET the new resource.
 func (c *Client) CreateRockRecipe(ctx context.Context, opts CreateRockRecipeOpts) (RockRecipe, error) {
 	form := url.Values{
 		"ws.op":      {"new"},
 		"name":       {opts.Name},
-		"owner":      {opts.OwnerLink},
-		"project":    {opts.ProjectLink},
+		"owner":      {c.resolveURL("/~" + opts.Owner)},
+		"project":    {c.resolveURL("/" + opts.Project)},
 		"git_ref":    {opts.GitRefLink},
 		"build_path": {opts.BuildPath},
 	}
 	if opts.Description != "" {
 		form.Set("description", opts.Description)
 	}
-	var r RockRecipe
-	if err := c.PostJSON(ctx, "/+rock-recipes", form, &r); err != nil {
+	if _, err := c.Post(ctx, "/+rock-recipes", form); err != nil {
 		return RockRecipe{}, fmt.Errorf("creating rock recipe: %w", err)
 	}
-	return r, nil
+	return c.GetRockRecipe(ctx, opts.Owner, opts.Project, opts.Name)
 }
 
 // CreateCharmRecipeOpts holds parameters for creating a new charm recipe.
 type CreateCharmRecipeOpts struct {
 	Name        string
-	OwnerLink   string
-	ProjectLink string
+	Owner       string // LP username
+	Project     string // LP project name
 	GitRefLink  string
 	BuildPath   string
 	Description string
 }
 
 // CreateCharmRecipe creates a new charm recipe on Launchpad.
+// LP returns 201 with an empty body, so we POST then GET the new resource.
 func (c *Client) CreateCharmRecipe(ctx context.Context, opts CreateCharmRecipeOpts) (CharmRecipe, error) {
 	form := url.Values{
 		"ws.op":      {"new"},
 		"name":       {opts.Name},
-		"owner":      {opts.OwnerLink},
-		"project":    {opts.ProjectLink},
+		"owner":      {c.resolveURL("/~" + opts.Owner)},
+		"project":    {c.resolveURL("/" + opts.Project)},
 		"git_ref":    {opts.GitRefLink},
 		"build_path": {opts.BuildPath},
 	}
 	if opts.Description != "" {
 		form.Set("description", opts.Description)
 	}
-	var r CharmRecipe
-	if err := c.PostJSON(ctx, "/+charm-recipes", form, &r); err != nil {
+	if _, err := c.Post(ctx, "/+charm-recipes", form); err != nil {
 		return CharmRecipe{}, fmt.Errorf("creating charm recipe: %w", err)
 	}
-	return r, nil
+	return c.GetCharmRecipe(ctx, opts.Owner, opts.Project, opts.Name)
 }
 
 // CreateSnapOpts holds parameters for creating a new snap.
 type CreateSnapOpts struct {
 	Name        string
-	OwnerLink   string
+	Owner       string // LP username
 	GitRefLink  string
 	Description string
 }
 
 // CreateSnap creates a new snap on Launchpad.
+// LP returns 201 with an empty body, so we POST then GET the new resource.
 func (c *Client) CreateSnap(ctx context.Context, opts CreateSnapOpts) (Snap, error) {
 	form := url.Values{
 		"ws.op":   {"new"},
 		"name":    {opts.Name},
-		"owner":   {opts.OwnerLink},
+		"owner":   {c.resolveURL("/~" + opts.Owner)},
 		"git_ref": {opts.GitRefLink},
 	}
 	if opts.Description != "" {
 		form.Set("description", opts.Description)
 	}
-	var s Snap
-	if err := c.PostJSON(ctx, "/+snaps", form, &s); err != nil {
+	if _, err := c.Post(ctx, "/+snaps", form); err != nil {
 		return Snap{}, fmt.Errorf("creating snap: %w", err)
 	}
-	return s, nil
+	return c.GetSnap(ctx, opts.Owner, opts.Name)
 }
 
 // DeleteRockRecipe deletes a rock recipe.
