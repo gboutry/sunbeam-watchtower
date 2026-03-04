@@ -18,6 +18,10 @@ Affected endpoints: `/+git`, `/projects`, `/+rock-recipes`, `/+charm-recipes`, `
 
 LP form parameters like `owner` and `target`/`project` expect full API self_links (e.g. `https://api.launchpad.net/devel/~username`), not plain names.
 
+### Git SSH URLs use `git+ssh://` scheme
+
+LP's `git_ssh_url` field returns `git+ssh://` URLs. go-git (and many other libraries) only support `ssh://`. Replace `git+ssh://` → `ssh://` before use.
+
 ### Project creation requires `licenses`
 
 `POST /projects` with `ws.op=new_project` fails if the `licenses` field is omitted. Pass at least one value (e.g. `"Apache Licence"`).
