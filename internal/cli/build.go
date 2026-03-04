@@ -25,7 +25,7 @@ func newBuildCmd(opts *Options) *cobra.Command {
 }
 
 func newBuildTriggerCmd(opts *Options) *cobra.Command {
-	var source, owner, prefix string
+	var source, owner, prefix, localPath string
 	var wait bool
 	var timeout time.Duration
 
@@ -52,11 +52,12 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			svc := build.NewService(builders, repoMgr, gitClient, opts.Logger)
 
 			triggerOpts := build.TriggerOpts{
-				Source:  source,
-				Wait:    wait,
-				Timeout: timeout,
-				Owner:   owner,
-				Prefix:  prefix,
+				Source:    source,
+				Wait:      wait,
+				Timeout:   timeout,
+				Owner:     owner,
+				Prefix:    prefix,
+				LocalPath: localPath,
 			}
 
 			result, err := svc.Trigger(cmd.Context(), projectName, recipeNames, triggerOpts)
@@ -89,6 +90,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Hour, "max wait time")
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
+	cmd.Flags().StringVar(&localPath, "local-path", ".", "path to local git repo (local mode)")
 
 	return cmd
 }

@@ -174,7 +174,7 @@ func (c *Client) Patch(ctx context.Context, path string, jsonBody []byte) ([]byt
 // Me returns the authenticated user's information.
 func (c *Client) Me(ctx context.Context) (Person, error) {
 	var p Person
-	if err := c.GetJSON(ctx, "/~", &p); err != nil {
+	if err := c.GetJSON(ctx, "/people/+me", &p); err != nil {
 		return Person{}, fmt.Errorf("fetching current user: %w", err)
 	}
 	return p, nil

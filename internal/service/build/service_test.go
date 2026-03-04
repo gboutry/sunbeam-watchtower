@@ -149,6 +149,9 @@ func (m *mockStrategy) ParsePlatforms(_ []byte) ([]string, error) { return []str
 func (m *mockStrategy) TempRecipeName(name, sha, prefix string) string {
 	return prefix + "-" + sha[:8] + "-" + name
 }
+func (m *mockStrategy) DiscoverRecipes(_ string) ([]string, error) {
+	return []string{"discovered-recipe"}, nil
+}
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))

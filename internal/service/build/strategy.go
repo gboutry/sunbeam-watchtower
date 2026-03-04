@@ -24,4 +24,8 @@ type ArtifactStrategy interface {
 	// TempRecipeName generates a temporary recipe name.
 	// Format: {prefix}-{shortSHA}-{artifactName}
 	TempRecipeName(artifactName, commitSHA, prefix string) string
+
+	// DiscoverRecipes finds artifact names by scanning a local repo directory
+	// for metadata files. Returns the list of discovered recipe names.
+	DiscoverRecipes(repoPath string) ([]string, error)
 }

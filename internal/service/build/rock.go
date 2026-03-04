@@ -4,6 +4,9 @@
 package build
 
 import (
+	"path/filepath"
+	"sort"
+
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"gopkg.in/yaml.v3"
 )
@@ -14,6 +17,21 @@ type RockStrategy struct{}
 func (s *RockStrategy) ArtifactType() port.ArtifactType { return port.ArtifactRock }
 func (s *RockStrategy) MetadataFileName() string        { return "rockcraft.yaml" }
 func (s *RockStrategy) BuildPath(name string) string    { return "rocks/" + name }
+
+// DiscoverRecipes scans repoPath/rocks/*/rockcraft.yaml and returns directory names.
+func (s *RockStrategy) DiscoverRecipes(repoPath string) ([]string, error) {
+	pattern := filepath.Join(repoPath, "rocks", "*", s.MetadataFileName())
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(matches))
+	for _, m := range matches {
+		names = append(names, filepath.Base(filepath.Dir(m)))
+	}
+	sort.Strings(names)
+	return names, nil
+}
 
 func (s *RockStrategy) TempRecipeName(name, sha, prefix string) string {
 	short := sha

@@ -126,17 +126,26 @@ func buildBugTrackers(opts *Options) (map[string]bug.ProjectBugTracker, map[stri
 	return trackers, projectMap, nil
 }
 
-// newLaunchpadClient creates an LP client (shared between forge and bug tracker).
+// newLaunchpadClient creates an LP client with credentials from env/file cache.
+// Returns nil if no credentials are available.
 func newLaunchpadClient(lpCfg config.LaunchpadConfig, opts *Options) *lp.Client {
 	_ = lpCfg
-	return lp.NewClient(&lp.Credentials{ConsumerKey: "sunbeam-watchtower"}, opts.Logger)
+	creds, err := lp.LoadCredentials()
+	if err != nil {
+		opts.Logger.Warn("failed to load LP credentials", "error", err)
+		return nil
+	}
+	if creds == nil {
+		return nil
+	}
+	return lp.NewClient(creds, opts.Logger)
 }
 
 func newLaunchpadForge(lpCfg config.LaunchpadConfig, opts *Options) *forge.LaunchpadForge {
-	// For now, create an unauthenticated LP client.
-	// Full OAuth flow will be wired in a later phase.
-	_ = lpCfg
-	client := lp.NewClient(&lp.Credentials{ConsumerKey: "sunbeam-watchtower"}, opts.Logger)
+	client := newLaunchpadClient(lpCfg, opts)
+	if client == nil {
+		return nil
+	}
 	return forge.NewLaunchpadForge(client)
 }
 
@@ -151,7 +160,7 @@ func buildRecipeBuilders(opts *Options) (map[string]build.ProjectBuilder, error)
 	var lpClient *lp.Client
 
 	for _, proj := range cfg.Projects {
-		if proj.Build == nil {
+		if proj.Build == nil && proj.ArtifactType == "" {
 			continue
 		}
 
@@ -181,13 +190,18 @@ func buildRecipeBuilders(opts *Options) (map[string]build.ProjectBuilder, error)
 			return nil, fmt.Errorf("unsupported artifact type %q for project %s", artifactType, proj.Name)
 		}
 
-		owner := proj.Build.Owner
+		var owner string
+		var recipes []string
+		if proj.Build != nil {
+			owner = proj.Build.Owner
+			recipes = proj.Build.Recipes
+		}
 
 		result[proj.Name] = build.ProjectBuilder{
 			Builder:  builder,
 			Owner:    owner,
 			Project:  proj.Code.Project,
-			Recipes:  proj.Build.Recipes,
+			Recipes:  recipes,
 			Strategy: strategy,
 		}
 	}

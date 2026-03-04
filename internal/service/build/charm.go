@@ -4,6 +4,10 @@
 package build
 
 import (
+	"os"
+	"path/filepath"
+	"sort"
+
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"gopkg.in/yaml.v3"
 )
@@ -14,6 +18,31 @@ type CharmStrategy struct{}
 func (s *CharmStrategy) ArtifactType() port.ArtifactType { return port.ArtifactCharm }
 func (s *CharmStrategy) MetadataFileName() string        { return "charmcraft.yaml" }
 func (s *CharmStrategy) BuildPath(name string) string    { return "charms/" + name }
+
+// DiscoverRecipes scans for charmcraft.yaml in charms/*/ subdirectories
+// or at the repo root (single-charm repo).
+func (s *CharmStrategy) DiscoverRecipes(repoPath string) ([]string, error) {
+	// Multi-charm repo: charms/*/charmcraft.yaml
+	pattern := filepath.Join(repoPath, "charms", "*", s.MetadataFileName())
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) > 0 {
+		names := make([]string, 0, len(matches))
+		for _, m := range matches {
+			names = append(names, filepath.Base(filepath.Dir(m)))
+		}
+		sort.Strings(names)
+		return names, nil
+	}
+	// Single-charm repo: charmcraft.yaml at root
+	rootMeta := filepath.Join(repoPath, s.MetadataFileName())
+	if _, err := os.Stat(rootMeta); err == nil {
+		return []string{filepath.Base(repoPath)}, nil
+	}
+	return nil, nil
+}
 
 func (s *CharmStrategy) TempRecipeName(name, sha, prefix string) string {
 	short := sha

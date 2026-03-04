@@ -128,6 +128,16 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 	if len(recipes) == 0 {
 		recipes = pb.Recipes
 	}
+
+	// Local mode: auto-discover recipes from the local repo if none specified.
+	if len(recipes) == 0 && opts.Source == "local" && opts.LocalPath != "" {
+		discovered, err := pb.Strategy.DiscoverRecipes(opts.LocalPath)
+		if err != nil {
+			return nil, fmt.Errorf("discovering recipes in %s: %w", opts.LocalPath, err)
+		}
+		recipes = discovered
+	}
+
 	if len(recipes) == 0 {
 		return nil, fmt.Errorf("no recipes specified for project %q", projectName)
 	}

@@ -63,6 +63,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 
 	root.AddCommand(newVersionCmd(opts))
 	root.AddCommand(newConfigCmd(opts))
+	root.AddCommand(newAuthCmd(opts))
 	root.AddCommand(newReviewCmd(opts))
 	root.AddCommand(newBugCmd(opts))
 	root.AddCommand(newBuildCmd(opts))

@@ -4,6 +4,9 @@
 package build
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"gopkg.in/yaml.v3"
 )
@@ -14,6 +17,21 @@ type SnapStrategy struct{}
 func (s *SnapStrategy) ArtifactType() port.ArtifactType { return port.ArtifactSnap }
 func (s *SnapStrategy) MetadataFileName() string        { return "snapcraft.yaml" }
 func (s *SnapStrategy) BuildPath(name string) string    { return "" }
+
+// DiscoverRecipes looks for snapcraft.yaml at the repo root or snap/ subdirectory.
+func (s *SnapStrategy) DiscoverRecipes(repoPath string) ([]string, error) {
+	// snap/snapcraft.yaml
+	snapDir := filepath.Join(repoPath, "snap", s.MetadataFileName())
+	if _, err := os.Stat(snapDir); err == nil {
+		return []string{filepath.Base(repoPath)}, nil
+	}
+	// snapcraft.yaml at root
+	rootMeta := filepath.Join(repoPath, s.MetadataFileName())
+	if _, err := os.Stat(rootMeta); err == nil {
+		return []string{filepath.Base(repoPath)}, nil
+	}
+	return nil, nil
+}
 
 func (s *SnapStrategy) TempRecipeName(name, sha, prefix string) string {
 	short := sha
