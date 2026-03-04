@@ -68,19 +68,18 @@ func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) erro
 	remoteURL := r.Config().URLs[0]
 	sshUser, err := sshUserFromURL(remoteURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("determine SSH user for remote URL %s: %w", remoteURL, err)
 	}
 
-	authMethod, err := gitssh.DefaultAuthBuilder(sshUser)
+	auth, err := gitssh.NewSSHAgentAuth(sshUser)
 	if err != nil {
-		return fmt.Errorf("ssh auth: %w", err)
+		return fmt.Errorf("creating SSH agent auth: %w", err)
 	}
-
 	refspec := config.RefSpec(fmt.Sprintf("%s:%s", localRef, remoteRef))
 	opts := &gogit.PushOptions{
 		RemoteName: r.Config().Name,
 		RefSpecs:   []config.RefSpec{refspec},
-		Auth:       authMethod,
+		Auth:       auth,
 		Force:      force,
 	}
 	if err := r.Push(opts); err != nil {

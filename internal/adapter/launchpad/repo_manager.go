@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
 
 	lp "github.com/gboutry/sunbeam-watchtower/internal/pkg/launchpad/v1"
@@ -51,7 +53,7 @@ func (m *RepoManager) GetOrCreateRepo(ctx context.Context, owner, project, repoN
 	repo, err := m.client.GetGitRepository(ctx, owner, project, repoName)
 	if err == nil {
 		m.logger.Debug("using existing LP git repo", "repo", repoName)
-		return repo.SelfLink, repo.GitSSHURL, nil
+		return repo.SelfLink, injectSSHUser(repo.GitSSHURL, owner), nil
 	}
 
 	m.logger.Info("creating LP git repo", "owner", owner, "project", project, "name", repoName)
@@ -59,7 +61,23 @@ func (m *RepoManager) GetOrCreateRepo(ctx context.Context, owner, project, repoN
 	if err != nil {
 		return "", "", fmt.Errorf("creating git repo ~%s/%s/+git/%s: %w", owner, project, repoName, err)
 	}
-	return repo.SelfLink, repo.GitSSHURL, nil
+	return repo.SelfLink, injectSSHUser(repo.GitSSHURL, owner), nil
+}
+
+// injectSSHUser ensures the SSH URL has the LP username set.
+// LP's git_ssh_url omits the user, but LP requires <lp_username>@ for push auth.
+func injectSSHUser(sshURL, lpUser string) string {
+	// Normalise git+ssh:// → ssh:// (go-git doesn't support git+ssh).
+	sshURL = strings.Replace(sshURL, "git+ssh://", "ssh://", 1)
+
+	u, err := url.Parse(sshURL)
+	if err != nil {
+		return sshURL
+	}
+	if u.User == nil || u.User.Username() == "" {
+		u.User = url.User(lpUser)
+	}
+	return u.String()
 }
 
 func (m *RepoManager) GetGitRef(ctx context.Context, repoSelfLink, refPath string) (string, error) {

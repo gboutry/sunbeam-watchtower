@@ -22,6 +22,10 @@ LP form parameters like `owner` and `target`/`project` expect full API self_link
 
 LP's `git_ssh_url` field returns `git+ssh://` URLs. go-git (and many other libraries) only support `ssh://`. Replace `git+ssh://` → `ssh://` before use.
 
+### Git SSH URLs omit the username
+
+LP's `git_ssh_url` has no user component, but push requires `<lp_username>@` in the URL. Inject the LP owner username before using the URL.
+
 ### Project creation requires `licenses`
 
 `POST /projects` with `ws.op=new_project` fails if the `licenses` field is omitted. Pass at least one value (e.g. `"Apache Licence"`).

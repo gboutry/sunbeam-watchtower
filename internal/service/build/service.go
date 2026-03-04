@@ -166,9 +166,6 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		}
 		repoSelfLink = repoLink
 
-		// LP returns git+ssh:// URLs which go-git doesn't support; normalise to ssh://.
-		sshURL = strings.Replace(sshURL, "git+ssh://", "ssh://", 1)
-
 		sha, err := s.gitClient.HeadSHA(opts.LocalPath)
 		if err != nil {
 			return nil, fmt.Errorf("get HEAD SHA: %w", err)
