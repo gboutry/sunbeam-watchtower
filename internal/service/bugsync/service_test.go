@@ -39,12 +39,12 @@ func (m *mockCommitSource) ListBranches(_ context.Context) ([]string, error) {
 type mockBugTracker struct {
 	bugs            map[string]*forge.Bug
 	updatedTasks    []taskUpdate
-	nominations     []nomination
+	assignments     []assignment
 	project         *forge.Project
 	series          []forge.ProjectSeries
 	recentBugTasks  []forge.BugTask // returned by ListBugTasks when CreatedSince is set
 	updateErr       error
-	nominateErr     error
+	assignErr       error
 }
 
 type taskUpdate struct {
@@ -52,7 +52,7 @@ type taskUpdate struct {
 	Status   string
 }
 
-type nomination struct {
+type assignment struct {
 	BugID          int
 	SeriesSelfLink string
 }
@@ -82,11 +82,11 @@ func (m *mockBugTracker) UpdateBugTaskStatus(_ context.Context, selfLink, status
 	return nil
 }
 
-func (m *mockBugTracker) NominateBug(_ context.Context, bugID int, seriesSelfLink string) error {
-	if m.nominateErr != nil {
-		return m.nominateErr
+func (m *mockBugTracker) AddBugTask(_ context.Context, bugID int, seriesSelfLink string) error {
+	if m.assignErr != nil {
+		return m.assignErr
 	}
-	m.nominations = append(m.nominations, nomination{BugID: bugID, SeriesSelfLink: seriesSelfLink})
+	m.assignments = append(m.assignments, assignment{BugID: bugID, SeriesSelfLink: seriesSelfLink})
 	return nil
 }
 
@@ -306,8 +306,8 @@ func TestSync_DryRun(t *testing.T) {
 	if len(tracker.updatedTasks) != 0 {
 		t.Errorf("expected no actual updates in dry-run, got %d", len(tracker.updatedTasks))
 	}
-	if len(tracker.nominations) != 0 {
-		t.Errorf("expected no actual nominations in dry-run, got %d", len(tracker.nominations))
+	if len(tracker.assignments) != 0 {
+		t.Errorf("expected no actual assignments in dry-run, got %d", len(tracker.assignments))
 	}
 }
 
@@ -359,23 +359,23 @@ func TestSync_MultipleBranches(t *testing.T) {
 		t.Fatalf("Sync() error: %v", err)
 	}
 
-	// Should have status update + nominations.
-	var statusUpdates, nominations int
+	// Should have status update + series assignments.
+	var statusUpdates, assignments int
 	for _, a := range result.Actions {
 		switch a.ActionType {
 		case ActionStatusUpdate:
 			statusUpdates++
-		case ActionSeriesNomination:
-			nominations++
+		case ActionSeriesAssignment:
+			assignments++
 		}
 	}
 
 	if statusUpdates != 1 {
 		t.Errorf("expected 1 status update, got %d", statusUpdates)
 	}
-	// Should nominate for both dev focus (main) and 2024.1 (stable/2024.1).
-	if nominations != 2 {
-		t.Errorf("expected 2 nominations (dev focus + 2024.1), got %d", nominations)
+	// Should assign to both dev focus (main) and 2024.1 (stable/2024.1).
+	if assignments != 2 {
+		t.Errorf("expected 2 series assignments (dev focus + 2024.1), got %d", assignments)
 	}
 }
 

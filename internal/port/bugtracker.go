@@ -15,7 +15,7 @@ type BugTracker interface {
 	GetBug(ctx context.Context, id string) (*forge.Bug, error)
 	ListBugTasks(ctx context.Context, project string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error)
 	UpdateBugTaskStatus(ctx context.Context, taskSelfLink, status string) error
-	NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error
+	AddBugTask(ctx context.Context, bugID int, seriesSelfLink string) error
 	GetProjectSeries(ctx context.Context, projectName string) ([]forge.ProjectSeries, error)
 	GetProject(ctx context.Context, projectName string) (*forge.Project, error)
 }

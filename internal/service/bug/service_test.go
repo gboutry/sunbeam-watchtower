@@ -36,7 +36,7 @@ func (m *mockBugTracker) ListBugTasks(_ context.Context, _ string, _ forge.ListB
 }
 
 func (m *mockBugTracker) UpdateBugTaskStatus(_ context.Context, _, _ string) error { return nil }
-func (m *mockBugTracker) NominateBug(_ context.Context, _ int, _ string) error     { return nil }
+func (m *mockBugTracker) AddBugTask(_ context.Context, _ int, _ string) error     { return nil }
 func (m *mockBugTracker) GetProjectSeries(_ context.Context, _ string) ([]forge.ProjectSeries, error) {
 	return nil, nil
 }
@@ -200,8 +200,8 @@ func (c *countingBugTracker) ListBugTasks(ctx context.Context, project string, o
 func (c *countingBugTracker) UpdateBugTaskStatus(ctx context.Context, selfLink, status string) error {
 	return c.inner.UpdateBugTaskStatus(ctx, selfLink, status)
 }
-func (c *countingBugTracker) NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error {
-	return c.inner.NominateBug(ctx, bugID, seriesSelfLink)
+func (c *countingBugTracker) AddBugTask(ctx context.Context, bugID int, seriesSelfLink string) error {
+	return c.inner.AddBugTask(ctx, bugID, seriesSelfLink)
 }
 func (c *countingBugTracker) GetProjectSeries(ctx context.Context, projectName string) ([]forge.ProjectSeries, error) {
 	return c.inner.GetProjectSeries(ctx, projectName)

@@ -65,15 +65,15 @@ func (c *Client) UpdateBugTaskStatus(ctx context.Context, taskSelfLink, status s
 	return nil
 }
 
-// NominateBug nominates a bug for a series target.
-func (c *Client) NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error {
+// AddBugTask adds a bug task targeting the given series.
+func (c *Client) AddBugTask(ctx context.Context, bugID int, seriesSelfLink string) error {
 	form := url.Values{
-		"ws.op":  {"addNomination"},
+		"ws.op":  {"addTask"},
 		"target": {seriesSelfLink},
 	}
 	_, err := c.Post(ctx, fmt.Sprintf("/bugs/%d", bugID), form)
 	if err != nil {
-		return fmt.Errorf("nominating bug %d: %w", bugID, err)
+		return fmt.Errorf("adding bug task for bug %d: %w", bugID, err)
 	}
 	return nil
 }

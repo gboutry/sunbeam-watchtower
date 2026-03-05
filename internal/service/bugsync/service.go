@@ -21,8 +21,8 @@ import (
 type ActionType string
 
 const (
-	ActionStatusUpdate     ActionType = "status_update"
-	ActionSeriesNomination ActionType = "series_nomination"
+	ActionStatusUpdate      ActionType = "status_update"
+	ActionSeriesAssignment  ActionType = "series_assignment"
 )
 
 // SyncAction represents a single action taken (or planned) during sync.
@@ -33,7 +33,7 @@ type SyncAction struct {
 	NewStatus  string
 	SelfLink   string
 	URL        string
-	Series     string // series name if nominated
+	Series     string // series name if assigned
 	Project    string // LP project name
 	ActionType ActionType
 }
@@ -152,7 +152,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, erro
 		s.logger.Debug("filtered to recent bugs", "remaining", len(bugBranches))
 	}
 
-	// Phase 2: For each bug, update status and nominate for series.
+	// Phase 2: For each bug, update status and assign to series.
 	result := &SyncResult{}
 
 	for bugID, branches := range bugBranches {
@@ -201,9 +201,9 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, erro
 			result.Actions = append(result.Actions, action)
 		}
 
-		// Nominate for series based on branches.
-		if err := s.nominateForSeries(ctx, bugID, bug, branches, opts.DryRun, result); err != nil {
-			s.logger.Warn("series nomination failed", "bug_id", bugID, "error", err)
+		// Assign to series based on branches.
+		if err := s.assignToSeries(ctx, bugID, bug, branches, opts.DryRun, result); err != nil {
+			s.logger.Warn("series assignment failed", "bug_id", bugID, "error", err)
 			result.Errors = append(result.Errors, err)
 		}
 	}
@@ -211,8 +211,8 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, erro
 	return result, nil
 }
 
-// nominateForSeries handles series nomination for a bug based on which branches it appears on.
-func (s *Service) nominateForSeries(ctx context.Context, bugID string, bug *forge.Bug, branches []BugBranch, dryRun bool, result *SyncResult) error {
+// assignToSeries handles series task assignment for a bug based on which branches it appears on.
+func (s *Service) assignToSeries(ctx context.Context, bugID string, bug *forge.Bug, branches []BugBranch, dryRun bool, result *SyncResult) error {
 	// Collect LP project slugs from bug tasks via TargetName.
 	// TargetName may be "project" or "project/series" — use only the project part.
 	lpProjects := make(map[string]bool)
@@ -252,13 +252,13 @@ func (s *Service) nominateForSeries(ctx context.Context, bugID string, bug *forg
 				BugID:      bugID,
 				Series:     seriesName,
 				Project:    lpProject,
-				ActionType: ActionSeriesNomination,
+				ActionType: ActionSeriesAssignment,
 			}
 
 			if !dryRun {
-				if err := s.bugTracker.NominateBug(ctx, bugIDInt, seriesLink); err != nil {
-					// Nomination may fail if already nominated — log and continue.
-					s.logger.Warn("nomination failed (may already exist)", "bug_id", bugID, "series", seriesName, "error", err)
+				if err := s.bugTracker.AddBugTask(ctx, bugIDInt, seriesLink); err != nil {
+					// Assignment may fail if task already exists — log and continue.
+					s.logger.Warn("series assignment failed (may already exist)", "bug_id", bugID, "series", seriesName, "error", err)
 					continue
 				}
 			}

@@ -92,8 +92,8 @@ func (l *LaunchpadBugTracker) UpdateBugTaskStatus(ctx context.Context, taskSelfL
 	return l.client.UpdateBugTaskStatus(ctx, taskSelfLink, status)
 }
 
-func (l *LaunchpadBugTracker) NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error {
-	return l.client.NominateBug(ctx, bugID, seriesSelfLink)
+func (l *LaunchpadBugTracker) AddBugTask(ctx context.Context, bugID int, seriesSelfLink string) error {
+	return l.client.AddBugTask(ctx, bugID, seriesSelfLink)
 }
 
 func (l *LaunchpadBugTracker) GetProjectSeries(ctx context.Context, projectName string) ([]ProjectSeries, error) {

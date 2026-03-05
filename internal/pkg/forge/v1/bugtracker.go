@@ -75,8 +75,8 @@ type BugTracker interface {
 	// UpdateBugTaskStatus updates the status of a bug task.
 	UpdateBugTaskStatus(ctx context.Context, taskSelfLink, status string) error
 
-	// NominateBug nominates a bug for a series target.
-	NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error
+	// AddBugTask adds a bug task targeting the given series.
+	AddBugTask(ctx context.Context, bugID int, seriesSelfLink string) error
 
 	// GetProjectSeries returns the series for a project.
 	GetProjectSeries(ctx context.Context, projectName string) ([]ProjectSeries, error)

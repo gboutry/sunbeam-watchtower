@@ -112,7 +112,7 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Update LP bug statuses from cached commits",
-		Long:  "Scans cached commits for LP bug references and updates bug task statuses to Fix Committed. Also nominates bugs for the appropriate LP series based on which branches contain the fix.",
+		Long:  "Scans cached commits for LP bug references and updates bug task statuses to Fix Committed. Also assigns bugs to the appropriate LP series based on which branches contain the fix.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Logger.Debug("bug sync command started", "dry_run", dryRun)
 
@@ -161,11 +161,11 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 					} else {
 						fmt.Fprintf(opts.Out, "updated: Bug #%s task %q %s → %s\n", a.BugID, a.TaskTitle, a.OldStatus, a.NewStatus)
 					}
-				case bugsync.ActionSeriesNomination:
+				case bugsync.ActionSeriesAssignment:
 					if dryRun {
-						fmt.Fprintf(opts.Out, "would nominate: Bug #%s for series %q on project %q\n", a.BugID, a.Series, a.Project)
+						fmt.Fprintf(opts.Out, "would assign: Bug #%s to series %q on project %q\n", a.BugID, a.Series, a.Project)
 					} else {
-						fmt.Fprintf(opts.Out, "nominated: Bug #%s for series %q on project %q\n", a.BugID, a.Series, a.Project)
+						fmt.Fprintf(opts.Out, "assigned: Bug #%s to series %q on project %q\n", a.BugID, a.Series, a.Project)
 					}
 				}
 			}
