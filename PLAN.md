@@ -253,6 +253,10 @@ build:
   artifacts_dir: /tmp/artifacts
 
 packages:
+  upstream:
+    provider: openstack
+    releases_repo: https://opendev.org/openstack/releases.git
+    requirements_repo: https://opendev.org/openstack/requirements.git
   distros:
     ubuntu:
       mirror: http://archive.ubuntu.com/ubuntu
