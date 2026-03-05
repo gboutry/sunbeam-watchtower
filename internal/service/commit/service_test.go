@@ -37,6 +37,10 @@ func (m *mockCommitSource) ListMRCommits(_ context.Context) ([]forge.Commit, err
 	return m.mrCommits, nil
 }
 
+func (m *mockCommitSource) ListBranches(_ context.Context) ([]string, error) {
+	return []string{"main"}, nil
+}
+
 func TestService_List_Aggregation(t *testing.T) {
 	now := time.Now()
 

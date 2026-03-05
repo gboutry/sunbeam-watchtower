@@ -353,6 +353,44 @@ func commitFromObject(co *object.Commit, mr *port.MRMetadata) forge.Commit {
 	}
 }
 
+// ListBranches returns the branch names available in a cached repository.
+func (c *Cache) ListBranches(_ context.Context, cloneURL string) ([]string, error) {
+	c.logger.Debug("listing branches from cache", "cloneURL", cloneURL)
+	path, err := c.repoPath(cloneURL)
+	if err != nil {
+		return nil, err
+	}
+
+	repo, err := git.PlainOpen(path)
+	if err != nil {
+		return nil, fmt.Errorf("opening repo at %s: %w", path, err)
+	}
+
+	refs, err := repo.References()
+	if err != nil {
+		return nil, fmt.Errorf("listing references: %w", err)
+	}
+
+	const prefix = "refs/remotes/origin/"
+	var branches []string
+	err = refs.ForEach(func(ref *plumbing.Reference) error {
+		name := ref.Name().String()
+		if strings.HasPrefix(name, prefix) {
+			branch := strings.TrimPrefix(name, prefix)
+			if branch != "HEAD" {
+				branches = append(branches, branch)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("iterating references: %w", err)
+	}
+
+	c.logger.Debug("branches found", "cloneURL", cloneURL, "count", len(branches))
+	return branches, nil
+}
+
 // Remove deletes a single cached repository.
 func (c *Cache) Remove(cloneURL string) error {
 	c.logger.Debug("removing cached repo", "cloneURL", cloneURL)

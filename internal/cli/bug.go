@@ -2,8 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/bug"
+	"github.com/gboutry/sunbeam-watchtower/internal/service/bugsync"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +18,7 @@ func newBugCmd(opts *Options) *cobra.Command {
 
 	cmd.AddCommand(newBugListCmd(opts))
 	cmd.AddCommand(newBugShowCmd(opts))
+	cmd.AddCommand(newBugSyncCmd(opts))
 	return cmd
 }
 
@@ -94,6 +98,93 @@ func newBugListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&importance, "importance", nil, "filter by importance: Critical, High, Medium, Low, etc. (repeatable)")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "filter by assignee username")
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "filter by tag (repeatable)")
+
+	return cmd
+}
+
+func newBugSyncCmd(opts *Options) *cobra.Command {
+	var (
+		projects []string
+		dryRun   bool
+		days     int
+	)
+
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Update LP bug statuses from cached commits",
+		Long:  "Scans cached commits for LP bug references and updates bug task statuses to Fix Committed. Also nominates bugs for the appropriate LP series based on which branches contain the fix.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("bug sync command started", "dry_run", dryRun)
+
+			sources, err := buildCommitSources(opts)
+			if err != nil {
+				return err
+			}
+
+			trackers, _, err := buildBugTrackers(opts)
+			if err != nil {
+				return err
+			}
+
+			// Use the first available bug tracker and collect LP project names.
+			var tracker port.BugTracker
+			var lpProjects []string
+			for _, pt := range trackers {
+				if tracker == nil {
+					tracker = pt.Tracker
+				}
+				lpProjects = append(lpProjects, pt.ProjectID)
+			}
+			if tracker == nil {
+				return fmt.Errorf("no bug tracker configured")
+			}
+
+			svc := bugsync.NewService(sources, tracker, lpProjects, opts.Logger)
+			syncOpts := bugsync.SyncOptions{
+				Projects: projects,
+				DryRun:   dryRun,
+			}
+			if days > 0 {
+				since := time.Now().AddDate(0, 0, -days)
+				syncOpts.Since = &since
+			}
+			result, err := svc.Sync(cmd.Context(), syncOpts)
+			if err != nil {
+				return err
+			}
+
+			for _, a := range result.Actions {
+				switch a.ActionType {
+				case bugsync.ActionStatusUpdate:
+					if dryRun {
+						fmt.Fprintf(opts.Out, "would update: Bug #%s task %q %s → %s\n", a.BugID, a.TaskTitle, a.OldStatus, a.NewStatus)
+					} else {
+						fmt.Fprintf(opts.Out, "updated: Bug #%s task %q %s → %s\n", a.BugID, a.TaskTitle, a.OldStatus, a.NewStatus)
+					}
+				case bugsync.ActionSeriesNomination:
+					if dryRun {
+						fmt.Fprintf(opts.Out, "would nominate: Bug #%s for series %q on project %q\n", a.BugID, a.Series, a.Project)
+					} else {
+						fmt.Fprintf(opts.Out, "nominated: Bug #%s for series %q on project %q\n", a.BugID, a.Series, a.Project)
+					}
+				}
+			}
+
+			for _, e := range result.Errors {
+				fmt.Fprintf(opts.ErrOut, "warning: %v\n", e)
+			}
+
+			if len(result.Actions) == 0 && len(result.Errors) == 0 {
+				fmt.Fprintln(opts.Out, "No bugs to sync.")
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would change without updating")
+	cmd.Flags().IntVar(&days, "days", 0, "only consider bugs created in the last N days")
 
 	return cmd
 }

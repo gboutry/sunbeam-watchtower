@@ -9,9 +9,13 @@ import (
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 )
 
-// BugTracker is the interface for querying bug trackers.
+// BugTracker is the interface for querying and updating bug trackers.
 type BugTracker interface {
 	Type() forge.ForgeType
 	GetBug(ctx context.Context, id string) (*forge.Bug, error)
 	ListBugTasks(ctx context.Context, project string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error)
+	UpdateBugTaskStatus(ctx context.Context, taskSelfLink, status string) error
+	NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error
+	GetProjectSeries(ctx context.Context, projectName string) ([]forge.ProjectSeries, error)
+	GetProject(ctx context.Context, projectName string) (*forge.Project, error)
 }

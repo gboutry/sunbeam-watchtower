@@ -5,6 +5,7 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 )
@@ -49,4 +50,30 @@ func (c *Client) CreateBug(ctx context.Context, target, title, description strin
 		return Bug{}, fmt.Errorf("creating bug: %w", err)
 	}
 	return b, nil
+}
+
+// UpdateBugTaskStatus PATCHes a bug task's status via its self_link.
+func (c *Client) UpdateBugTaskStatus(ctx context.Context, taskSelfLink, status string) error {
+	body, err := json.Marshal(map[string]string{"status": status})
+	if err != nil {
+		return fmt.Errorf("marshalling status update: %w", err)
+	}
+	_, err = c.Patch(ctx, taskSelfLink, body)
+	if err != nil {
+		return fmt.Errorf("updating bug task status: %w", err)
+	}
+	return nil
+}
+
+// NominateBug nominates a bug for a series target.
+func (c *Client) NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error {
+	form := url.Values{
+		"ws.op":  {"addNomination"},
+		"target": {seriesSelfLink},
+	}
+	_, err := c.Post(ctx, fmt.Sprintf("/bugs/%d", bugID), form)
+	if err != nil {
+		return fmt.Errorf("nominating bug %d: %w", bugID, err)
+	}
+	return nil
 }

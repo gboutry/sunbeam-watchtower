@@ -35,6 +35,15 @@ func (m *mockBugTracker) ListBugTasks(_ context.Context, _ string, _ forge.ListB
 	return m.tasks, nil
 }
 
+func (m *mockBugTracker) UpdateBugTaskStatus(_ context.Context, _, _ string) error { return nil }
+func (m *mockBugTracker) NominateBug(_ context.Context, _ int, _ string) error     { return nil }
+func (m *mockBugTracker) GetProjectSeries(_ context.Context, _ string) ([]forge.ProjectSeries, error) {
+	return nil, nil
+}
+func (m *mockBugTracker) GetProject(_ context.Context, _ string) (*forge.Project, error) {
+	return nil, nil
+}
+
 func TestService_List_Aggregation(t *testing.T) {
 	now := time.Now()
 
@@ -186,6 +195,19 @@ func (c *countingBugTracker) GetBug(ctx context.Context, id string) (*forge.Bug,
 func (c *countingBugTracker) ListBugTasks(ctx context.Context, project string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error) {
 	*c.count++
 	return c.inner.ListBugTasks(ctx, project, opts)
+}
+
+func (c *countingBugTracker) UpdateBugTaskStatus(ctx context.Context, selfLink, status string) error {
+	return c.inner.UpdateBugTaskStatus(ctx, selfLink, status)
+}
+func (c *countingBugTracker) NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error {
+	return c.inner.NominateBug(ctx, bugID, seriesSelfLink)
+}
+func (c *countingBugTracker) GetProjectSeries(ctx context.Context, projectName string) ([]forge.ProjectSeries, error) {
+	return c.inner.GetProjectSeries(ctx, projectName)
+}
+func (c *countingBugTracker) GetProject(ctx context.Context, projectName string) (*forge.Project, error) {
+	return c.inner.GetProject(ctx, projectName)
 }
 
 func TestService_Get(t *testing.T) {

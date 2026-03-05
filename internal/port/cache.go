@@ -46,6 +46,9 @@ type GitRepoCache interface {
 	// ListMRCommits reads the head commit for each cached merge request ref.
 	ListMRCommits(ctx context.Context, cloneURL string) ([]forge.Commit, error)
 
+	// ListBranches returns the branch names available in a cached repository.
+	ListBranches(ctx context.Context, cloneURL string) ([]string, error)
+
 	// Remove deletes a single cached repository.
 	Remove(cloneURL string) error
 

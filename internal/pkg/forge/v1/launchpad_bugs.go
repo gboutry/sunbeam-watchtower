@@ -69,6 +69,7 @@ func (l *LaunchpadBugTracker) ListBugTasks(ctx context.Context, project string, 
 		Status:         opts.Status,
 		Importance:     opts.Importance,
 		Tags:           opts.Tags,
+		CreatedSince:   opts.CreatedSince,
 		OmitDuplicates: true,
 	}
 	if opts.Assignee != "" {
@@ -87,6 +88,41 @@ func (l *LaunchpadBugTracker) ListBugTasks(ctx context.Context, project string, 
 	return result, nil
 }
 
+func (l *LaunchpadBugTracker) UpdateBugTaskStatus(ctx context.Context, taskSelfLink, status string) error {
+	return l.client.UpdateBugTaskStatus(ctx, taskSelfLink, status)
+}
+
+func (l *LaunchpadBugTracker) NominateBug(ctx context.Context, bugID int, seriesSelfLink string) error {
+	return l.client.NominateBug(ctx, bugID, seriesSelfLink)
+}
+
+func (l *LaunchpadBugTracker) GetProjectSeries(ctx context.Context, projectName string) ([]ProjectSeries, error) {
+	col, err := l.client.GetProjectSeries(ctx, projectName)
+	if err != nil {
+		return nil, fmt.Errorf("fetching series for %s: %w", projectName, err)
+	}
+	result := make([]ProjectSeries, 0, len(col.Entries))
+	for _, s := range col.Entries {
+		result = append(result, ProjectSeries{
+			Name:     s.Name,
+			SelfLink: s.SelfLink,
+			Active:   s.Active,
+		})
+	}
+	return result, nil
+}
+
+func (l *LaunchpadBugTracker) GetProject(ctx context.Context, projectName string) (*Project, error) {
+	p, err := l.client.GetProject(ctx, projectName)
+	if err != nil {
+		return nil, err
+	}
+	return &Project{
+		Name:                 p.Name,
+		DevelopmentFocusLink: p.DevelopmentFocusLink,
+	}, nil
+}
+
 func lpBugTaskToBugTask(t *lp.BugTask) BugTask {
 	bt := BugTask{
 		Forge:      ForgeLaunchpad,
@@ -96,6 +132,8 @@ func lpBugTaskToBugTask(t *lp.BugTask) BugTask {
 		Importance: t.Importance,
 		Assignee:   lpExtractName(t.AssigneeLink),
 		URL:        t.WebLink,
+		SelfLink:   t.SelfLink,
+		TargetName: t.BugTargetName,
 	}
 	if t.DateCreated != nil {
 		bt.CreatedAt = t.DateCreated.Time

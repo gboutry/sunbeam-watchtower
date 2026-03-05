@@ -21,6 +21,7 @@ var (
 type CommitSource interface {
 	ListCommits(ctx context.Context, opts forge.ListCommitsOpts) ([]forge.Commit, error)
 	ListMRCommits(ctx context.Context) ([]forge.Commit, error)
+	ListBranches(ctx context.Context) ([]string, error)
 }
 
 // ProjectSource pairs a CommitSource with metadata about the forge.
@@ -42,6 +43,11 @@ func (f *ForgeCommitSource) ListCommits(ctx context.Context, opts forge.ListComm
 
 // ListMRCommits is not supported via the forge API path.
 func (f *ForgeCommitSource) ListMRCommits(_ context.Context) ([]forge.Commit, error) {
+	return nil, nil
+}
+
+// ListBranches is not supported via the forge API path.
+func (f *ForgeCommitSource) ListBranches(_ context.Context) ([]string, error) {
 	return nil, nil
 }
 
@@ -81,6 +87,11 @@ func (c *CachedGitSource) ListMRCommits(ctx context.Context) ([]forge.Commit, er
 	}
 
 	return commits, nil
+}
+
+// ListBranches returns branch names from the local git cache.
+func (c *CachedGitSource) ListBranches(ctx context.Context) ([]string, error) {
+	return c.Cache.ListBranches(ctx, c.CloneURL)
 }
 
 func forgeTypeFromConfig(forgeName string) forge.ForgeType {
