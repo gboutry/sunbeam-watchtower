@@ -88,7 +88,7 @@ func (c *Cache) Update(ctx context.Context, name string, entries []port.SourceEn
 		return fmt.Errorf("creating sources dir: %w", err)
 	}
 
-	var allPkgs []distro.SourcePackage
+	var allPkgs []distro.SourcePackageDetail
 
 	for _, entry := range entries {
 		c.logger.Info("downloading sources index",
@@ -110,7 +110,7 @@ func (c *Cache) Update(ctx context.Context, name string, entries []port.SourceEn
 			return fmt.Errorf("renaming sources file: %w", err)
 		}
 
-		pkgs, err := parseSourcesFile(destPath, format, entry.Suite, entry.Component)
+		pkgs, err := parseSourcesFileDetailed(destPath, format, entry.Suite, entry.Component)
 		if err != nil {
 			return fmt.Errorf("parsing %s: %w", destPath, err)
 		}
@@ -201,18 +201,8 @@ func (c *Cache) Query(_ context.Context, name string, opts port.QueryOpts) ([]di
 	return results, err
 }
 
-// QueryDetailed returns source packages with build dependency information by
-// re-parsing raw Sources files from disk.
+// QueryDetailed returns source packages with build dependency information from the bbolt index.
 func (c *Cache) QueryDetailed(_ context.Context, name string, opts port.QueryOpts) ([]distro.SourcePackageDetail, error) {
-	dir := c.sourcesDir(name)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("reading sources dir: %w", err)
-	}
-
 	pkgFilter := make(map[string]bool, len(opts.Packages))
 	for _, p := range opts.Packages {
 		pkgFilter[p] = true
@@ -227,52 +217,35 @@ func (c *Cache) QueryDetailed(_ context.Context, name string, opts port.QueryOpt
 	}
 
 	var results []distro.SourcePackageDetail
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		fname := entry.Name()
-		// Determine format from extension.
-		var format string
-		switch {
-		case strings.HasSuffix(fname, ".xz"):
-			format = "xz"
-		case strings.HasSuffix(fname, ".gz"):
-			format = "gz"
-		default:
-			continue
+
+	err := c.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(name))
+		if b == nil {
+			return nil
 		}
 
-		// Extract suite and component from filename: {suite}_{component}_Sources.{fmt}
-		parts := strings.SplitN(fname, "_", 3)
-		if len(parts) < 3 {
-			continue
-		}
-		suite := strings.ReplaceAll(parts[0], "_", "/")
-		component := parts[1]
-
-		if len(suiteFilter) > 0 && !suiteFilter[suite] {
-			continue
-		}
-		if len(compFilter) > 0 && !compFilter[component] {
-			continue
-		}
-
-		pkgs, err := parseSourcesFileDetailed(filepath.Join(dir, fname), format, suite, component)
-		if err != nil {
-			c.logger.Warn("failed to parse sources file", "file", fname, "error", err)
-			continue
-		}
-
-		for _, pkg := range pkgs {
-			if len(pkgFilter) > 0 && !pkgFilter[pkg.Package] {
-				continue
+		return b.ForEach(func(k, v []byte) error {
+			var pkg distro.SourcePackageDetail
+			if err := json.Unmarshal(v, &pkg); err != nil {
+				return fmt.Errorf("unmarshalling value for key %q: %w", string(k), err)
 			}
-			results = append(results, pkg)
-		}
-	}
 
-	return results, nil
+			if len(pkgFilter) > 0 && !pkgFilter[pkg.Package] {
+				return nil
+			}
+			if len(suiteFilter) > 0 && !suiteFilter[pkg.Suite] {
+				return nil
+			}
+			if len(compFilter) > 0 && !compFilter[pkg.Component] {
+				return nil
+			}
+
+			results = append(results, pkg)
+			return nil
+		})
+	})
+
+	return results, err
 }
 
 // Status returns cache metadata for all indexed source groups.

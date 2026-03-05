@@ -71,14 +71,15 @@ func ParseSources(r io.Reader, suite, component string) ([]distro.SourcePackage,
 }
 
 // ParseSourcesDetailed reads an RFC822-format Sources file and yields SourcePackageDetail entries
-// including parsed Build-Depends.
+// including parsed Build-Depends and Build-Depends-Indep.
 func ParseSourcesDetailed(r io.Reader, suite, component string) ([]distro.SourcePackageDetail, error) {
 	var results []distro.SourcePackageDetail
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
 
-	var pkg, ver, bdRaw string
+	var pkg, ver, bdRaw, bdiRaw string
 	inBuildDepends := false
+	inBuildDependsIndep := false
 
 	flush := func() {
 		if pkg == "" || ver == "" {
@@ -92,8 +93,16 @@ func ParseSourcesDetailed(r io.Reader, suite, component string) ([]distro.Source
 				Component: component,
 			},
 		}
-		if bdRaw != "" {
-			detail.BuildDepends = parseBuildDepends(bdRaw)
+		combined := bdRaw
+		if bdiRaw != "" {
+			if combined != "" {
+				combined += ", " + bdiRaw
+			} else {
+				combined = bdiRaw
+			}
+		}
+		if combined != "" {
+			detail.BuildDepends = parseBuildDepends(combined)
 		}
 		results = append(results, detail)
 	}
@@ -103,8 +112,9 @@ func ParseSourcesDetailed(r io.Reader, suite, component string) ([]distro.Source
 
 		if line == "" {
 			flush()
-			pkg, ver, bdRaw = "", "", ""
+			pkg, ver, bdRaw, bdiRaw = "", "", "", ""
 			inBuildDepends = false
+			inBuildDependsIndep = false
 			continue
 		}
 
@@ -112,16 +122,22 @@ func ParseSourcesDetailed(r io.Reader, suite, component string) ([]distro.Source
 		if line[0] == ' ' || line[0] == '\t' {
 			if inBuildDepends {
 				bdRaw += " " + strings.TrimSpace(line)
+			} else if inBuildDependsIndep {
+				bdiRaw += " " + strings.TrimSpace(line)
 			}
 			continue
 		}
 
 		inBuildDepends = false
+		inBuildDependsIndep = false
 
 		if strings.HasPrefix(line, "Package:") {
 			pkg = strings.TrimSpace(line[len("Package:"):])
 		} else if strings.HasPrefix(line, "Version:") {
 			ver = strings.TrimSpace(line[len("Version:"):])
+		} else if strings.HasPrefix(line, "Build-Depends-Indep:") {
+			bdiRaw = strings.TrimSpace(line[len("Build-Depends-Indep:"):])
+			inBuildDependsIndep = true
 		} else if strings.HasPrefix(line, "Build-Depends:") {
 			bdRaw = strings.TrimSpace(line[len("Build-Depends:"):])
 			inBuildDepends = true

@@ -772,11 +772,30 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 			}
 
 			svc := pkg.NewService(cache, opts.Logger)
-			results, err := svc.ReverseDepends(cmd.Context(), pkgName, sources, port.QueryOpts{
-				Suites: suites,
-			})
+			queryOpts := port.QueryOpts{Suites: suites}
+			results, err := svc.ReverseDepends(cmd.Context(), pkgName, sources, queryOpts)
 			if err != nil {
 				return err
+			}
+
+			if len(results) == 0 {
+				// Check whether the queried name exists as a source package.
+				// If not, it is likely a binary package name.
+				found := false
+				for _, src := range sources {
+					srcPkgs, qErr := cache.Query(cmd.Context(), src.Name, port.QueryOpts{
+						Packages: []string{pkgName},
+						Suites:   suites,
+					})
+					if qErr == nil && len(srcPkgs) > 0 {
+						found = true
+						break
+					}
+				}
+				if !found {
+					fmt.Fprintf(opts.Out, "Warning: %q was not found as a source package; it may be a binary package name.\n", pkgName)
+					fmt.Fprintln(opts.Out, "Hint: rdepends searches Build-Depends which reference source package names.")
+				}
 			}
 
 			return renderSourcePackageDetails(opts.Out, opts.Output, results)
