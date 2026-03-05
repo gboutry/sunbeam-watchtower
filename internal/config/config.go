@@ -57,11 +57,13 @@ type ProjectBuildConfig struct {
 
 // ProjectConfig defines a project tracked across forges.
 type ProjectConfig struct {
-	Name         string              `mapstructure:"name" yaml:"name"`
-	ArtifactType string              `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
-	Code         CodeConfig          `mapstructure:"code" yaml:"code"`
-	Bugs         []BugTrackerConfig  `mapstructure:"bugs" yaml:"bugs,omitempty"`
-	Build        *ProjectBuildConfig `mapstructure:"build" yaml:"build,omitempty"`
+	Name             string              `mapstructure:"name" yaml:"name"`
+	ArtifactType     string              `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
+	Code             CodeConfig          `mapstructure:"code" yaml:"code"`
+	Bugs             []BugTrackerConfig  `mapstructure:"bugs" yaml:"bugs,omitempty"`
+	Build            *ProjectBuildConfig `mapstructure:"build" yaml:"build,omitempty"`
+	Series           []string            `mapstructure:"series" yaml:"series,omitempty"`
+	DevelopmentFocus string              `mapstructure:"development_focus" yaml:"development_focus,omitempty"`
 }
 
 // BuildConfig holds build pipeline settings.
@@ -163,6 +165,19 @@ func (c *Config) Validate() error {
 			}
 			if p.Build.Owner == "" {
 				return fmt.Errorf("projects[%d] (%s): build.owner is required", i, p.Name)
+			}
+		}
+
+		if p.DevelopmentFocus != "" && len(p.Series) > 0 {
+			found := false
+			for _, s := range p.Series {
+				if s == p.DevelopmentFocus {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("projects[%d] (%s): development_focus %q must be one of the declared series", i, p.Name, p.DevelopmentFocus)
 			}
 		}
 	}

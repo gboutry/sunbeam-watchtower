@@ -355,6 +355,38 @@ func TestValidate_DevelopmentFocusWithoutSeries(t *testing.T) {
 	}
 }
 
+func TestValidate_ProjectDevelopmentFocusNotInSeries(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{
+			{
+				Name:             "p1",
+				Code:             CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+				Series:           []string{"1.0", "2.0"},
+				DevelopmentFocus: "3.0",
+			},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should error when project development_focus is not in project series")
+	}
+}
+
+func TestValidate_ProjectDevelopmentFocusInSeries(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{
+			{
+				Name:             "p1",
+				Code:             CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+				Series:           []string{"1.0", "2.0"},
+				DevelopmentFocus: "2.0",
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() error: %v", err)
+	}
+}
+
 func TestValidate_EmptyConfig(t *testing.T) {
 	cfg := &Config{}
 	if err := cfg.Validate(); err != nil {

@@ -43,32 +43,33 @@ type SyncOptions struct {
 	DryRun   bool
 }
 
+// ProjectSyncConfig holds the series and development focus for a single LP project.
+type ProjectSyncConfig struct {
+	Series           []string
+	DevelopmentFocus string
+}
+
 // Service performs project metadata synchronization on LP.
 type Service struct {
-	manager          port.ProjectManager
-	lpProjects       []string // unique LP project names to manage
-	declaredSeries   []string
-	developmentFocus string
-	logger           *slog.Logger
+	manager        port.ProjectManager
+	projectConfigs map[string]ProjectSyncConfig
+	logger         *slog.Logger
 }
 
 // NewService creates a project sync service.
+// projectConfigs maps LP project names to their series/dev-focus configuration.
 func NewService(
 	manager port.ProjectManager,
-	lpProjects []string,
-	declaredSeries []string,
-	developmentFocus string,
+	projectConfigs map[string]ProjectSyncConfig,
 	logger *slog.Logger,
 ) *Service {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Service{
-		manager:          manager,
-		lpProjects:       lpProjects,
-		declaredSeries:   declaredSeries,
-		developmentFocus: developmentFocus,
-		logger:           logger,
+		manager:        manager,
+		projectConfigs: projectConfigs,
+		logger:         logger,
 	}
 }
 
@@ -81,7 +82,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, erro
 
 	result := &SyncResult{}
 
-	for _, lpProject := range s.lpProjects {
+	for lpProject, cfg := range s.projectConfigs {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -91,7 +92,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, erro
 
 		s.logger.Debug("syncing project", "project", lpProject)
 
-		if err := s.syncProject(ctx, lpProject, opts.DryRun, result); err != nil {
+		if err := s.syncProject(ctx, lpProject, cfg, opts.DryRun, result); err != nil {
 			s.logger.Warn("failed to sync project", "project", lpProject, "error", err)
 			result.Errors = append(result.Errors, fmt.Errorf("project %s: %w", lpProject, err))
 		}
@@ -100,7 +101,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, erro
 	return result, nil
 }
 
-func (s *Service) syncProject(ctx context.Context, lpProject string, dryRun bool, result *SyncResult) error {
+func (s *Service) syncProject(ctx context.Context, lpProject string, cfg ProjectSyncConfig, dryRun bool, result *SyncResult) error {
 	// Fetch existing series.
 	existing, err := s.manager.GetProjectSeries(ctx, lpProject)
 	if err != nil {
@@ -113,7 +114,7 @@ func (s *Service) syncProject(ctx context.Context, lpProject string, dryRun bool
 	}
 
 	// Ensure each declared series exists.
-	for _, seriesName := range s.declaredSeries {
+	for _, seriesName := range cfg.Series {
 		if _, ok := existingSet[seriesName]; ok {
 			s.logger.Debug("series already exists", "project", lpProject, "series", seriesName)
 			continue
@@ -144,23 +145,23 @@ func (s *Service) syncProject(ctx context.Context, lpProject string, dryRun bool
 	}
 
 	// Set development focus if configured.
-	if s.developmentFocus == "" {
+	if cfg.DevelopmentFocus == "" {
 		return nil
 	}
 
-	targetSeries, ok := existingSet[s.developmentFocus]
+	targetSeries, ok := existingSet[cfg.DevelopmentFocus]
 	if !ok {
 		// In dry-run, series may not have been created yet — still plan the action.
 		if dryRun {
 			result.Actions = append(result.Actions, SyncAction{
 				Project:    lpProject,
-				Series:     s.developmentFocus,
+				Series:     cfg.DevelopmentFocus,
 				ActionType: ActionSetDevFocus,
-				NewValue:   s.developmentFocus,
+				NewValue:   cfg.DevelopmentFocus,
 			})
 			return nil
 		}
-		return fmt.Errorf("development focus series %q not found on project %s", s.developmentFocus, lpProject)
+		return fmt.Errorf("development focus series %q not found on project %s", cfg.DevelopmentFocus, lpProject)
 	}
 
 	// Check current development focus.
@@ -170,10 +171,10 @@ func (s *Service) syncProject(ctx context.Context, lpProject string, dryRun bool
 	}
 
 	if proj.DevelopmentFocusLink == targetSeries.SelfLink {
-		s.logger.Debug("development focus already set", "project", lpProject, "series", s.developmentFocus)
+		s.logger.Debug("development focus already set", "project", lpProject, "series", cfg.DevelopmentFocus)
 		result.Actions = append(result.Actions, SyncAction{
 			Project:    lpProject,
-			Series:     s.developmentFocus,
+			Series:     cfg.DevelopmentFocus,
 			ActionType: ActionDevFocusUnchanged,
 		})
 		return nil
@@ -181,7 +182,7 @@ func (s *Service) syncProject(ctx context.Context, lpProject string, dryRun bool
 
 	action := SyncAction{
 		Project:    lpProject,
-		Series:     s.developmentFocus,
+		Series:     cfg.DevelopmentFocus,
 		ActionType: ActionSetDevFocus,
 		OldValue:   proj.DevelopmentFocusLink,
 		NewValue:   targetSeries.SelfLink,

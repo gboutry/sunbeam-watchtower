@@ -38,19 +38,32 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("no configuration loaded")
 			}
 
-			// Collect unique LP project names from bug tracker entries.
-			seen := make(map[string]bool)
-			var lpProjects []string
+			// Collect unique LP project names from bug tracker entries,
+			// resolving per-project series/dev-focus overrides.
+			projectConfigs := make(map[string]projectsvc.ProjectSyncConfig)
 			for _, proj := range cfg.Projects {
 				for _, b := range proj.Bugs {
-					if b.Forge == "launchpad" && !seen[b.Project] {
-						seen[b.Project] = true
-						lpProjects = append(lpProjects, b.Project)
+					if b.Forge != "launchpad" {
+						continue
 					}
+					if _, ok := projectConfigs[b.Project]; ok {
+						continue
+					}
+					psc := projectsvc.ProjectSyncConfig{
+						Series:           cfg.Launchpad.Series,
+						DevelopmentFocus: cfg.Launchpad.DevelopmentFocus,
+					}
+					if len(proj.Series) > 0 {
+						psc.Series = proj.Series
+					}
+					if proj.DevelopmentFocus != "" {
+						psc.DevelopmentFocus = proj.DevelopmentFocus
+					}
+					projectConfigs[b.Project] = psc
 				}
 			}
 
-			if len(lpProjects) == 0 {
+			if len(projectConfigs) == 0 {
 				fmt.Fprintln(opts.Out, "no Launchpad projects found in configuration")
 				return nil
 			}
@@ -63,9 +76,7 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 			manager := lpadapter.NewProjectManager(lpClient)
 			svc := projectsvc.NewService(
 				manager,
-				lpProjects,
-				cfg.Launchpad.Series,
-				cfg.Launchpad.DevelopmentFocus,
+				projectConfigs,
 				opts.Logger,
 			)
 

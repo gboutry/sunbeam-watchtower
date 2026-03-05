@@ -75,7 +75,9 @@ func TestSync_CreatesMissingSeries(t *testing.T) {
 		},
 	}
 
-	svc := NewService(mgr, []string{"sunbeam"}, []string{"2024.1", "2024.2", "2025.1"}, "", nil)
+	svc := NewService(mgr, map[string]ProjectSyncConfig{
+		"sunbeam": {Series: []string{"2024.1", "2024.2", "2025.1"}},
+	}, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -118,7 +120,9 @@ func TestSync_SetsDevelopmentFocus(t *testing.T) {
 		},
 	}
 
-	svc := NewService(mgr, []string{"sunbeam"}, []string{"2025.1"}, "2025.1", nil)
+	svc := NewService(mgr, map[string]ProjectSyncConfig{
+		"sunbeam": {Series: []string{"2025.1"}, DevelopmentFocus: "2025.1"},
+	}, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -157,7 +161,9 @@ func TestSync_DevFocusUnchanged(t *testing.T) {
 		},
 	}
 
-	svc := NewService(mgr, []string{"sunbeam"}, []string{"2025.1"}, "2025.1", nil)
+	svc := NewService(mgr, map[string]ProjectSyncConfig{
+		"sunbeam": {Series: []string{"2025.1"}, DevelopmentFocus: "2025.1"},
+	}, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -188,7 +194,9 @@ func TestSync_DryRun(t *testing.T) {
 		},
 	}
 
-	svc := NewService(mgr, []string{"sunbeam"}, []string{"2025.1"}, "2025.1", nil)
+	svc := NewService(mgr, map[string]ProjectSyncConfig{
+		"sunbeam": {Series: []string{"2025.1"}, DevelopmentFocus: "2025.1"},
+	}, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{DryRun: true})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -220,7 +228,10 @@ func TestSync_ProjectFilter(t *testing.T) {
 		},
 	}
 
-	svc := NewService(mgr, []string{"sunbeam", "snap-openstack"}, []string{"2025.1"}, "", nil)
+	svc := NewService(mgr, map[string]ProjectSyncConfig{
+		"sunbeam":        {Series: []string{"2025.1"}},
+		"snap-openstack": {Series: []string{"2025.1"}},
+	}, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{Projects: []string{"sunbeam"}})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -240,6 +251,58 @@ func TestSync_ProjectFilter(t *testing.T) {
 	}
 }
 
+func TestSync_PerProjectOverrides(t *testing.T) {
+	mgr := &mockProjectManager{
+		projects: map[string]*forge.Project{
+			"sunbeam":        {Name: "sunbeam", DevelopmentFocusLink: ""},
+			"snap-consul":    {Name: "snap-consul", DevelopmentFocusLink: ""},
+		},
+		series: map[string][]forge.ProjectSeries{
+			"sunbeam":     {},
+			"snap-consul": {},
+		},
+	}
+
+	svc := NewService(mgr, map[string]ProjectSyncConfig{
+		"sunbeam":     {Series: []string{"2024.1", "2025.1"}, DevelopmentFocus: "2025.1"},
+		"snap-consul": {Series: []string{"1.19"}, DevelopmentFocus: "1.19"},
+	}, nil)
+	result, err := svc.Sync(context.Background(), SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error: %v", err)
+	}
+
+	// sunbeam should get 2024.1 + 2025.1, snap-consul should get 1.19
+	if len(mgr.createdSeries) != 3 {
+		t.Fatalf("expected 3 series created, got %d", len(mgr.createdSeries))
+	}
+
+	seriesByProject := make(map[string][]string)
+	for _, cs := range mgr.createdSeries {
+		seriesByProject[cs.Project] = append(seriesByProject[cs.Project], cs.Name)
+	}
+	if len(seriesByProject["sunbeam"]) != 2 {
+		t.Errorf("expected 2 series for sunbeam, got %d", len(seriesByProject["sunbeam"]))
+	}
+	if len(seriesByProject["snap-consul"]) != 1 {
+		t.Errorf("expected 1 series for snap-consul, got %d", len(seriesByProject["snap-consul"]))
+	}
+	if seriesByProject["snap-consul"][0] != "1.19" {
+		t.Errorf("snap-consul series = %q, want 1.19", seriesByProject["snap-consul"][0])
+	}
+
+	// Both should have dev focus set
+	devFocusActions := 0
+	for _, a := range result.Actions {
+		if a.ActionType == ActionSetDevFocus {
+			devFocusActions++
+		}
+	}
+	if devFocusActions != 2 {
+		t.Errorf("expected 2 set_dev_focus actions, got %d", devFocusActions)
+	}
+}
+
 func TestSync_MultipleProjects(t *testing.T) {
 	mgr := &mockProjectManager{
 		projects: map[string]*forge.Project{
@@ -252,7 +315,10 @@ func TestSync_MultipleProjects(t *testing.T) {
 		},
 	}
 
-	svc := NewService(mgr, []string{"sunbeam", "snap-openstack"}, []string{"2025.1"}, "", nil)
+	svc := NewService(mgr, map[string]ProjectSyncConfig{
+		"sunbeam":        {Series: []string{"2025.1"}},
+		"snap-openstack": {Series: []string{"2025.1"}},
+	}, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
