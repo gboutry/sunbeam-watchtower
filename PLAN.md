@@ -721,6 +721,15 @@ Main Menu
 - [x] `buildUpstreamProvider()` factory function in `factory.go`
 - [x] Wired into root command via `newPackagesCmd(opts)`
 - [x] rdepends perf: `QueryDetailed` reads from bbolt (not re-parsing xz from disk); parses `Build-Depends-Indep`
+- [x] Backport suite expansion: `ExpandBackportSuiteType()` — `release`→releaseName, `updates`→`releaseName-updates/backportName`, `proposed`→`releaseName-proposed/backportName`, default→literal pass-through
+- [x] `ParentRelease` config key on `BackportConfig`: maps UCA backport to its native upload release (e.g. gazpacho→resolute)
+- [x] Parent release inference in `buildPackageSources`: when `--backport` given, auto-includes parent release with full suites, target release with backport-only pockets
+- [x] 3-state backport filter: `nil`=include all (cache sync default), `["none"]`=skip all (packages query default), named list=filter+infer
+- [x] Per-source suite filtering in `Diff()`: derives suite filters from `ProjectSource.Entries` per-source, prevents cross-source suite leakage
+- [x] `--only-in` auto-inference: when value contains `/` (e.g. `ubuntu/gazpacho`), auto-scopes `--distro` and `--backport`
+- [x] Environment variable support: `WATCHTOWER_CONFIG`, `WATCHTOWER_VERBOSE`, `WATCHTOWER_OUTPUT`, `WATCHTOWER_NO_COLOR` (flags override env vars)
+- [x] Structured JSON/YAML output for all commands: bug sync, project sync, build cleanup, cache status use format-aware renderers; cache sync/clear progress goes to stderr in json/yaml mode; config show respects `--output json`
+- [x] JSON/YAML struct tags on `bugsync.SyncAction/SyncResult` and `projectsvc.SyncAction/SyncResult`
 
 ### Next Steps
 - [ ] MCP server
