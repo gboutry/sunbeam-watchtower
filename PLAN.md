@@ -262,21 +262,32 @@ packages:
       mirror: http://archive.ubuntu.com/ubuntu
       suites: [jammy, jammy-updates, noble, noble-updates, noble-proposed]
       components: [main, universe]
+      backports:
+        yoga:
+          sources:
+            - mirror: https://ppa.launchpadcontent.net/ubuntu-cloud-archive/yoga-staging/ubuntu
+              suites: [focal]
+              components: [main]
+        caracal:
+          sources:
+            - mirror: https://ppa.launchpadcontent.net/ubuntu-cloud-archive/caracal-staging/ubuntu
+              suites: [jammy]
+              components: [main]
+        gazpacho:
+          sources:
+            - mirror: https://ppa.launchpadcontent.net/ubuntu-cloud-archive/gazpacho-staging/ubuntu
+              suites: [noble]
+              components: [main]
     debian:
       mirror: http://ftp.debian.org/debian
       suites: [trixie, trixie-backports, bookworm, unstable, experimental]
       components: [main]
-  backports:
-    uca:
-      sources:
-        - mirror: https://ppa.launchpadcontent.net/ubuntu-cloud-archive/gazpacho-staging/ubuntu
-          suites: [noble]
-          components: [main]
-    osbpo:
-      sources:
-        - mirror: http://osbpo.debian.net/debian
-          suites: [trixie-gazpacho-backports, trixie-gazpacho-backports-nochange]
-          components: [main]
+      backports:
+        gazpacho:
+          sources:
+            - mirror: http://osbpo.debian.net/debian
+              suites: [trixie-gazpacho-backports, trixie-gazpacho-backports-nochange]
+              components: [main]
   sets:
     openstack-services:
       - nova
@@ -419,14 +430,14 @@ Main Menu
 - Structured `slog` logging across all layers (CLI, services, adapters)
 
 ### Phase 4: Packages — DONE
-- APT source package comparison across distros and backports
+- APT source package comparison across distros (backports nested under distro config; `--backport` flag defaults to none)
 - Domain types: `SourcePackage`, `VersionComparison` in `internal/pkg/distro/v1/`
 - Debian version comparison using `pault.ag/go/debian` (compare, strip revision, pick highest)
 - `DistroCache` port interface — download, index, query APT Sources data
 - bbolt-backed cache adapter (`internal/adapter/distrocache/`) with RFC822 Sources parser
 - Downloads Sources.xz (fallback .gz) from APT mirrors, stores raw files + bbolt index
 - Package service (`internal/service/package/`) — Diff, Show, List, UpdateCache, CacheStatus
-- Config: `PackagesConfig` with distros, backports, and named package sets
+- Config: `PackagesConfig` with distros (each with nested backports) and named package sets
 - CLI: `packages cache update/status`, `packages diff <set>`, `packages show <pkg>`, `packages list`
 - Dynamic table columns based on queried sources (SOURCE:suite headers)
 - Table/JSON/YAML output for all package data types
@@ -616,23 +627,25 @@ Main Menu
 - [x] Package service (`internal/service/package/`): `Diff`, `Show`, `List`, `UpdateCache`, `CacheStatus`
 - [x] Diff logic: queries cache per source, groups by package name, sorts alphabetically
 - [x] Tests: diff across sources, show single package, show missing, list with suite filter (4 tests)
-- [x] Config: `PackagesConfig` with `Distros`, `Backports`, `Sets`, `Upstream` fields added to `Config`
-- [x] `DistroConfig`, `BackportConfig`, `DistroSourceConfig`, `UpstreamConfig` types
+- [x] Config: `PackagesConfig` with `Distros`, `Sets`, `Upstream` fields added to `Config`
+- [x] `DistroConfig` (with nested `Backports`), `BackportConfig`, `DistroSourceConfig`, `UpstreamConfig` types
+- [x] Backports are children of their parent distro — `--distro ubuntu` only includes Ubuntu + UCA backports, not Debian/OSBPO
+- [x] bbolt bucket names qualified as `distro/backport` to avoid collision when backport names match across distros
 - [x] `UpstreamConfig` (optional pointer): `Provider`, `ReleasesRepo`, `RequirementsRepo`
 - [x] Validation: upstream requires `Provider`; openstack provider requires `ReleasesRepo`
-- [x] CLI: `packages cache update` — `--distro`, `--backport` (defaults to all configured)
-- [x] CLI: `packages cache status` — shows source name, package count, last updated, disk size
+- [x] CLI: `cache sync packages-index` — `--distro` (defaults to all configured), `--backport` (defaults to none; pass names to include backports)
+- [x] CLI: `cache status` — shows source name, package count, last updated, disk size
 - [x] CLI: `packages diff <set>` — `--distro`, `--backport`, `--suite`, `--component`, `--merge`, `--release`, `--behind-upstream`, `--only-in`, `--constraints`
 - [x] CLI: `packages show <pkg>` — `--distro`, `--backport`, `--merge`, `--release`
 - [x] CLI: `packages list` — `--distro` (required), `--suite`, `--component`
 - [x] `buildDistroCache()` factory function in `factory.go`
-- [x] `buildPackageSources()` resolves --distro/--backport flags against config
+- [x] `buildPackageSources()` resolves --distro and --backport flags against config (backports nested under distro; qualified bucket names as `distro/backport`; default --backport=none skips backports unless explicitly requested)
 - [x] Dynamic diff table columns: `SOURCE:suite` headers generated from query results
 - [x] Merged diff table: `--merge` flag consolidates suites per source into one column with highest version + origin markers (R/U/P/S/E)
 - [x] Table/JSON/YAML output renderers: `renderDiffResults`, `renderSourcePackages`, `renderCacheStatus`
 - [x] Human-readable byte formatting for disk size display
 - [x] CLI: `packages dsc <pkg> <version> [...]` — `--distro`, `--backport`, looks up .dsc URLs from cached Sources files
-- [x] CLI: `packages rdepends <pkg>` — `--distro`, `--backport`, `--suite`, finds source packages that build-depend on a given package
+- [x] CLI: `packages rdepends <pkg>` — `--distro`, `--backport`, `--suite`, finds source packages that build-depend on a given package; warns on binary package names; annotates backport results with `suite/backport-name`
 - [x] Upstream version provider: `UpstreamProvider` interface (`ListDeliverables`, `GetConstraints`, `MapPackageName`)
 - [x] OpenStack adapter (`internal/adapter/openstack/`): parses deliverable YAML from releases repo, upper-constraints.txt from requirements repo, name mapping heuristics + override map
 - [x] `--release` flag: annotates diff/show output with upstream version column
@@ -641,6 +654,7 @@ Main Menu
 - [x] `--constraints <release>` flag: merges upper-constraints packages into diff results
 - [x] `buildUpstreamProvider()` factory function in `factory.go`
 - [x] Wired into root command via `newPackagesCmd(opts)`
+- [x] rdepends perf: `QueryDetailed` reads from bbolt (not re-parsing xz from disk); parses `Build-Depends-Indep`
 
 ### Next Steps
 - [ ] MCP server
@@ -665,12 +679,14 @@ Main Menu
 - Manual: `watchtower cache sync upstream-repos` → clones/fetches upstream version repos only
 - Manual: `watchtower commit log` shows branch commits with STATUS=Merged
 - Manual: `watchtower commit log --include-mrs` shows both branch and MR commits with STATUS/LINK columns
-- Manual: `watchtower cache sync packages-index --distro ubuntu` downloads Sources.xz and builds bbolt index
+- Manual: `watchtower cache sync packages-index --distro ubuntu` downloads Sources.xz and builds bbolt index (backports excluded by default)
+- Manual: `watchtower cache sync packages-index --distro ubuntu --backport gazpacho` syncs distro + specific backport
 - Manual: `watchtower cache status` shows git repos and packages index freshness
 - Manual: `watchtower packages diff openstack-services --distro ubuntu,debian` shows version comparison table
 - Manual: `watchtower packages show nova --distro ubuntu` shows all suites for a package
 - Manual: `watchtower packages list --distro debian --suite trixie` lists all packages in a suite
-- Manual: `watchtower packages rdepends python-oslo-config --distro ubuntu` finds reverse build-depends
+- Manual: `watchtower packages rdepends python-oslo-config --distro ubuntu` finds reverse build-depends (backports excluded by default)
+- Manual: `watchtower packages rdepends python-oslo-config --distro ubuntu --backport gazpacho` includes backport results with `suite/backport-name` annotation
 - Manual: `watchtower packages dsc nova 1:28.0.0-0ubuntu1 --distro ubuntu` finds .dsc URLs
 - Manual: `watchtower packages diff services --release 2025.1 --merge` shows upstream column with merged suites
 - Manual: `watchtower packages diff services --release 2025.1 --behind-upstream` shows only packages behind upstream
