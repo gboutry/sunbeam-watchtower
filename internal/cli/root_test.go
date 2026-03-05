@@ -304,3 +304,50 @@ func TestVerboseFlag(t *testing.T) {
 		t.Error("expected Verbose to be true")
 	}
 }
+
+func TestProjectSyncCommand_NoLPProjects(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+	yaml := `
+projects:
+  - name: test
+    code:
+      forge: github
+      owner: org
+      project: repo
+`
+	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &errOut}
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"project", "sync", "--config", cfgFile})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "no Launchpad projects") {
+		t.Errorf("expected 'no Launchpad projects' message, got: %s", out.String())
+	}
+}
+
+func TestProjectSyncCommand_HasFlags(t *testing.T) {
+	var out bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &bytes.Buffer{}}
+	cmd := NewRootCmd(opts)
+
+	projectCmd, _, err := cmd.Find([]string{"project", "sync"})
+	if err != nil {
+		t.Fatalf("project sync command not found: %v", err)
+	}
+
+	if projectCmd.Flag("dry-run") == nil {
+		t.Error("expected --dry-run flag")
+	}
+	if projectCmd.Flag("project") == nil {
+		t.Error("expected --project flag")
+	}
+}

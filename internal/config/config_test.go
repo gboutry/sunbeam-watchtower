@@ -320,6 +320,41 @@ func TestValidate_BuildWithPrepareCommand(t *testing.T) {
 	}
 }
 
+func TestValidate_DevelopmentFocusNotInSeries(t *testing.T) {
+	cfg := &Config{
+		Launchpad: LaunchpadConfig{
+			Series:           []string{"2024.1", "2024.2"},
+			DevelopmentFocus: "2025.1",
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should error when development_focus is not in series")
+	}
+}
+
+func TestValidate_DevelopmentFocusInSeries(t *testing.T) {
+	cfg := &Config{
+		Launchpad: LaunchpadConfig{
+			Series:           []string{"2024.1", "2024.2", "2025.1"},
+			DevelopmentFocus: "2025.1",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() error: %v", err)
+	}
+}
+
+func TestValidate_DevelopmentFocusWithoutSeries(t *testing.T) {
+	cfg := &Config{
+		Launchpad: LaunchpadConfig{
+			DevelopmentFocus: "2025.1",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() should pass when series is empty: %v", err)
+	}
+}
+
 func TestValidate_EmptyConfig(t *testing.T) {
 	cfg := &Config{}
 	if err := cfg.Validate(); err != nil {

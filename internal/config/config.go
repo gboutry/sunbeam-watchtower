@@ -10,8 +10,10 @@ import (
 
 // LaunchpadConfig holds Launchpad-specific settings.
 type LaunchpadConfig struct {
-	DefaultOwner string `mapstructure:"default_owner" yaml:"default_owner"`
-	UseKeyring   bool   `mapstructure:"use_keyring" yaml:"use_keyring"`
+	DefaultOwner     string   `mapstructure:"default_owner" yaml:"default_owner"`
+	UseKeyring       bool     `mapstructure:"use_keyring" yaml:"use_keyring"`
+	Series           []string `mapstructure:"series" yaml:"series,omitempty"`
+	DevelopmentFocus string   `mapstructure:"development_focus" yaml:"development_focus,omitempty"`
 }
 
 // GitHubConfig holds GitHub-specific settings.
@@ -126,6 +128,18 @@ func defaults(v *viper.Viper) (*Config, error) {
 
 // Validate checks that the configuration is consistent.
 func (c *Config) Validate() error {
+	if c.Launchpad.DevelopmentFocus != "" && len(c.Launchpad.Series) > 0 {
+		found := false
+		for _, s := range c.Launchpad.Series {
+			if s == c.Launchpad.DevelopmentFocus {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("launchpad: development_focus %q must be one of the declared series", c.Launchpad.DevelopmentFocus)
+		}
+	}
 	for i, p := range c.Projects {
 		if p.Name == "" {
 			return fmt.Errorf("projects[%d]: name is required", i)

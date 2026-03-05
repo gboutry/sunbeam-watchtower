@@ -69,6 +69,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 	root.AddCommand(newBugCmd(opts))
 	root.AddCommand(newBuildCmd(opts))
 	root.AddCommand(newCacheCmd(opts))
+	root.AddCommand(newProjectCmd(opts))
 
 	return root
 }

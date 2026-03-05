@@ -1,0 +1,198 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
+package project
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+
+	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/port"
+)
+
+// ActionType describes the kind of sync action.
+type ActionType string
+
+const (
+	ActionCreateSeries      ActionType = "create_series"
+	ActionSetDevFocus       ActionType = "set_dev_focus"
+	ActionDevFocusUnchanged ActionType = "dev_focus_unchanged"
+)
+
+// SyncAction represents a single action taken (or planned) during sync.
+type SyncAction struct {
+	Project    string
+	Series     string
+	ActionType ActionType
+	OldValue   string // previous dev focus (for set_dev_focus)
+	NewValue   string // new dev focus (for set_dev_focus)
+}
+
+// SyncResult holds the outcome of a sync operation.
+type SyncResult struct {
+	Actions []SyncAction
+	Errors  []error
+}
+
+// SyncOptions controls the sync behavior.
+type SyncOptions struct {
+	Projects []string // filter to these LP project names (empty = all)
+	DryRun   bool
+}
+
+// Service performs project metadata synchronization on LP.
+type Service struct {
+	manager          port.ProjectManager
+	lpProjects       []string // unique LP project names to manage
+	declaredSeries   []string
+	developmentFocus string
+	logger           *slog.Logger
+}
+
+// NewService creates a project sync service.
+func NewService(
+	manager port.ProjectManager,
+	lpProjects []string,
+	declaredSeries []string,
+	developmentFocus string,
+	logger *slog.Logger,
+) *Service {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return &Service{
+		manager:          manager,
+		lpProjects:       lpProjects,
+		declaredSeries:   declaredSeries,
+		developmentFocus: developmentFocus,
+		logger:           logger,
+	}
+}
+
+// Sync ensures every LP project has the declared series and development focus.
+func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
+	projFilter := make(map[string]bool, len(opts.Projects))
+	for _, p := range opts.Projects {
+		projFilter[p] = true
+	}
+
+	result := &SyncResult{}
+
+	for _, lpProject := range s.lpProjects {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if len(projFilter) > 0 && !projFilter[lpProject] {
+			continue
+		}
+
+		s.logger.Debug("syncing project", "project", lpProject)
+
+		if err := s.syncProject(ctx, lpProject, opts.DryRun, result); err != nil {
+			s.logger.Warn("failed to sync project", "project", lpProject, "error", err)
+			result.Errors = append(result.Errors, fmt.Errorf("project %s: %w", lpProject, err))
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) syncProject(ctx context.Context, lpProject string, dryRun bool, result *SyncResult) error {
+	// Fetch existing series.
+	existing, err := s.manager.GetProjectSeries(ctx, lpProject)
+	if err != nil {
+		return fmt.Errorf("fetching series: %w", err)
+	}
+
+	existingSet := make(map[string]forge.ProjectSeries, len(existing))
+	for _, ps := range existing {
+		existingSet[ps.Name] = ps
+	}
+
+	// Ensure each declared series exists.
+	for _, seriesName := range s.declaredSeries {
+		if _, ok := existingSet[seriesName]; ok {
+			s.logger.Debug("series already exists", "project", lpProject, "series", seriesName)
+			continue
+		}
+
+		action := SyncAction{
+			Project:    lpProject,
+			Series:     seriesName,
+			ActionType: ActionCreateSeries,
+		}
+
+		if !dryRun {
+			created, err := s.manager.CreateSeries(ctx, lpProject, seriesName, seriesName+" series")
+			if err != nil {
+				s.logger.Warn("failed to create series", "project", lpProject, "series", seriesName, "error", err)
+				result.Errors = append(result.Errors, fmt.Errorf("project %s series %s: %w", lpProject, seriesName, err))
+				continue
+			}
+			// Store in map so dev focus resolution can find it.
+			existingSet[seriesName] = forge.ProjectSeries{
+				Name:     created.Name,
+				SelfLink: created.SelfLink,
+				Active:   created.Active,
+			}
+		}
+
+		result.Actions = append(result.Actions, action)
+	}
+
+	// Set development focus if configured.
+	if s.developmentFocus == "" {
+		return nil
+	}
+
+	targetSeries, ok := existingSet[s.developmentFocus]
+	if !ok {
+		// In dry-run, series may not have been created yet — still plan the action.
+		if dryRun {
+			result.Actions = append(result.Actions, SyncAction{
+				Project:    lpProject,
+				Series:     s.developmentFocus,
+				ActionType: ActionSetDevFocus,
+				NewValue:   s.developmentFocus,
+			})
+			return nil
+		}
+		return fmt.Errorf("development focus series %q not found on project %s", s.developmentFocus, lpProject)
+	}
+
+	// Check current development focus.
+	proj, err := s.manager.GetProject(ctx, lpProject)
+	if err != nil {
+		return fmt.Errorf("fetching project: %w", err)
+	}
+
+	if proj.DevelopmentFocusLink == targetSeries.SelfLink {
+		s.logger.Debug("development focus already set", "project", lpProject, "series", s.developmentFocus)
+		result.Actions = append(result.Actions, SyncAction{
+			Project:    lpProject,
+			Series:     s.developmentFocus,
+			ActionType: ActionDevFocusUnchanged,
+		})
+		return nil
+	}
+
+	action := SyncAction{
+		Project:    lpProject,
+		Series:     s.developmentFocus,
+		ActionType: ActionSetDevFocus,
+		OldValue:   proj.DevelopmentFocusLink,
+		NewValue:   targetSeries.SelfLink,
+	}
+
+	if !dryRun {
+		if err := s.manager.SetDevelopmentFocus(ctx, lpProject, targetSeries.SelfLink); err != nil {
+			return fmt.Errorf("setting development focus: %w", err)
+		}
+	}
+
+	result.Actions = append(result.Actions, action)
+	return nil
+}
