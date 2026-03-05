@@ -5,6 +5,7 @@ package gitcache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,11 +15,15 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
+
+const mrMetadataFile = ".watchtower-mrs.json"
 
 // Cache implements port.GitRepoCache using local bare git clones.
 type Cache struct {
@@ -78,7 +83,7 @@ func (c *Cache) repoPath(cloneURL string) (string, error) {
 }
 
 // EnsureRepo clones the repository if missing, or fetches if it already exists.
-func (c *Cache) EnsureRepo(ctx context.Context, cloneURL string) (string, error) {
+func (c *Cache) EnsureRepo(ctx context.Context, cloneURL string, opts *port.SyncOptions) (string, error) {
 	path, err := c.repoPath(cloneURL)
 	if err != nil {
 		return "", err
@@ -87,7 +92,7 @@ func (c *Cache) EnsureRepo(ctx context.Context, cloneURL string) (string, error)
 	if _, err := os.Stat(path); err == nil {
 		// Repo exists, fetch.
 		c.logger.Debug("fetching existing cached repo", "url", cloneURL, "path", path)
-		if fetchErr := c.fetchRepo(ctx, path); fetchErr != nil {
+		if fetchErr := c.fetchRepo(ctx, path, opts); fetchErr != nil {
 			c.logger.Warn("fetch failed, repo may be stale", "url", cloneURL, "error", fetchErr)
 		}
 		return path, nil
@@ -105,28 +110,53 @@ func (c *Cache) EnsureRepo(ctx context.Context, cloneURL string) (string, error)
 		return "", fmt.Errorf("cloning %s: %w", cloneURL, err)
 	}
 
+	// After initial clone, fetch extra refspecs if provided.
+	if opts != nil && len(opts.ExtraRefSpecs) > 0 {
+		c.logger.Debug("fetching extra refspecs after clone", "url", cloneURL, "refspecs", opts.ExtraRefSpecs)
+		if fetchErr := c.fetchRepo(ctx, path, opts); fetchErr != nil {
+			c.logger.Warn("extra refspec fetch failed", "url", cloneURL, "error", fetchErr)
+		}
+	}
+
 	return path, nil
 }
 
 // Fetch updates an existing cached repository from origin.
-func (c *Cache) Fetch(ctx context.Context, cloneURL string) error {
+func (c *Cache) Fetch(ctx context.Context, cloneURL string, opts *port.SyncOptions) error {
 	path, err := c.repoPath(cloneURL)
 	if err != nil {
 		return err
 	}
-	return c.fetchRepo(ctx, path)
+	return c.fetchRepo(ctx, path, opts)
 }
 
-func (c *Cache) fetchRepo(ctx context.Context, path string) error {
+func (c *Cache) fetchRepo(ctx context.Context, path string, opts *port.SyncOptions) error {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return fmt.Errorf("opening repo at %s: %w", path, err)
 	}
 
+	// Default fetch (branches).
 	err = repo.FetchContext(ctx, &git.FetchOptions{})
 	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return fmt.Errorf("fetching: %w", err)
 	}
+
+	// Fetch extra refspecs if provided.
+	if opts != nil && len(opts.ExtraRefSpecs) > 0 {
+		refSpecs := make([]gitconfig.RefSpec, len(opts.ExtraRefSpecs))
+		for i, rs := range opts.ExtraRefSpecs {
+			refSpecs[i] = gitconfig.RefSpec(rs)
+		}
+		c.logger.Debug("fetching extra refspecs", "path", path, "refspecs", opts.ExtraRefSpecs)
+		err = repo.FetchContext(ctx, &git.FetchOptions{
+			RefSpecs: refSpecs,
+		})
+		if err != nil && err != git.NoErrAlreadyUpToDate {
+			c.logger.Warn("extra refspec fetch failed", "path", path, "error", err)
+		}
+	}
+
 	return nil
 }
 
@@ -202,6 +232,125 @@ func (c *Cache) ListCommits(ctx context.Context, cloneURL string, opts forge.Lis
 
 	c.logger.Debug("commits read from cache", "cloneURL", cloneURL, "count", len(result))
 	return result, nil
+}
+
+// StoreMRMetadata writes merge request metadata as a sidecar JSON file.
+func (c *Cache) StoreMRMetadata(cloneURL string, mrs []port.MRMetadata) error {
+	path, err := c.repoPath(cloneURL)
+	if err != nil {
+		return err
+	}
+
+	metaPath := filepath.Join(path, mrMetadataFile)
+	c.logger.Debug("storing MR metadata", "cloneURL", cloneURL, "count", len(mrs), "path", metaPath)
+
+	data, err := json.MarshalIndent(mrs, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling MR metadata: %w", err)
+	}
+
+	return os.WriteFile(metaPath, data, 0o644)
+}
+
+// LoadMRMetadata reads merge request metadata from the sidecar JSON file.
+func (c *Cache) LoadMRMetadata(cloneURL string) ([]port.MRMetadata, error) {
+	path, err := c.repoPath(cloneURL)
+	if err != nil {
+		return nil, err
+	}
+
+	metaPath := filepath.Join(path, mrMetadataFile)
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading MR metadata: %w", err)
+	}
+
+	var mrs []port.MRMetadata
+	if err := json.Unmarshal(data, &mrs); err != nil {
+		return nil, fmt.Errorf("parsing MR metadata: %w", err)
+	}
+
+	c.logger.Debug("loaded MR metadata", "cloneURL", cloneURL, "count", len(mrs))
+	return mrs, nil
+}
+
+// ListMRCommits reads the head commit for each cached merge request ref.
+func (c *Cache) ListMRCommits(ctx context.Context, cloneURL string) ([]forge.Commit, error) {
+	c.logger.Debug("listing MR commits", "cloneURL", cloneURL)
+
+	mrs, err := c.LoadMRMetadata(cloneURL)
+	if err != nil {
+		return nil, err
+	}
+	if len(mrs) == 0 {
+		return nil, nil
+	}
+
+	path, err := c.repoPath(cloneURL)
+	if err != nil {
+		return nil, err
+	}
+
+	repo, err := git.PlainOpen(path)
+	if err != nil {
+		return nil, fmt.Errorf("opening repo at %s: %w", path, err)
+	}
+
+	var result []forge.Commit
+	for _, mr := range mrs {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		if mr.GitRef == "" {
+			// Try resolving by HeadSHA directly.
+			if mr.HeadSHA == "" {
+				continue
+			}
+			co, err := repo.CommitObject(plumbing.NewHash(mr.HeadSHA))
+			if err != nil {
+				c.logger.Debug("MR commit not found by SHA", "mr_id", mr.ID, "sha", mr.HeadSHA, "error", err)
+				continue
+			}
+			result = append(result, commitFromObject(co, &mr))
+			continue
+		}
+
+		ref, err := repo.Reference(plumbing.ReferenceName(mr.GitRef), true)
+		if err != nil {
+			c.logger.Debug("MR ref not found", "mr_id", mr.ID, "ref", mr.GitRef, "error", err)
+			continue
+		}
+
+		co, err := repo.CommitObject(ref.Hash())
+		if err != nil {
+			c.logger.Debug("MR commit not found", "mr_id", mr.ID, "ref", mr.GitRef, "error", err)
+			continue
+		}
+
+		result = append(result, commitFromObject(co, &mr))
+	}
+
+	c.logger.Debug("MR commits read", "cloneURL", cloneURL, "count", len(result))
+	return result, nil
+}
+
+func commitFromObject(co *object.Commit, mr *port.MRMetadata) forge.Commit {
+	return forge.Commit{
+		SHA:     co.Hash.String(),
+		Message: co.Message,
+		Author:  co.Author.Name,
+		Date:    co.Author.When,
+		BugRefs: forge.ExtractBugRefs(co.Message),
+		MergeRequest: &forge.CommitMergeRequest{
+			ID:    mr.ID,
+			State: mr.State,
+			URL:   mr.URL,
+		},
+	}
 }
 
 // Remove deletes a single cached repository.

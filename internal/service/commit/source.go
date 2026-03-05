@@ -20,6 +20,7 @@ var (
 // CommitSource can list commits for a single project.
 type CommitSource interface {
 	ListCommits(ctx context.Context, opts forge.ListCommitsOpts) ([]forge.Commit, error)
+	ListMRCommits(ctx context.Context) ([]forge.Commit, error)
 }
 
 // ProjectSource pairs a CommitSource with metadata about the forge.
@@ -37,6 +38,11 @@ type ForgeCommitSource struct {
 // ListCommits delegates to the underlying Forge.
 func (f *ForgeCommitSource) ListCommits(ctx context.Context, opts forge.ListCommitsOpts) ([]forge.Commit, error) {
 	return f.Forge.ListCommits(ctx, f.ProjectID, opts)
+}
+
+// ListMRCommits is not supported via the forge API path.
+func (f *ForgeCommitSource) ListMRCommits(_ context.Context) ([]forge.Commit, error) {
+	return nil, nil
 }
 
 // CachedGitSource reads commits from a local git cache.
@@ -57,6 +63,21 @@ func (c *CachedGitSource) ListCommits(ctx context.Context, opts forge.ListCommit
 	for i := range commits {
 		commits[i].Forge = forgeType
 		commits[i].URL = c.Code.CommitURL(commits[i].SHA)
+	}
+
+	return commits, nil
+}
+
+// ListMRCommits reads merge request head commits from the cache.
+func (c *CachedGitSource) ListMRCommits(ctx context.Context) ([]forge.Commit, error) {
+	commits, err := c.Cache.ListMRCommits(ctx, c.CloneURL)
+	if err != nil {
+		return nil, err
+	}
+
+	forgeType := forgeTypeFromConfig(c.Code.Forge)
+	for i := range commits {
+		commits[i].Forge = forgeType
 	}
 
 	return commits, nil

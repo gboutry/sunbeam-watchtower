@@ -305,7 +305,7 @@ func renderCommitTable(w io.Writer, commits []forge.Commit) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PROJECT\tFORGE\tSHA\tAUTHOR\tDATE\tMESSAGE")
+	fmt.Fprintln(tw, "PROJECT\tFORGE\tSHA\tAUTHOR\tDATE\tSTATUS\tLINK\tMESSAGE")
 	for _, c := range commits {
 		msg := c.Message
 		if idx := strings.Index(msg, "\n"); idx != -1 {
@@ -325,12 +325,21 @@ func renderCommitTable(w io.Writer, commits []forge.Commit) error {
 			sha = sha[:10]
 		}
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		status := ""
+		link := ""
+		if c.MergeRequest != nil {
+			status = c.MergeRequest.State.String()
+			link = c.MergeRequest.URL
+		}
+
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			c.Repo,
 			c.Forge,
 			sha,
 			c.Author,
 			date,
+			status,
+			link,
 			msg,
 		)
 	}

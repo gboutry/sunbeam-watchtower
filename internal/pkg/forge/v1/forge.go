@@ -136,16 +136,25 @@ type MergeRequest struct {
 	UpdatedAt    time.Time
 }
 
+// CommitMergeRequest annotates a commit with its associated merge request info.
+// Nil for commits on the main branch.
+type CommitMergeRequest struct {
+	ID    string     // "#123" for GitHub, change number for Gerrit, etc.
+	State MergeState // Open, Merged, Closed, Abandoned, WIP
+	URL   string     // web link to the merge request
+}
+
 // Commit is a forge-agnostic commit.
 type Commit struct {
-	Forge   ForgeType
-	Repo    string
-	SHA     string
-	Message string
-	Author  string
-	Date    time.Time
-	URL     string
-	BugRefs []string // extracted LP bug references (LP: #NNNNN, etc.)
+	Forge        ForgeType
+	Repo         string
+	SHA          string
+	Message      string
+	Author       string
+	Date         time.Time
+	URL          string
+	BugRefs      []string             // extracted LP bug references (LP: #NNNNN, etc.)
+	MergeRequest *CommitMergeRequest  // non-nil if commit comes from a merge request ref
 }
 
 // ListMergeRequestsOpts holds options for listing merge requests.

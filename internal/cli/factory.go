@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/andygrunwald/go-gerrit"
 	"github.com/google/go-github/v68/github"
@@ -304,5 +305,29 @@ func forgeTypeFromConfig(forgeName string) forge.ForgeType {
 		return forge.ForgeGerrit
 	default:
 		return forge.ForgeGitHub
+	}
+}
+
+// mrRefSpecs returns the additional git refspecs needed to fetch MR refs for a given forge.
+func mrRefSpecs(forgeName string) []string {
+	switch forgeName {
+	case "github":
+		return []string{"+refs/pull/*/head:refs/pull/*/head"}
+	case "gerrit":
+		return []string{"+refs/changes/*:refs/changes/*"}
+	default:
+		return nil
+	}
+}
+
+// mrGitRef computes the git ref path for a merge request ID on the given forge.
+func mrGitRef(forgeName string, mrID string) string {
+	switch forgeName {
+	case "github":
+		return fmt.Sprintf("refs/pull/%s/head", strings.TrimPrefix(mrID, "#"))
+	default:
+		// Gerrit refs are complex (refs/changes/<last2>/<number>/<patchset>);
+		// we rely on HeadSHA lookup instead.
+		return ""
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/spf13/cobra"
 )
 
@@ -38,6 +40,12 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("no configuration loaded")
 			}
 
+			// Build forge clients for MR metadata fetching.
+			forgeClients, err := buildForgeClients(opts)
+			if err != nil {
+				opts.Logger.Warn("could not build forge clients for MR sync", "error", err)
+			}
+
 			synced := 0
 			for _, proj := range cfg.Projects {
 				if project != "" && proj.Name != project {
@@ -50,11 +58,34 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 					continue
 				}
 
+				// Determine extra refspecs for MR refs.
+				refSpecs := mrRefSpecs(proj.Code.Forge)
+				var syncOpts *port.SyncOptions
+				if len(refSpecs) > 0 {
+					syncOpts = &port.SyncOptions{ExtraRefSpecs: refSpecs}
+				}
+
 				fmt.Fprintf(opts.Out, "syncing %s (%s)...\n", proj.Name, cloneURL)
-				if _, err := cache.EnsureRepo(cmd.Context(), cloneURL); err != nil {
+				if _, err := cache.EnsureRepo(cmd.Context(), cloneURL, syncOpts); err != nil {
 					fmt.Fprintf(opts.ErrOut, "warning: %s: %v\n", proj.Name, err)
 				} else {
 					synced++
+				}
+
+				// Fetch MR metadata via forge API and store as sidecar.
+				if fc, ok := forgeClients[proj.Name]; ok {
+					opts.Logger.Debug("fetching MR metadata", "project", proj.Name)
+					mrs, mrErr := fc.Forge.ListMergeRequests(cmd.Context(), fc.ProjectID, forge.ListMergeRequestsOpts{})
+					if mrErr != nil {
+						opts.Logger.Warn("MR metadata fetch failed", "project", proj.Name, "error", mrErr)
+					} else if len(mrs) > 0 {
+						metadata := convertToMRMetadata(mrs, proj.Code.Forge)
+						if storeErr := cache.StoreMRMetadata(cloneURL, metadata); storeErr != nil {
+							opts.Logger.Warn("storing MR metadata failed", "project", proj.Name, "error", storeErr)
+						} else {
+							opts.Logger.Debug("stored MR metadata", "project", proj.Name, "count", len(metadata))
+						}
+					}
 				}
 			}
 
@@ -66,6 +97,20 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 	cmd.Flags().StringVar(&project, "project", "", "sync only this project")
 	return cmd
+}
+
+// convertToMRMetadata converts forge MergeRequests to port.MRMetadata entries.
+func convertToMRMetadata(mrs []forge.MergeRequest, forgeName string) []port.MRMetadata {
+	result := make([]port.MRMetadata, 0, len(mrs))
+	for _, mr := range mrs {
+		result = append(result, port.MRMetadata{
+			ID:     mr.ID,
+			State:  mr.State,
+			URL:    mr.URL,
+			GitRef: mrGitRef(forgeName, mr.ID),
+		})
+	}
+	return result
 }
 
 func newCacheClearCmd(opts *Options) *cobra.Command {

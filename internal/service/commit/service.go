@@ -28,11 +28,12 @@ type ForgeClient interface {
 
 // ListOptions controls filtering for List.
 type ListOptions struct {
-	Projects []string          // filter to these config project names (empty = all)
-	Forges   []forge.ForgeType // filter to these forge types (empty = all)
-	Branch   string            // branch to list commits from (empty = default)
-	Author   string            // filter by author
-	BugID    string            // filter to commits referencing this bug ID
+	Projects   []string          // filter to these config project names (empty = all)
+	Forges     []forge.ForgeType // filter to these forge types (empty = all)
+	Branch     string            // branch to list commits from (empty = default)
+	Author     string            // filter by author
+	BugID      string            // filter to commits referencing this bug ID
+	IncludeMRs bool              // include commits from merge request refs
 }
 
 // ProjectResult holds commits from one project, or an error.
@@ -119,6 +120,42 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.Commit, [
 		} else {
 			for i := range commits {
 				commits[i].Repo = name
+				// Commits from the branch are inherently merged.
+				if commits[i].MergeRequest == nil {
+					commits[i].MergeRequest = &forge.CommitMergeRequest{
+						State: forge.MergeStateMerged,
+					}
+				}
+			}
+
+			// Include MR commits if requested, with deduplication.
+			if opts.IncludeMRs {
+				mrCommits, mrErr := ps.Source.ListMRCommits(ctx)
+				if mrErr != nil {
+					s.logger.Warn("MR commit query failed", "project", name, "error", mrErr)
+				} else if len(mrCommits) > 0 {
+					// Build index of branch commits by SHA for annotation.
+					branchIdx := make(map[string]int, len(commits))
+					for i, c := range commits {
+						branchIdx[c.SHA] = i
+					}
+					for i := range mrCommits {
+						if idx, found := branchIdx[mrCommits[i].SHA]; found {
+							// Commit is on the branch — annotate as Merged with MR link.
+							if mrCommits[i].MergeRequest != nil {
+								commits[idx].MergeRequest = &forge.CommitMergeRequest{
+									ID:    mrCommits[i].MergeRequest.ID,
+									State: forge.MergeStateMerged,
+									URL:   mrCommits[i].MergeRequest.URL,
+								}
+							}
+							continue
+						}
+						mrCommits[i].Repo = name
+						commits = append(commits, mrCommits[i])
+					}
+					s.logger.Debug("MR commits included", "project", name, "mr_commit_count", len(mrCommits))
+				}
 			}
 
 			if opts.BugID != "" {

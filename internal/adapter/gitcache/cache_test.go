@@ -13,6 +13,7 @@ import (
 	"time"
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
 
 // setupTestRepo creates a temporary bare repo with some commits and returns its URL.
@@ -84,7 +85,7 @@ func TestCache_EnsureRepo_CloneAndList(t *testing.T) {
 	cloneURL := "file://" + bareRepo
 
 	// EnsureRepo should clone.
-	path, err := cache.EnsureRepo(ctx, cloneURL)
+	path, err := cache.EnsureRepo(ctx, cloneURL, nil)
 	if err != nil {
 		t.Fatalf("EnsureRepo() error: %v", err)
 	}
@@ -134,13 +135,13 @@ func TestCache_EnsureRepo_FetchExisting(t *testing.T) {
 	cloneURL := "file://" + bareRepo
 
 	// Clone first.
-	_, err := cache.EnsureRepo(ctx, cloneURL)
+	_, err := cache.EnsureRepo(ctx, cloneURL, nil)
 	if err != nil {
 		t.Fatalf("first EnsureRepo() error: %v", err)
 	}
 
 	// EnsureRepo again should fetch (not fail).
-	path, err := cache.EnsureRepo(ctx, cloneURL)
+	path, err := cache.EnsureRepo(ctx, cloneURL, nil)
 	if err != nil {
 		t.Fatalf("second EnsureRepo() error: %v", err)
 	}
@@ -158,7 +159,7 @@ func TestCache_ListCommits_SinceFilter(t *testing.T) {
 	ctx := context.Background()
 	cloneURL := "file://" + bareRepo
 
-	if _, err := cache.EnsureRepo(ctx, cloneURL); err != nil {
+	if _, err := cache.EnsureRepo(ctx, cloneURL, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -185,7 +186,7 @@ func TestCache_Remove(t *testing.T) {
 	ctx := context.Background()
 	cloneURL := "file://" + bareRepo
 
-	path, err := cache.EnsureRepo(ctx, cloneURL)
+	path, err := cache.EnsureRepo(ctx, cloneURL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +209,7 @@ func TestCache_RemoveAll(t *testing.T) {
 	ctx := context.Background()
 	cloneURL := "file://" + bareRepo
 
-	if _, err := cache.EnsureRepo(ctx, cloneURL); err != nil {
+	if _, err := cache.EnsureRepo(ctx, cloneURL, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -218,6 +219,122 @@ func TestCache_RemoveAll(t *testing.T) {
 
 	if _, err := os.Stat(cache.CacheDir()); !os.IsNotExist(err) {
 		t.Error("cache dir should have been removed")
+	}
+}
+
+func TestCache_StoreMRMetadata_RoundTrip(t *testing.T) {
+	bareRepo := setupTestRepo(t)
+	cacheDir := t.TempDir()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	cache := NewCache(filepath.Join(cacheDir, "repos"), logger)
+	ctx := context.Background()
+	cloneURL := "file://" + bareRepo
+
+	if _, err := cache.EnsureRepo(ctx, cloneURL, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Store metadata.
+	mrs := []port.MRMetadata{
+		{ID: "#42", State: forge.MergeStateOpen, URL: "https://github.com/org/repo/pull/42", HeadSHA: "abc123", GitRef: "refs/pull/42/head"},
+		{ID: "#43", State: forge.MergeStateMerged, URL: "https://github.com/org/repo/pull/43", HeadSHA: "def456", GitRef: "refs/pull/43/head"},
+	}
+	if err := cache.StoreMRMetadata(cloneURL, mrs); err != nil {
+		t.Fatalf("StoreMRMetadata() error: %v", err)
+	}
+
+	// Load and verify.
+	loaded, err := cache.LoadMRMetadata(cloneURL)
+	if err != nil {
+		t.Fatalf("LoadMRMetadata() error: %v", err)
+	}
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 MR metadata entries, got %d", len(loaded))
+	}
+	if loaded[0].ID != "#42" {
+		t.Errorf("first MR ID = %q, want %q", loaded[0].ID, "#42")
+	}
+	if loaded[0].State != forge.MergeStateOpen {
+		t.Errorf("first MR state = %v, want Open", loaded[0].State)
+	}
+	if loaded[1].State != forge.MergeStateMerged {
+		t.Errorf("second MR state = %v, want Merged", loaded[1].State)
+	}
+}
+
+func TestCache_LoadMRMetadata_NoFile(t *testing.T) {
+	bareRepo := setupTestRepo(t)
+	cacheDir := t.TempDir()
+
+	cache := NewCache(filepath.Join(cacheDir, "repos"), nil)
+	ctx := context.Background()
+	cloneURL := "file://" + bareRepo
+
+	if _, err := cache.EnsureRepo(ctx, cloneURL, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// No metadata file should return nil without error.
+	mrs, err := cache.LoadMRMetadata(cloneURL)
+	if err != nil {
+		t.Fatalf("LoadMRMetadata() error: %v", err)
+	}
+	if mrs != nil {
+		t.Errorf("expected nil, got %v", mrs)
+	}
+}
+
+func TestCache_ListMRCommits(t *testing.T) {
+	bareRepo := setupTestRepo(t)
+	cacheDir := t.TempDir()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	cache := NewCache(filepath.Join(cacheDir, "repos"), logger)
+	ctx := context.Background()
+	cloneURL := "file://" + bareRepo
+
+	if _, err := cache.EnsureRepo(ctx, cloneURL, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get a real commit SHA from the repo to use in MR metadata.
+	commits, err := cache.ListCommits(ctx, cloneURL, forge.ListCommitsOpts{Branch: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(commits) == 0 {
+		t.Fatal("no commits in test repo")
+	}
+	headSHA := commits[0].SHA
+
+	// Store MR metadata pointing to a real commit by SHA.
+	mrs := []port.MRMetadata{
+		{ID: "#1", State: forge.MergeStateOpen, URL: "https://example.com/pr/1", HeadSHA: headSHA},
+	}
+	if err := cache.StoreMRMetadata(cloneURL, mrs); err != nil {
+		t.Fatal(err)
+	}
+
+	// ListMRCommits should resolve the commit by SHA.
+	mrCommits, err := cache.ListMRCommits(ctx, cloneURL)
+	if err != nil {
+		t.Fatalf("ListMRCommits() error: %v", err)
+	}
+	if len(mrCommits) != 1 {
+		t.Fatalf("expected 1 MR commit, got %d", len(mrCommits))
+	}
+	if mrCommits[0].SHA != headSHA {
+		t.Errorf("MR commit SHA = %q, want %q", mrCommits[0].SHA, headSHA)
+	}
+	if mrCommits[0].MergeRequest == nil {
+		t.Fatal("MR commit should have MergeRequest annotation")
+	}
+	if mrCommits[0].MergeRequest.ID != "#1" {
+		t.Errorf("MR ID = %q, want %q", mrCommits[0].MergeRequest.ID, "#1")
+	}
+	if mrCommits[0].MergeRequest.State != forge.MergeStateOpen {
+		t.Errorf("MR state = %v, want Open", mrCommits[0].MergeRequest.State)
 	}
 }
 

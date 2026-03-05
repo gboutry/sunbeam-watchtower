@@ -14,8 +14,9 @@ import (
 
 // mockCommitSource implements CommitSource for testing.
 type mockCommitSource struct {
-	commits []forge.Commit
-	err     error
+	commits   []forge.Commit
+	mrCommits []forge.Commit
+	err       error
 }
 
 func (m *mockCommitSource) ListCommits(_ context.Context, opts forge.ListCommitsOpts) ([]forge.Commit, error) {
@@ -30,6 +31,10 @@ func (m *mockCommitSource) ListCommits(_ context.Context, opts forge.ListCommits
 		result = append(result, c)
 	}
 	return result, nil
+}
+
+func (m *mockCommitSource) ListMRCommits(_ context.Context) ([]forge.Commit, error) {
+	return m.mrCommits, nil
 }
 
 func TestService_List_Aggregation(t *testing.T) {
@@ -72,9 +77,15 @@ func TestService_List_Aggregation(t *testing.T) {
 	}
 
 	// Repo field should be set to project name.
+	// Branch commits should be annotated as Merged.
 	for _, c := range commits {
 		if c.Repo == "" {
 			t.Errorf("commit %s has empty Repo", c.SHA)
+		}
+		if c.MergeRequest == nil {
+			t.Errorf("commit %s should have MergeRequest annotation", c.SHA)
+		} else if c.MergeRequest.State != forge.MergeStateMerged {
+			t.Errorf("commit %s MergeRequest state = %v, want Merged", c.SHA, c.MergeRequest.State)
 		}
 	}
 
@@ -248,6 +259,124 @@ func TestNewServiceFromForges(t *testing.T) {
 	}
 	if len(commits) != 1 {
 		t.Fatalf("expected 1 commit, got %d", len(commits))
+	}
+}
+
+func TestService_List_IncludeMRs(t *testing.T) {
+	now := time.Now()
+	svc := NewService(map[string]ProjectSource{
+		"project": {
+			Source: &mockCommitSource{
+				commits: []forge.Commit{
+					{SHA: "aaa", Author: "alice", Date: now.Add(-1 * time.Hour), Message: "fix: thing"},
+				},
+				mrCommits: []forge.Commit{
+					{SHA: "bbb", Author: "bob", Date: now.Add(-30 * time.Minute), Message: "feat: new thing",
+						MergeRequest: &forge.CommitMergeRequest{ID: "#42", State: forge.MergeStateOpen, URL: "https://example.com/pr/42"}},
+				},
+			},
+			ForgeType: forge.ForgeGitHub,
+		},
+	}, nil)
+
+	commits, _, err := svc.List(context.Background(), ListOptions{IncludeMRs: true})
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(commits) != 2 {
+		t.Fatalf("expected 2 commits (1 branch + 1 MR), got %d", len(commits))
+	}
+
+	// Verify branch commit is Merged, MR commit has Open annotation.
+	for _, c := range commits {
+		if c.MergeRequest == nil {
+			t.Errorf("commit %s should have MergeRequest annotation", c.SHA)
+			continue
+		}
+		switch c.SHA {
+		case "aaa":
+			if c.MergeRequest.State != forge.MergeStateMerged {
+				t.Errorf("branch commit state = %v, want Merged", c.MergeRequest.State)
+			}
+		case "bbb":
+			if c.MergeRequest.ID != "#42" {
+				t.Errorf("MR commit ID = %q, want %q", c.MergeRequest.ID, "#42")
+			}
+			if c.MergeRequest.State != forge.MergeStateOpen {
+				t.Errorf("MR commit state = %v, want Open", c.MergeRequest.State)
+			}
+		}
+	}
+}
+
+func TestService_List_IncludeMRs_Dedup(t *testing.T) {
+	now := time.Now()
+	svc := NewService(map[string]ProjectSource{
+		"project": {
+			Source: &mockCommitSource{
+				commits: []forge.Commit{
+					{SHA: "aaa", Author: "alice", Date: now.Add(-1 * time.Hour), Message: "fix: thing"},
+				},
+				mrCommits: []forge.Commit{
+					// Same SHA as branch commit — should be annotated as Merged, not duplicated.
+					{SHA: "aaa", Author: "alice", Date: now.Add(-1 * time.Hour), Message: "fix: thing",
+						MergeRequest: &forge.CommitMergeRequest{ID: "#42", State: forge.MergeStateOpen, URL: "https://example.com/pr/42"}},
+					// Different SHA — should be included as-is.
+					{SHA: "bbb", Author: "bob", Date: now.Add(-30 * time.Minute), Message: "feat: new",
+						MergeRequest: &forge.CommitMergeRequest{ID: "#43", State: forge.MergeStateOpen, URL: "https://example.com/pr/43"}},
+				},
+			},
+			ForgeType: forge.ForgeGitHub,
+		},
+	}, nil)
+
+	commits, _, err := svc.List(context.Background(), ListOptions{IncludeMRs: true})
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(commits) != 2 {
+		t.Fatalf("expected 2 commits (branch annotated + new MR), got %d", len(commits))
+	}
+
+	// The branch commit (aaa) should be annotated as Merged with the MR link.
+	for _, c := range commits {
+		if c.SHA == "aaa" {
+			if c.MergeRequest == nil {
+				t.Fatal("branch commit 'aaa' should have MergeRequest annotation")
+			}
+			if c.MergeRequest.State != forge.MergeStateMerged {
+				t.Errorf("branch commit 'aaa' MR state = %v, want Merged", c.MergeRequest.State)
+			}
+			if c.MergeRequest.ID != "#42" {
+				t.Errorf("branch commit 'aaa' MR ID = %q, want %q", c.MergeRequest.ID, "#42")
+			}
+			if c.MergeRequest.URL != "https://example.com/pr/42" {
+				t.Errorf("branch commit 'aaa' MR URL = %q, want %q", c.MergeRequest.URL, "https://example.com/pr/42")
+			}
+		}
+	}
+}
+
+func TestService_List_IncludeMRs_Disabled(t *testing.T) {
+	svc := NewService(map[string]ProjectSource{
+		"project": {
+			Source: &mockCommitSource{
+				commits: []forge.Commit{
+					{SHA: "aaa", Message: "fix: thing"},
+				},
+				mrCommits: []forge.Commit{
+					{SHA: "bbb", Message: "feat: new",
+						MergeRequest: &forge.CommitMergeRequest{ID: "#42", State: forge.MergeStateOpen}},
+				},
+			},
+			ForgeType: forge.ForgeGitHub,
+		},
+	}, nil)
+
+	// Without IncludeMRs, MR commits should not appear.
+	commits, _, _ := svc.List(context.Background(), ListOptions{})
+	if len(commits) != 1 {
+		t.Fatalf("expected 1 commit (MRs disabled), got %d", len(commits))
 	}
 }
 

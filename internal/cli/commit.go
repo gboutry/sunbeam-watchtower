@@ -20,10 +20,11 @@ func newCommitCmd(opts *Options) *cobra.Command {
 
 func newCommitLogCmd(opts *Options) *cobra.Command {
 	var (
-		projects []string
-		forges   []string
-		branch   string
-		author   string
+		projects   []string
+		forges     []string
+		branch     string
+		author     string
+		includeMRs bool
 	)
 
 	cmd := &cobra.Command{
@@ -35,6 +36,7 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 				"forges", forges,
 				"branch", branch,
 				"author", author,
+				"include_mrs", includeMRs,
 			)
 			sources, err := buildCommitSources(opts)
 			if err != nil {
@@ -44,9 +46,10 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 			svc := commit.NewService(sources, opts.Logger)
 
 			listOpts := commit.ListOptions{
-				Projects: projects,
-				Branch:   branch,
-				Author:   author,
+				Projects:   projects,
+				Branch:     branch,
+				Author:     author,
+				IncludeMRs: includeMRs,
 			}
 
 			for _, f := range forges {
@@ -77,16 +80,18 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&forges, "forge", nil, "filter by forge type: github, launchpad, gerrit (repeatable)")
 	cmd.Flags().StringVar(&branch, "branch", "", "branch to list commits from")
 	cmd.Flags().StringVar(&author, "author", "", "filter by author")
+	cmd.Flags().BoolVar(&includeMRs, "include-mrs", false, "include commits from merge request refs")
 
 	return cmd
 }
 
 func newCommitTrackCmd(opts *Options) *cobra.Command {
 	var (
-		bugID    string
-		projects []string
-		forges   []string
-		branch   string
+		bugID      string
+		projects   []string
+		forges     []string
+		branch     string
+		includeMRs bool
 	)
 
 	cmd := &cobra.Command{
@@ -106,9 +111,10 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 			svc := commit.NewService(sources, opts.Logger)
 
 			listOpts := commit.ListOptions{
-				Projects: projects,
-				Branch:   branch,
-				BugID:    bugID,
+				Projects:   projects,
+				Branch:     branch,
+				BugID:      bugID,
+				IncludeMRs: includeMRs,
 			}
 
 			for _, f := range forges {
@@ -138,6 +144,7 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")
 	cmd.Flags().StringSliceVar(&forges, "forge", nil, "filter by forge type: github, launchpad, gerrit (repeatable)")
 	cmd.Flags().StringVar(&branch, "branch", "", "branch to list commits from")
+	cmd.Flags().BoolVar(&includeMRs, "include-mrs", false, "include commits from merge request refs")
 
 	return cmd
 }
