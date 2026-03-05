@@ -119,6 +119,7 @@ func (l *LaunchpadBugTracker) GetProject(ctx context.Context, projectName string
 	}
 	return &Project{
 		Name:                 p.Name,
+		SelfLink:             p.SelfLink,
 		DevelopmentFocusLink: p.DevelopmentFocusLink,
 	}, nil
 }

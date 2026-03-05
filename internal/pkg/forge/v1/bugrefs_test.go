@@ -11,37 +11,42 @@ func TestExtractBugRefs(t *testing.T) {
 	tests := []struct {
 		name    string
 		message string
-		want    []string
+		want    []BugRef
 	}{
 		{
 			name:    "LP colon format",
 			message: "Fix crash on startup\n\nLP: #12345",
-			want:    []string{"12345"},
+			want:    []BugRef{{ID: "12345", Type: BugRefCloses}},
 		},
 		{
 			name:    "Closes-Bug format",
 			message: "Closes-Bug: #67890\n\nSome description",
-			want:    []string{"67890"},
+			want:    []BugRef{{ID: "67890", Type: BugRefCloses}},
 		},
 		{
 			name:    "Partial-Bug format",
 			message: "Partial-Bug: 11111",
-			want:    []string{"11111"},
+			want:    []BugRef{{ID: "11111", Type: BugRefPartial}},
 		},
 		{
 			name:    "Related-Bug format",
 			message: "Related-Bug: #22222",
-			want:    []string{"22222"},
+			want:    []BugRef{{ID: "22222", Type: BugRefRelated}},
 		},
 		{
-			name:    "multiple bugs",
+			name:    "multiple bugs different types",
 			message: "LP: #100\nCloses-Bug: #200\nPartial-Bug: #300",
-			want:    []string{"100", "200", "300"},
+			want:    []BugRef{{ID: "100", Type: BugRefCloses}, {ID: "200", Type: BugRefCloses}, {ID: "300", Type: BugRefPartial}},
 		},
 		{
-			name:    "duplicate deduplication",
-			message: "LP: #100\nLP: #100",
-			want:    []string{"100"},
+			name:    "duplicate deduplication strongest wins",
+			message: "Related-Bug: #100\nCloses-Bug: #100",
+			want:    []BugRef{{ID: "100", Type: BugRefCloses}},
+		},
+		{
+			name:    "partial then closes promotes to closes",
+			message: "Partial-Bug: #100\nLP: #100",
+			want:    []BugRef{{ID: "100", Type: BugRefCloses}},
 		},
 		{
 			name:    "no bugs",
@@ -51,7 +56,7 @@ func TestExtractBugRefs(t *testing.T) {
 		{
 			name:    "case insensitive",
 			message: "closes-bug: #555\nRELATED-BUG: #666",
-			want:    []string{"555", "666"},
+			want:    []BugRef{{ID: "555", Type: BugRefCloses}, {ID: "666", Type: BugRefRelated}},
 		},
 		{
 			name:    "LP with multiple spaces",
@@ -61,7 +66,7 @@ func TestExtractBugRefs(t *testing.T) {
 		{
 			name:    "LP single space",
 			message: "LP: #999",
-			want:    []string{"999"},
+			want:    []BugRef{{ID: "999", Type: BugRefCloses}},
 		},
 	}
 
@@ -72,8 +77,11 @@ func TestExtractBugRefs(t *testing.T) {
 				t.Fatalf("ExtractBugRefs() = %v, want %v", got, tt.want)
 			}
 			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("ExtractBugRefs()[%d] = %q, want %q", i, got[i], tt.want[i])
+				if got[i].ID != tt.want[i].ID {
+					t.Errorf("ExtractBugRefs()[%d].ID = %q, want %q", i, got[i].ID, tt.want[i].ID)
+				}
+				if got[i].Type != tt.want[i].Type {
+					t.Errorf("ExtractBugRefs()[%d].Type = %d, want %d", i, got[i].Type, tt.want[i].Type)
 				}
 			}
 		})

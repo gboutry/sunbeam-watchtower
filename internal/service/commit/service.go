@@ -184,7 +184,7 @@ func filterByBugRef(commits []forge.Commit, bugID string) []forge.Commit {
 	var filtered []forge.Commit
 	for _, c := range commits {
 		for _, ref := range c.BugRefs {
-			if ref == bugID {
+			if ref.ID == bugID {
 				filtered = append(filtered, c)
 				break
 			}

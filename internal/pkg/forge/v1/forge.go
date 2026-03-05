@@ -153,7 +153,7 @@ type Commit struct {
 	Author       string
 	Date         time.Time
 	URL          string
-	BugRefs      []string             // extracted LP bug references (LP: #NNNNN, etc.)
+	BugRefs      []BugRef              // extracted LP bug references with type
 	MergeRequest *CommitMergeRequest  // non-nil if commit comes from a merge request ref
 }
 

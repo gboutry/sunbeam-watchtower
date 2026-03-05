@@ -275,7 +275,7 @@ func TestGitHubForge_ListCommits(t *testing.T) {
 	if commits[0].Author != "Alice" {
 		t.Errorf("Author = %q", commits[0].Author)
 	}
-	if len(commits[0].BugRefs) != 1 || commits[0].BugRefs[0] != "12345" {
+	if len(commits[0].BugRefs) != 1 || commits[0].BugRefs[0].ID != "12345" {
 		t.Errorf("BugRefs = %v", commits[0].BugRefs)
 	}
 	if commits[0].Forge != ForgeGitHub {

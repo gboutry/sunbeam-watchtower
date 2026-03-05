@@ -162,9 +162,9 @@ func TestService_List_FilterByBugID(t *testing.T) {
 		"project": {
 			Source: &mockCommitSource{
 				commits: []forge.Commit{
-					{SHA: "aaa", Message: "fix: LP: #12345", BugRefs: []string{"12345"}},
+					{SHA: "aaa", Message: "fix: LP: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
 					{SHA: "bbb", Message: "feat: new thing", BugRefs: nil},
-					{SHA: "ccc", Message: "fix: LP: #12345 and LP: #99999", BugRefs: []string{"12345", "99999"}},
+					{SHA: "ccc", Message: "fix: LP: #12345 and LP: #99999", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}, {ID: "99999", Type: forge.BugRefCloses}}},
 				},
 			},
 			ForgeType: forge.ForgeGitHub,
@@ -234,7 +234,7 @@ func TestService_List_BugIDNoMatch(t *testing.T) {
 		"project": {
 			Source: &mockCommitSource{
 				commits: []forge.Commit{
-					{SHA: "aaa", Message: "unrelated fix", BugRefs: []string{"99999"}},
+					{SHA: "aaa", Message: "unrelated fix", BugRefs: []forge.BugRef{{ID: "99999", Type: forge.BugRefCloses}}},
 				},
 			},
 			ForgeType: forge.ForgeGitHub,

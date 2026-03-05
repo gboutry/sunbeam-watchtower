@@ -73,6 +73,40 @@ type BuildConfig struct {
 	ArtifactsDir   string `mapstructure:"artifacts_dir" yaml:"artifacts_dir"`
 }
 
+// DistroSourceConfig represents an APT mirror with suites and components.
+type DistroSourceConfig struct {
+	Mirror     string   `mapstructure:"mirror" yaml:"mirror"`
+	Suites     []string `mapstructure:"suites" yaml:"suites"`
+	Components []string `mapstructure:"components" yaml:"components"`
+}
+
+// DistroConfig defines an APT distribution (e.g. Ubuntu, Debian).
+type DistroConfig struct {
+	Mirror     string   `mapstructure:"mirror" yaml:"mirror"`
+	Suites     []string `mapstructure:"suites" yaml:"suites"`
+	Components []string `mapstructure:"components" yaml:"components"`
+}
+
+// BackportConfig defines a backport source group (e.g. UCA, OSBPO).
+type BackportConfig struct {
+	Sources []DistroSourceConfig `mapstructure:"sources" yaml:"sources"`
+}
+
+// UpstreamConfig configures an upstream version provider.
+type UpstreamConfig struct {
+	Provider         string `mapstructure:"provider" yaml:"provider"`
+	ReleasesRepo     string `mapstructure:"releases_repo" yaml:"releases_repo,omitempty"`
+	RequirementsRepo string `mapstructure:"requirements_repo" yaml:"requirements_repo,omitempty"`
+}
+
+// PackagesConfig holds configuration for the packages subcommand.
+type PackagesConfig struct {
+	Distros   map[string]DistroConfig  `mapstructure:"distros" yaml:"distros,omitempty"`
+	Backports map[string]BackportConfig `mapstructure:"backports" yaml:"backports,omitempty"`
+	Sets      map[string][]string      `mapstructure:"sets" yaml:"sets,omitempty"`
+	Upstream  *UpstreamConfig          `mapstructure:"upstream" yaml:"upstream,omitempty"`
+}
+
 // Config is the top-level configuration.
 type Config struct {
 	Launchpad LaunchpadConfig `mapstructure:"launchpad" yaml:"launchpad"`
@@ -80,6 +114,7 @@ type Config struct {
 	Gerrit    GerritConfig    `mapstructure:"gerrit" yaml:"gerrit"`
 	Projects  []ProjectConfig `mapstructure:"projects" yaml:"projects"`
 	Build     BuildConfig     `mapstructure:"build" yaml:"build"`
+	Packages  PackagesConfig  `mapstructure:"packages" yaml:"packages,omitempty"`
 }
 
 // Load reads configuration from the given path. If configPath is empty,
@@ -179,6 +214,14 @@ func (c *Config) Validate() error {
 			if !found {
 				return fmt.Errorf("projects[%d] (%s): development_focus %q must be one of the declared series", i, p.Name, p.DevelopmentFocus)
 			}
+		}
+	}
+	if c.Packages.Upstream != nil {
+		if c.Packages.Upstream.Provider == "" {
+			return fmt.Errorf("packages.upstream: provider is required")
+		}
+		if c.Packages.Upstream.Provider == "openstack" && c.Packages.Upstream.ReleasesRepo == "" {
+			return fmt.Errorf("packages.upstream: releases_repo is required for openstack provider")
 		}
 	}
 	return nil

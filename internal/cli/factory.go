@@ -10,8 +10,10 @@ import (
 	"github.com/andygrunwald/go-gerrit"
 	"github.com/google/go-github/v68/github"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/distrocache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/gitcache"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/launchpad"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/openstack"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/internal/pkg/launchpad/v1"
@@ -232,6 +234,30 @@ func buildRepoManager(opts *Options) (port.RepoManager, error) {
 	return lpadapter.NewRepoManager(lpClient, opts.Logger), nil
 }
 
+// buildUpstreamProvider creates an UpstreamProvider from config, or returns nil
+// if upstream is not configured.
+func buildUpstreamProvider(opts *Options) (port.UpstreamProvider, error) {
+	cfg := opts.Config
+	if cfg == nil || cfg.Packages.Upstream == nil {
+		return nil, nil
+	}
+
+	up := cfg.Packages.Upstream
+	if up.Provider != "openstack" {
+		return nil, fmt.Errorf("unsupported upstream provider %q", up.Provider)
+	}
+
+	upDir, err := upstreamCacheDir()
+	if err != nil {
+		return nil, err
+	}
+
+	releasesDir := upstreamRepoPath(upDir, up.ReleasesRepo)
+	requirementsDir := upstreamRepoPath(upDir, up.RequirementsRepo)
+
+	return openstack.NewProvider(releasesDir, requirementsDir), nil
+}
+
 // resolveCacheDir returns the cache directory for sunbeam-watchtower.
 // It uses $XDG_CACHE_HOME/sunbeam-watchtower if set, otherwise ~/.cache/sunbeam-watchtower.
 func resolveCacheDir() (string, error) {
@@ -244,6 +270,15 @@ func resolveCacheDir() (string, error) {
 		base = filepath.Join(home, ".cache")
 	}
 	return filepath.Join(base, "sunbeam-watchtower"), nil
+}
+
+// buildDistroCache creates a distro cache instance backed by bbolt.
+func buildDistroCache(opts *Options) (*distrocache.Cache, error) {
+	cacheDir, err := resolveCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	return distrocache.NewCache(filepath.Join(cacheDir, "distro"), opts.Logger)
 }
 
 // buildGitCache creates a shared git cache instance.

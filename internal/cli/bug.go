@@ -139,7 +139,17 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("no bug tracker configured")
 			}
 
-			svc := bugsync.NewService(sources, tracker, lpProjects, opts.Logger)
+			// Build watchtower project → LP bug project mapping.
+			lpProjectMap := make(map[string][]string)
+			for _, proj := range opts.Config.Projects {
+				for _, b := range proj.Bugs {
+					if b.Forge == "launchpad" {
+						lpProjectMap[proj.Name] = append(lpProjectMap[proj.Name], b.Project)
+					}
+				}
+			}
+
+			svc := bugsync.NewService(sources, tracker, lpProjects, lpProjectMap, opts.Logger)
 			syncOpts := bugsync.SyncOptions{
 				Projects: projects,
 				DryRun:   dryRun,
@@ -166,6 +176,12 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 						fmt.Fprintf(opts.Out, "would assign: Bug #%s to series %q on project %q\n", a.BugID, a.Series, a.Project)
 					} else {
 						fmt.Fprintf(opts.Out, "assigned: Bug #%s to series %q on project %q\n", a.BugID, a.Series, a.Project)
+					}
+				case bugsync.ActionAddProjectTask:
+					if dryRun {
+						fmt.Fprintf(opts.Out, "would add: Bug #%s task on project %q\n", a.BugID, a.Project)
+					} else {
+						fmt.Fprintf(opts.Out, "added: Bug #%s task on project %q\n", a.BugID, a.Project)
 					}
 				}
 			}

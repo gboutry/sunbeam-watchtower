@@ -387,6 +387,84 @@ func TestValidate_ProjectDevelopmentFocusInSeries(t *testing.T) {
 	}
 }
 
+func TestLoad_UpstreamConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+
+	yaml := `
+packages:
+  upstream:
+    provider: openstack
+    releases_repo: https://opendev.org/openstack/releases
+    requirements_repo: https://opendev.org/openstack/requirements
+  distros:
+    ubuntu:
+      mirror: http://archive.ubuntu.com/ubuntu
+      suites: [noble]
+      components: [main]
+`
+	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.Packages.Upstream == nil {
+		t.Fatal("Packages.Upstream should not be nil")
+	}
+	if cfg.Packages.Upstream.Provider != "openstack" {
+		t.Errorf("Upstream.Provider = %q, want %q", cfg.Packages.Upstream.Provider, "openstack")
+	}
+	if cfg.Packages.Upstream.ReleasesRepo != "https://opendev.org/openstack/releases" {
+		t.Errorf("Upstream.ReleasesRepo = %q, want %q", cfg.Packages.Upstream.ReleasesRepo, "https://opendev.org/openstack/releases")
+	}
+	if cfg.Packages.Upstream.RequirementsRepo != "https://opendev.org/openstack/requirements" {
+		t.Errorf("Upstream.RequirementsRepo = %q, want %q", cfg.Packages.Upstream.RequirementsRepo, "https://opendev.org/openstack/requirements")
+	}
+	if len(cfg.Packages.Distros) != 1 {
+		t.Errorf("len(Packages.Distros) = %d, want 1", len(cfg.Packages.Distros))
+	}
+}
+
+func TestValidate_UpstreamMissingProvider(t *testing.T) {
+	cfg := &Config{
+		Packages: PackagesConfig{
+			Upstream: &UpstreamConfig{},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should error for upstream missing provider")
+	}
+}
+
+func TestValidate_UpstreamOpenstackMissingReleasesRepo(t *testing.T) {
+	cfg := &Config{
+		Packages: PackagesConfig{
+			Upstream: &UpstreamConfig{Provider: "openstack"},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() should error for openstack provider missing releases_repo")
+	}
+}
+
+func TestValidate_UpstreamValid(t *testing.T) {
+	cfg := &Config{
+		Packages: PackagesConfig{
+			Upstream: &UpstreamConfig{
+				Provider:     "openstack",
+				ReleasesRepo: "https://opendev.org/openstack/releases",
+			},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() error: %v", err)
+	}
+}
+
 func TestValidate_EmptyConfig(t *testing.T) {
 	cfg := &Config{}
 	if err := cfg.Validate(); err != nil {

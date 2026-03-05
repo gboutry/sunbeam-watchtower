@@ -49,6 +49,7 @@ type ProjectSeries struct {
 // Project is a forge-agnostic project.
 type Project struct {
 	Name                 string
+	SelfLink             string
 	DevelopmentFocusLink string
 }
 

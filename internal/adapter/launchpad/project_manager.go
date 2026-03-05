@@ -28,6 +28,7 @@ func (m *ProjectManager) GetProject(ctx context.Context, projectName string) (*f
 	}
 	return &forge.Project{
 		Name:                 p.Name,
+		SelfLink:             p.SelfLink,
 		DevelopmentFocusLink: p.DevelopmentFocusLink,
 	}, nil
 }

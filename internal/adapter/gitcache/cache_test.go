@@ -114,7 +114,7 @@ func TestCache_EnsureRepo_CloneAndList(t *testing.T) {
 	allBugRefs := make(map[string]bool)
 	for _, c := range commits {
 		for _, ref := range c.BugRefs {
-			allBugRefs[ref] = true
+			allBugRefs[ref.ID] = true
 		}
 	}
 	if !allBugRefs["12345"] {

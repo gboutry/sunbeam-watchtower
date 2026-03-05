@@ -41,6 +41,7 @@ type mockBugTracker struct {
 	updatedTasks    []taskUpdate
 	assignments     []assignment
 	project         *forge.Project
+	projects        map[string]*forge.Project // per-project override
 	series          []forge.ProjectSeries
 	recentBugTasks  []forge.BugTask // returned by ListBugTasks when CreatedSince is set
 	updateErr       error
@@ -94,21 +95,26 @@ func (m *mockBugTracker) GetProjectSeries(_ context.Context, _ string) ([]forge.
 	return m.series, nil
 }
 
-func (m *mockBugTracker) GetProject(_ context.Context, _ string) (*forge.Project, error) {
+func (m *mockBugTracker) GetProject(_ context.Context, name string) (*forge.Project, error) {
+	if m.projects != nil {
+		if p, ok := m.projects[name]; ok {
+			return p, nil
+		}
+	}
 	if m.project == nil {
 		return nil, fmt.Errorf("project not found")
 	}
 	return m.project, nil
 }
 
-func TestSync_StatusUpdate(t *testing.T) {
+func TestSync_StatusUpdate_ClosesBug(t *testing.T) {
 	sources := map[string]commit.ProjectSource{
 		"my-project": {
 			Source: &mockCommitSource{
 				branches: []string{"main"},
 				commits: map[string][]forge.Commit{
 					"main": {
-						{SHA: "aaa", Message: "fix: LP: #12345", BugRefs: []string{"12345"}},
+						{SHA: "aaa", Message: "fix: Closes-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
 					},
 				},
 			},
@@ -135,17 +141,18 @@ func TestSync_StatusUpdate(t *testing.T) {
 		},
 		project: &forge.Project{
 			Name:                 "sunbeam",
+			SelfLink:             "https://api.launchpad.net/devel/sunbeam",
 			DevelopmentFocusLink: "https://api.launchpad.net/devel/sunbeam/trunk",
 		},
 	}
 
-	svc := NewService(sources, tracker, nil, nil)
+	svc := NewService(sources, tracker, nil, nil, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
 	}
 
-	// Should have updated the task status.
+	// Should have updated the task status to Fix Committed.
 	statusActions := 0
 	for _, a := range result.Actions {
 		if a.ActionType == ActionStatusUpdate {
@@ -170,101 +177,14 @@ func TestSync_StatusUpdate(t *testing.T) {
 	}
 }
 
-func TestSync_SkipFixReleased(t *testing.T) {
+func TestSync_PartialBug_SetsInProgress(t *testing.T) {
 	sources := map[string]commit.ProjectSource{
 		"my-project": {
 			Source: &mockCommitSource{
 				branches: []string{"main"},
 				commits: map[string][]forge.Commit{
 					"main": {
-						{SHA: "aaa", Message: "fix: LP: #12345", BugRefs: []string{"12345"}},
-					},
-				},
-			},
-			ForgeType: forge.ForgeLaunchpad,
-		},
-	}
-
-	tracker := &mockBugTracker{
-		bugs: map[string]*forge.Bug{
-			"12345": {
-				ID: "12345",
-				Tasks: []forge.BugTask{
-					{
-						BugID:    "12345",
-						Title:    "Bug #12345 in sunbeam: test",
-						Status:   "Fix Released",
-						SelfLink: "https://api.launchpad.net/devel/sunbeam/+bug/12345",
-					},
-				},
-			},
-		},
-	}
-
-	svc := NewService(sources, tracker, nil, nil)
-	result, err := svc.Sync(context.Background(), SyncOptions{})
-	if err != nil {
-		t.Fatalf("Sync() error: %v", err)
-	}
-
-	if result.Skipped != 1 {
-		t.Errorf("expected 1 skipped, got %d", result.Skipped)
-	}
-	if len(tracker.updatedTasks) != 0 {
-		t.Errorf("expected no updates, got %d", len(tracker.updatedTasks))
-	}
-}
-
-func TestSync_SkipFixCommitted(t *testing.T) {
-	sources := map[string]commit.ProjectSource{
-		"my-project": {
-			Source: &mockCommitSource{
-				branches: []string{"main"},
-				commits: map[string][]forge.Commit{
-					"main": {
-						{SHA: "aaa", Message: "fix: LP: #12345", BugRefs: []string{"12345"}},
-					},
-				},
-			},
-			ForgeType: forge.ForgeLaunchpad,
-		},
-	}
-
-	tracker := &mockBugTracker{
-		bugs: map[string]*forge.Bug{
-			"12345": {
-				ID: "12345",
-				Tasks: []forge.BugTask{
-					{
-						BugID:    "12345",
-						Title:    "Bug #12345 in sunbeam: test",
-						Status:   "Fix Committed",
-						SelfLink: "https://api.launchpad.net/devel/sunbeam/+bug/12345",
-					},
-				},
-			},
-		},
-	}
-
-	svc := NewService(sources, tracker, nil, nil)
-	result, err := svc.Sync(context.Background(), SyncOptions{})
-	if err != nil {
-		t.Fatalf("Sync() error: %v", err)
-	}
-
-	if result.Skipped != 1 {
-		t.Errorf("expected 1 skipped, got %d", result.Skipped)
-	}
-}
-
-func TestSync_DryRun(t *testing.T) {
-	sources := map[string]commit.ProjectSource{
-		"my-project": {
-			Source: &mockCommitSource{
-				branches: []string{"main"},
-				commits: map[string][]forge.Commit{
-					"main": {
-						{SHA: "aaa", Message: "fix: LP: #12345", BugRefs: []string{"12345"}},
+						{SHA: "aaa", Message: "Partial-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefPartial}}},
 					},
 				},
 			},
@@ -289,11 +209,203 @@ func TestSync_DryRun(t *testing.T) {
 		},
 		project: &forge.Project{
 			Name:                 "sunbeam",
+			SelfLink:             "https://api.launchpad.net/devel/sunbeam",
 			DevelopmentFocusLink: "https://api.launchpad.net/devel/sunbeam/trunk",
 		},
 	}
 
-	svc := NewService(sources, tracker, nil, nil)
+	svc := NewService(sources, tracker, nil, nil, nil)
+	result, err := svc.Sync(context.Background(), SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error: %v", err)
+	}
+
+	statusActions := 0
+	for _, a := range result.Actions {
+		if a.ActionType == ActionStatusUpdate {
+			statusActions++
+			if a.NewStatus != "In Progress" {
+				t.Errorf("NewStatus = %q, want In Progress", a.NewStatus)
+			}
+		}
+	}
+	if statusActions != 1 {
+		t.Errorf("expected 1 status update (In Progress), got %d", statusActions)
+	}
+
+	if len(tracker.updatedTasks) != 1 {
+		t.Fatalf("expected 1 task update, got %d", len(tracker.updatedTasks))
+	}
+	if tracker.updatedTasks[0].Status != "In Progress" {
+		t.Errorf("updated status = %q, want In Progress", tracker.updatedTasks[0].Status)
+	}
+}
+
+func TestSync_RelatedBug_Skipped(t *testing.T) {
+	sources := map[string]commit.ProjectSource{
+		"my-project": {
+			Source: &mockCommitSource{
+				branches: []string{"main"},
+				commits: map[string][]forge.Commit{
+					"main": {
+						{SHA: "aaa", Message: "Related-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefRelated}}},
+					},
+				},
+			},
+			ForgeType: forge.ForgeLaunchpad,
+		},
+	}
+
+	tracker := &mockBugTracker{
+		bugs: map[string]*forge.Bug{
+			"12345": {
+				ID: "12345",
+				Tasks: []forge.BugTask{
+					{BugID: "12345", Status: "New", SelfLink: "link"},
+				},
+			},
+		},
+	}
+
+	svc := NewService(sources, tracker, nil, nil, nil)
+	result, err := svc.Sync(context.Background(), SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error: %v", err)
+	}
+
+	if result.Skipped != 1 {
+		t.Errorf("expected 1 skipped (Related-Bug), got %d", result.Skipped)
+	}
+	if len(tracker.updatedTasks) != 0 {
+		t.Errorf("expected no updates for Related-Bug, got %d", len(tracker.updatedTasks))
+	}
+}
+
+func TestSync_SkipFixReleased(t *testing.T) {
+	sources := map[string]commit.ProjectSource{
+		"my-project": {
+			Source: &mockCommitSource{
+				branches: []string{"main"},
+				commits: map[string][]forge.Commit{
+					"main": {
+						{SHA: "aaa", Message: "Closes-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
+					},
+				},
+			},
+			ForgeType: forge.ForgeLaunchpad,
+		},
+	}
+
+	tracker := &mockBugTracker{
+		bugs: map[string]*forge.Bug{
+			"12345": {
+				ID: "12345",
+				Tasks: []forge.BugTask{
+					{
+						BugID:    "12345",
+						Title:    "Bug #12345 in sunbeam: test",
+						Status:   "Fix Released",
+						SelfLink: "https://api.launchpad.net/devel/sunbeam/+bug/12345",
+					},
+				},
+			},
+		},
+	}
+
+	svc := NewService(sources, tracker, nil, nil, nil)
+	result, err := svc.Sync(context.Background(), SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error: %v", err)
+	}
+
+	if result.Skipped != 1 {
+		t.Errorf("expected 1 skipped, got %d", result.Skipped)
+	}
+	if len(tracker.updatedTasks) != 0 {
+		t.Errorf("expected no updates, got %d", len(tracker.updatedTasks))
+	}
+}
+
+func TestSync_SkipFixCommitted(t *testing.T) {
+	sources := map[string]commit.ProjectSource{
+		"my-project": {
+			Source: &mockCommitSource{
+				branches: []string{"main"},
+				commits: map[string][]forge.Commit{
+					"main": {
+						{SHA: "aaa", Message: "Closes-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
+					},
+				},
+			},
+			ForgeType: forge.ForgeLaunchpad,
+		},
+	}
+
+	tracker := &mockBugTracker{
+		bugs: map[string]*forge.Bug{
+			"12345": {
+				ID: "12345",
+				Tasks: []forge.BugTask{
+					{
+						BugID:    "12345",
+						Title:    "Bug #12345 in sunbeam: test",
+						Status:   "Fix Committed",
+						SelfLink: "https://api.launchpad.net/devel/sunbeam/+bug/12345",
+					},
+				},
+			},
+		},
+	}
+
+	svc := NewService(sources, tracker, nil, nil, nil)
+	result, err := svc.Sync(context.Background(), SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error: %v", err)
+	}
+
+	if result.Skipped != 1 {
+		t.Errorf("expected 1 skipped, got %d", result.Skipped)
+	}
+}
+
+func TestSync_DryRun(t *testing.T) {
+	sources := map[string]commit.ProjectSource{
+		"my-project": {
+			Source: &mockCommitSource{
+				branches: []string{"main"},
+				commits: map[string][]forge.Commit{
+					"main": {
+						{SHA: "aaa", Message: "Closes-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
+					},
+				},
+			},
+			ForgeType: forge.ForgeLaunchpad,
+		},
+	}
+
+	tracker := &mockBugTracker{
+		bugs: map[string]*forge.Bug{
+			"12345": {
+				ID: "12345",
+				Tasks: []forge.BugTask{
+					{
+						BugID:      "12345",
+						Title:      "Bug #12345 in sunbeam: test",
+						Status:     "New",
+						SelfLink:   "https://api.launchpad.net/devel/sunbeam/+bug/12345",
+						TargetName: "sunbeam",
+					},
+				},
+			},
+		},
+		project: &forge.Project{
+			Name:                 "sunbeam",
+			SelfLink:             "https://api.launchpad.net/devel/sunbeam",
+			DevelopmentFocusLink: "https://api.launchpad.net/devel/sunbeam/trunk",
+		},
+	}
+
+	svc := NewService(sources, tracker, nil, nil, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{DryRun: true})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -318,10 +430,10 @@ func TestSync_MultipleBranches(t *testing.T) {
 				branches: []string{"main", "stable/2024.1"},
 				commits: map[string][]forge.Commit{
 					"main": {
-						{SHA: "aaa", Message: "fix: LP: #12345", BugRefs: []string{"12345"}},
+						{SHA: "aaa", Message: "Closes-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
 					},
 					"stable/2024.1": {
-						{SHA: "bbb", Message: "fix: LP: #12345", BugRefs: []string{"12345"}},
+						{SHA: "bbb", Message: "Closes-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
 					},
 				},
 			},
@@ -346,6 +458,7 @@ func TestSync_MultipleBranches(t *testing.T) {
 		},
 		project: &forge.Project{
 			Name:                 "sunbeam",
+			SelfLink:             "https://api.launchpad.net/devel/sunbeam",
 			DevelopmentFocusLink: "https://api.launchpad.net/devel/sunbeam/trunk",
 		},
 		series: []forge.ProjectSeries{
@@ -353,7 +466,7 @@ func TestSync_MultipleBranches(t *testing.T) {
 		},
 	}
 
-	svc := NewService(sources, tracker, nil, nil)
+	svc := NewService(sources, tracker, nil, nil, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -387,7 +500,7 @@ func TestSync_IgnoresIrrelevantBranches(t *testing.T) {
 				commits: map[string][]forge.Commit{
 					"main": {},
 					"feature/cool-thing": {
-						{SHA: "aaa", Message: "fix: LP: #12345", BugRefs: []string{"12345"}},
+						{SHA: "aaa", Message: "Closes-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
 					},
 				},
 			},
@@ -399,7 +512,7 @@ func TestSync_IgnoresIrrelevantBranches(t *testing.T) {
 		bugs: map[string]*forge.Bug{},
 	}
 
-	svc := NewService(sources, tracker, nil, nil)
+	svc := NewService(sources, tracker, nil, nil, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -427,7 +540,7 @@ func TestSync_NoBugRefs(t *testing.T) {
 
 	tracker := &mockBugTracker{}
 
-	svc := NewService(sources, tracker, nil, nil)
+	svc := NewService(sources, tracker, nil, nil, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -445,7 +558,7 @@ func TestSync_ProjectFilter(t *testing.T) {
 				branches: []string{"main"},
 				commits: map[string][]forge.Commit{
 					"main": {
-						{SHA: "aaa", Message: "fix: LP: #11111", BugRefs: []string{"11111"}},
+						{SHA: "aaa", Message: "Closes-Bug: #11111", BugRefs: []forge.BugRef{{ID: "11111", Type: forge.BugRefCloses}}},
 					},
 				},
 			},
@@ -456,7 +569,7 @@ func TestSync_ProjectFilter(t *testing.T) {
 				branches: []string{"main"},
 				commits: map[string][]forge.Commit{
 					"main": {
-						{SHA: "bbb", Message: "fix: LP: #22222", BugRefs: []string{"22222"}},
+						{SHA: "bbb", Message: "Closes-Bug: #22222", BugRefs: []forge.BugRef{{ID: "22222", Type: forge.BugRefCloses}}},
 					},
 				},
 			},
@@ -473,10 +586,10 @@ func TestSync_ProjectFilter(t *testing.T) {
 				},
 			},
 		},
-		project: &forge.Project{Name: "a", DevelopmentFocusLink: "https://api.launchpad.net/devel/a/trunk"},
+		project: &forge.Project{Name: "a", SelfLink: "https://api.launchpad.net/devel/a", DevelopmentFocusLink: "https://api.launchpad.net/devel/a/trunk"},
 	}
 
-	svc := NewService(sources, tracker, nil, nil)
+	svc := NewService(sources, tracker, nil, nil, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{Projects: []string{"project-a"}})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)
@@ -487,6 +600,133 @@ func TestSync_ProjectFilter(t *testing.T) {
 		if a.ActionType == ActionStatusUpdate && a.BugID == "22222" {
 			t.Error("should not have processed bug from project-b")
 		}
+	}
+}
+
+func TestSync_AddsMissingProjectTask(t *testing.T) {
+	sources := map[string]commit.ProjectSource{
+		"snap-openstack-hypervisor": {
+			Source: &mockCommitSource{
+				branches: []string{"main"},
+				commits: map[string][]forge.Commit{
+					"main": {
+						{SHA: "aaa", Message: "Closes-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefCloses}}},
+					},
+				},
+			},
+			ForgeType: forge.ForgeLaunchpad,
+		},
+	}
+
+	// Bug exists on "sunbeam" but not on "snap-openstack-hypervisor".
+	tracker := &mockBugTracker{
+		bugs: map[string]*forge.Bug{
+			"12345": {
+				ID: "12345",
+				Tasks: []forge.BugTask{
+					{
+						BugID:      "12345",
+						Title:      "Bug #12345 in sunbeam: test",
+						Status:     "New",
+						SelfLink:   "https://api.launchpad.net/devel/sunbeam/+bug/12345",
+						TargetName: "sunbeam",
+					},
+				},
+			},
+		},
+		projects: map[string]*forge.Project{
+			"sunbeam": {
+				Name:                 "sunbeam",
+				SelfLink:             "https://api.launchpad.net/devel/sunbeam",
+				DevelopmentFocusLink: "https://api.launchpad.net/devel/sunbeam/trunk",
+			},
+			"snap-openstack-hypervisor": {
+				Name:     "snap-openstack-hypervisor",
+				SelfLink: "https://api.launchpad.net/devel/snap-openstack-hypervisor",
+			},
+		},
+	}
+
+	// Map the watchtower project to its LP bug project.
+	lpProjectMap := map[string][]string{
+		"snap-openstack-hypervisor": {"snap-openstack-hypervisor"},
+	}
+
+	svc := NewService(sources, tracker, nil, lpProjectMap, nil)
+	result, err := svc.Sync(context.Background(), SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error: %v", err)
+	}
+
+	// Should have added a project task for snap-openstack-hypervisor.
+	addActions := 0
+	for _, a := range result.Actions {
+		if a.ActionType == ActionAddProjectTask {
+			addActions++
+			if a.Project != "snap-openstack-hypervisor" {
+				t.Errorf("added task on project %q, want snap-openstack-hypervisor", a.Project)
+			}
+		}
+	}
+	if addActions != 1 {
+		t.Errorf("expected 1 add_project_task action, got %d", addActions)
+	}
+
+	// Verify AddBugTask was called with the project self_link.
+	found := false
+	for _, a := range tracker.assignments {
+		if a.BugID == 12345 && a.SeriesSelfLink == "https://api.launchpad.net/devel/snap-openstack-hypervisor" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected AddBugTask call with snap-openstack-hypervisor self_link, assignments: %v", tracker.assignments)
+	}
+}
+
+func TestSync_DoesNotDowngradeFixCommitted(t *testing.T) {
+	sources := map[string]commit.ProjectSource{
+		"my-project": {
+			Source: &mockCommitSource{
+				branches: []string{"main"},
+				commits: map[string][]forge.Commit{
+					"main": {
+						{SHA: "aaa", Message: "Partial-Bug: #12345", BugRefs: []forge.BugRef{{ID: "12345", Type: forge.BugRefPartial}}},
+					},
+				},
+			},
+			ForgeType: forge.ForgeLaunchpad,
+		},
+	}
+
+	tracker := &mockBugTracker{
+		bugs: map[string]*forge.Bug{
+			"12345": {
+				ID: "12345",
+				Tasks: []forge.BugTask{
+					{
+						BugID:    "12345",
+						Title:    "Bug #12345",
+						Status:   "Fix Committed",
+						SelfLink: "link",
+					},
+				},
+			},
+		},
+	}
+
+	svc := NewService(sources, tracker, nil, nil, nil)
+	result, err := svc.Sync(context.Background(), SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error: %v", err)
+	}
+
+	// Partial-Bug should not downgrade Fix Committed to In Progress.
+	if result.Skipped != 1 {
+		t.Errorf("expected 1 skipped (Fix Committed > In Progress), got %d", result.Skipped)
+	}
+	if len(tracker.updatedTasks) != 0 {
+		t.Errorf("expected no updates (no downgrade), got %d", len(tracker.updatedTasks))
 	}
 }
 
@@ -538,8 +778,8 @@ func TestSync_SinceFiltersViaSearchTasks(t *testing.T) {
 				branches: []string{"main"},
 				commits: map[string][]forge.Commit{
 					"main": {
-						{SHA: "aaa", Message: "fix: LP: #11111", BugRefs: []string{"11111"}},
-						{SHA: "bbb", Message: "fix: LP: #22222", BugRefs: []string{"22222"}},
+						{SHA: "aaa", Message: "Closes-Bug: #11111", BugRefs: []forge.BugRef{{ID: "11111", Type: forge.BugRefCloses}}},
+						{SHA: "bbb", Message: "Closes-Bug: #22222", BugRefs: []forge.BugRef{{ID: "22222", Type: forge.BugRefCloses}}},
 					},
 				},
 			},
@@ -564,6 +804,7 @@ func TestSync_SinceFiltersViaSearchTasks(t *testing.T) {
 		},
 		project: &forge.Project{
 			Name:                 "sunbeam",
+			SelfLink:             "https://api.launchpad.net/devel/sunbeam",
 			DevelopmentFocusLink: "https://api.launchpad.net/devel/sunbeam/trunk",
 		},
 		// Only bug 11111 is returned by searchTasks (created recently).
@@ -573,7 +814,7 @@ func TestSync_SinceFiltersViaSearchTasks(t *testing.T) {
 	}
 
 	since := time.Now().AddDate(0, 0, -30)
-	svc := NewService(sources, tracker, []string{"sunbeam"}, nil)
+	svc := NewService(sources, tracker, []string{"sunbeam"}, nil, nil)
 	result, err := svc.Sync(context.Background(), SyncOptions{Since: &since})
 	if err != nil {
 		t.Fatalf("Sync() error: %v", err)

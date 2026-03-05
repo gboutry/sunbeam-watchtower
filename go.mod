@@ -8,7 +8,10 @@ require (
 	github.com/google/go-github/v68 v68.0.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	github.com/ulikunitz/xz v0.5.15
+	go.etcd.io/bbolt v1.4.3
 	gopkg.in/yaml.v3 v3.0.1
+	pault.ag/go/debian v0.19.0
 )
 
 require (

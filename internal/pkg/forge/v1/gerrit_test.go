@@ -289,8 +289,8 @@ func TestGerritChangeToCommit(t *testing.T) {
 	if commit.Author != "Bob" {
 		t.Errorf("Author = %q, want Bob", commit.Author)
 	}
-	if len(commit.BugRefs) != 1 || commit.BugRefs[0] != "12345" {
-		t.Errorf("BugRefs = %v, want [12345]", commit.BugRefs)
+	if len(commit.BugRefs) != 1 || commit.BugRefs[0].ID != "12345" {
+		t.Errorf("BugRefs = %v, want [{12345 Closes}]", commit.BugRefs)
 	}
 	if commit.URL != "https://review.opendev.org/c/openstack/nova/+/100" {
 		t.Errorf("URL = %q", commit.URL)

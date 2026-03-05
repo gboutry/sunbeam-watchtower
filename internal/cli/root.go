@@ -70,6 +70,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 	root.AddCommand(newBuildCmd(opts))
 	root.AddCommand(newCacheCmd(opts))
 	root.AddCommand(newProjectCmd(opts))
+	root.AddCommand(newPackagesCmd(opts))
 
 	return root
 }
