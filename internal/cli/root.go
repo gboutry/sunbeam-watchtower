@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/spf13/cobra"
@@ -21,6 +22,22 @@ type Options struct {
 	ErrOut     io.Writer
 }
 
+// envDefaults applies WATCHTOWER_* environment variables as defaults.
+func envDefaults(opts *Options) {
+	if v := os.Getenv("WATCHTOWER_CONFIG"); v != "" && opts.ConfigPath == "" {
+		opts.ConfigPath = v
+	}
+	if v := os.Getenv("WATCHTOWER_VERBOSE"); v != "" && !opts.Verbose {
+		opts.Verbose = strings.EqualFold(v, "true") || v == "1"
+	}
+	if v := os.Getenv("WATCHTOWER_OUTPUT"); v != "" && opts.Output == "table" {
+		opts.Output = v
+	}
+	if v := os.Getenv("WATCHTOWER_NO_COLOR"); v != "" && !opts.NoColor {
+		opts.NoColor = strings.EqualFold(v, "true") || v == "1"
+	}
+}
+
 // NewRootCmd creates the root watchtower command with all subcommands.
 func NewRootCmd(opts *Options) *cobra.Command {
 	if opts.Out == nil {
@@ -36,6 +53,9 @@ func NewRootCmd(opts *Options) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Apply env var defaults for flags not explicitly set.
+			envDefaults(opts)
+
 			// Skip config loading for commands that don't need it.
 			if cmd.Name() == "version" {
 				return nil
