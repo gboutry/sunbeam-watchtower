@@ -33,7 +33,7 @@ func newPackagesCmd(opts *Options) *cobra.Command {
 }
 
 func newPackagesDiffCmd(opts *Options) *cobra.Command {
-	var distros []string
+	var distros, backports []string
 	var suites, components []string
 	var merge bool
 	var release string
@@ -58,7 +58,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros)
+			sources := buildPackageSources(opts, distros, backports)
 			if len(sources) == 0 {
 				return fmt.Errorf("no distros configured")
 			}
@@ -147,6 +147,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
 	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite")
 	cmd.Flags().StringSliceVar(&components, "component", nil, "filter by component")
 	cmd.Flags().BoolVar(&merge, "merge", false, "merge suites per source into a single column showing highest version")
@@ -159,7 +160,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 }
 
 func newPackagesShowCmd(opts *Options) *cobra.Command {
-	var distros []string
+	var distros, backports []string
 	var merge bool
 	var release string
 
@@ -176,7 +177,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros)
+			sources := buildPackageSources(opts, distros, backports)
 			svc := pkg.NewService(cache, opts.Logger)
 
 			result, err := svc.Show(cmd.Context(), pkgName, sources)
@@ -199,6 +200,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
 	cmd.Flags().BoolVar(&merge, "merge", false, "merge suites per source into a single column showing highest version")
 	cmd.Flags().StringVar(&release, "release", "", "upstream release to compare against (e.g. 2025.1)")
 
@@ -352,11 +354,21 @@ func filterOnlyIn(results []pkg.DiffResult, sourceName string) []pkg.DiffResult 
 	return filtered
 }
 
-// buildPackageSources resolves --distro flags against config to produce source entries.
-// Backports are automatically included from each selected distro.
-func buildPackageSources(opts *Options, distros []string) []pkg.ProjectSource {
+// buildPackageSources resolves --distro and --backport flags against config to produce source entries.
+// Backports are nested under their parent distro. The backport filter selects which backports to include:
+//   - empty/nil: include all backports
+//   - ["none"]: skip all backports
+//   - ["gazpacho", "flamingo"]: include only those backports
+func buildPackageSources(opts *Options, distros, backports []string) []pkg.ProjectSource {
 	cfg := opts.Config.Packages
 	var sources []pkg.ProjectSource
+
+	bpFilter := make(map[string]bool, len(backports))
+	for _, bp := range backports {
+		bpFilter[bp] = true
+	}
+	skipAllBackports := bpFilter["none"]
+	filterBackports := len(bpFilter) > 0 && !skipAllBackports
 
 	// Resolve distros.
 	distroNames := distros
@@ -390,8 +402,16 @@ func buildPackageSources(opts *Options, distros []string) []pkg.ProjectSource {
 			Entries: entries,
 		})
 
+		if skipAllBackports {
+			continue
+		}
+
 		// Include backports belonging to this distro.
 		for bpName, bp := range d.Backports {
+			if filterBackports && !bpFilter[bpName] {
+				continue
+			}
+			qualifiedName := name + "/" + bpName
 			var bpEntries []port.SourceEntry
 			for _, src := range bp.Sources {
 				for _, suite := range src.Suites {
@@ -405,7 +425,7 @@ func buildPackageSources(opts *Options, distros []string) []pkg.ProjectSource {
 				}
 			}
 			sources = append(sources, pkg.ProjectSource{
-				Name:    bpName,
+				Name:    qualifiedName,
 				Entries: bpEntries,
 			})
 		}
@@ -656,7 +676,7 @@ func formatBytes(b int64) string {
 }
 
 func newPackagesDscCmd(opts *Options) *cobra.Command {
-	var distros []string
+	var distros, backports []string
 
 	cmd := &cobra.Command{
 		Use:   "dsc <pkg> <version> [<pkg> <version> ...]",
@@ -674,7 +694,7 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros)
+			sources := buildPackageSources(opts, distros, backports)
 			if len(sources) == 0 {
 				return fmt.Errorf("no distros configured")
 			}
@@ -698,6 +718,7 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
 
 	return cmd
 }
@@ -739,7 +760,7 @@ func renderDscTable(w io.Writer, results []pkg.DscResult) error {
 }
 
 func newPackagesRdependsCmd(opts *Options) *cobra.Command {
-	var distros []string
+	var distros, backports []string
 	var suites []string
 
 	cmd := &cobra.Command{
@@ -755,16 +776,16 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros)
+			sources := buildPackageSources(opts, distros, backports)
 			if len(sources) == 0 {
 				return fmt.Errorf("no distros configured")
 			}
 
 			// Collect the set of backport source names for suite annotation.
 			backportNames := make(map[string]bool)
-			for _, d := range opts.Config.Packages.Distros {
-				for name := range d.Backports {
-					backportNames[name] = true
+			for distroName, d := range opts.Config.Packages.Distros {
+				for bpName := range d.Backports {
+					backportNames[distroName+"/"+bpName] = true
 				}
 			}
 
@@ -779,8 +800,13 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 					return err
 				}
 				if backportNames[src.Name] {
+					// Extract backport name (after the "distro/" prefix).
+					bpLabel := src.Name
+					if idx := strings.Index(src.Name, "/"); idx >= 0 {
+						bpLabel = src.Name[idx+1:]
+					}
 					for i := range srcResults {
-						srcResults[i].Suite = srcResults[i].Suite + "/" + src.Name
+						srcResults[i].Suite = srcResults[i].Suite + "/" + bpLabel
 					}
 				}
 				results = append(results, srcResults...)
@@ -810,6 +836,7 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
 	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite")
 
 	return cmd
