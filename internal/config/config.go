@@ -80,17 +80,56 @@ type DistroSourceConfig struct {
 	Components []string `mapstructure:"components" yaml:"components"`
 }
 
+// ReleaseConfig defines a distro release (e.g. noble, jammy, trixie).
+// Suites are suite type names (release, updates, proposed, backports) that get
+// expanded to full names by prepending the release name (e.g. "updates" → "noble-updates").
+// The special type "release" expands to just the release name itself (e.g. "noble").
+type ReleaseConfig struct {
+	Suites    []string                  `mapstructure:"suites" yaml:"suites"`
+	Backports map[string]BackportConfig `mapstructure:"backports" yaml:"backports,omitempty"`
+}
+
 // DistroConfig defines an APT distribution (e.g. Ubuntu, Debian).
 type DistroConfig struct {
 	Mirror     string                    `mapstructure:"mirror" yaml:"mirror"`
-	Suites     []string                  `mapstructure:"suites" yaml:"suites"`
 	Components []string                  `mapstructure:"components" yaml:"components"`
-	Backports  map[string]BackportConfig `mapstructure:"backports" yaml:"backports,omitempty"`
+	Releases   map[string]ReleaseConfig  `mapstructure:"releases" yaml:"releases"`
 }
 
 // BackportConfig defines a backport source group (e.g. UCA, OSBPO).
 type BackportConfig struct {
-	Sources []DistroSourceConfig `mapstructure:"sources" yaml:"sources"`
+	ParentRelease string               `mapstructure:"parent_release" yaml:"parent_release,omitempty"`
+	Sources       []DistroSourceConfig `mapstructure:"sources" yaml:"sources"`
+}
+
+// ExpandSuiteType expands a suite type name to its full APT suite name for a given release.
+// "release" → releaseName, anything else → releaseName + "-" + suiteType.
+func ExpandSuiteType(releaseName, suiteType string) string {
+	if suiteType == "release" {
+		return releaseName
+	}
+	return releaseName + "-" + suiteType
+}
+
+// ExpandBackportSuiteType expands a suite type name for a backport source.
+// Known types are expanded relative to the parent release and backport name:
+//   - "release" → releaseName (e.g. "noble")
+//   - "updates" → releaseName-updates/backportName (e.g. "noble-updates/gazpacho")
+//   - "proposed" → releaseName-proposed/backportName (e.g. "noble-proposed/gazpacho")
+//
+// Any other value is treated as a literal suite name and returned as-is
+// (e.g. "trixie-gazpacho-backports" stays unchanged).
+func ExpandBackportSuiteType(releaseName, backportName, suiteType string) string {
+	switch suiteType {
+	case "release":
+		return releaseName
+	case "updates":
+		return releaseName + "-updates/" + backportName
+	case "proposed":
+		return releaseName + "-proposed/" + backportName
+	default:
+		return suiteType
+	}
 }
 
 // UpstreamConfig configures an upstream version provider.

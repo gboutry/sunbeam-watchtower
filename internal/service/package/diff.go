@@ -33,9 +33,23 @@ func (s *Service) Diff(ctx context.Context, opts DiffOpts) ([]DiffResult, error)
 	grouped := make(map[string]map[string][]distro.SourcePackage)
 
 	for _, src := range opts.Sources {
+		// Derive per-source suite filter from entries when available,
+		// so that suites from one source don't leak into another's query.
+		suites := opts.Suites
+		if len(src.Entries) > 0 {
+			set := make(map[string]bool, len(src.Entries))
+			for _, e := range src.Entries {
+				set[e.Suite] = true
+			}
+			suites = make([]string, 0, len(set))
+			for s := range set {
+				suites = append(suites, s)
+			}
+		}
+
 		pkgs, err := s.cache.Query(ctx, src.Name, port.QueryOpts{
 			Packages:   opts.Packages,
-			Suites:     opts.Suites,
+			Suites:     suites,
 			Components: opts.Components,
 		})
 		if err != nil {

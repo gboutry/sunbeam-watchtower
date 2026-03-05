@@ -11,6 +11,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	pkg "github.com/gboutry/sunbeam-watchtower/internal/service/package"
@@ -33,10 +34,10 @@ func newPackagesCmd(opts *Options) *cobra.Command {
 }
 
 func newPackagesDiffCmd(opts *Options) *cobra.Command {
-	var distros, backports []string
+	var distros, releases, backports []string
 	var suites, components []string
 	var merge bool
-	var release string
+	var upstreamRelease string
 	var behindUpstream bool
 	var onlyIn string
 	var constraints string
@@ -58,7 +59,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros, backports)
+			sources := buildPackageSources(opts, distros, releases, suites, backports)
 			if len(sources) == 0 {
 				return fmt.Errorf("no distros configured")
 			}
@@ -67,7 +68,6 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 			results, err := svc.Diff(cmd.Context(), pkg.DiffOpts{
 				Packages:   packages,
 				Sources:    sources,
-				Suites:     suites,
 				Components: components,
 			})
 			if err != nil {
@@ -117,7 +117,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 			}
 
 			hasUpstream := false
-			effectiveRelease := release
+			effectiveRelease := upstreamRelease
 			if effectiveRelease == "" && constraints != "" {
 				effectiveRelease = constraints
 			}
@@ -132,7 +132,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 			// --behind-upstream: keep only packages where distro < upstream.
 			if behindUpstream {
 				if !hasUpstream {
-					return fmt.Errorf("--behind-upstream requires --release or --constraints")
+					return fmt.Errorf("--behind-upstream requires --upstream-release or --constraints")
 				}
 				results = filterBehindUpstream(results, sources)
 			}
@@ -147,11 +147,12 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
-	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite")
+	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite type within release (release, updates, proposed)")
 	cmd.Flags().StringSliceVar(&components, "component", nil, "filter by component")
 	cmd.Flags().BoolVar(&merge, "merge", false, "merge suites per source into a single column showing highest version")
-	cmd.Flags().StringVar(&release, "release", "", "upstream release to compare against (e.g. 2025.1)")
+	cmd.Flags().StringVar(&upstreamRelease, "upstream-release", "", "upstream release to compare against (e.g. 2025.1)")
 	cmd.Flags().BoolVar(&behindUpstream, "behind-upstream", false, "show only packages where distro version is behind upstream")
 	cmd.Flags().StringVar(&onlyIn, "only-in", "", "show only packages present in the named source")
 	cmd.Flags().StringVar(&constraints, "constraints", "", "include upper-constraints packages for the given release")
@@ -160,9 +161,9 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 }
 
 func newPackagesShowCmd(opts *Options) *cobra.Command {
-	var distros, backports []string
+	var distros, releases, backports []string
 	var merge bool
-	var release string
+	var upstreamRelease string
 
 	cmd := &cobra.Command{
 		Use:   "show <package>",
@@ -177,7 +178,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros, backports)
+			sources := buildPackageSources(opts, distros, releases, nil, backports)
 			svc := pkg.NewService(cache, opts.Logger)
 
 			result, err := svc.Show(cmd.Context(), pkgName, sources)
@@ -187,8 +188,8 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 
 			results := []pkg.DiffResult{*result}
 			hasUpstream := false
-			if release != "" {
-				if err := annotateUpstream(cmd.Context(), opts, results, release); err != nil {
+			if upstreamRelease != "" {
+				if err := annotateUpstream(cmd.Context(), opts, results, upstreamRelease); err != nil {
 					fmt.Fprintf(opts.ErrOut, "warning: upstream lookup: %v\n", err)
 				} else {
 					hasUpstream = true
@@ -200,46 +201,58 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
 	cmd.Flags().BoolVar(&merge, "merge", false, "merge suites per source into a single column showing highest version")
-	cmd.Flags().StringVar(&release, "release", "", "upstream release to compare against (e.g. 2025.1)")
+	cmd.Flags().StringVar(&upstreamRelease, "upstream-release", "", "upstream release to compare against (e.g. 2025.1)")
 
 	return cmd
 }
 
 func newPackagesListCmd(opts *Options) *cobra.Command {
-	var distro string
+	var distros, releases, backports []string
 	var suites, components []string
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List packages in a distro",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if distro == "" {
-				return fmt.Errorf("--distro is required")
-			}
-
 			cache, err := buildDistroCache(opts)
 			if err != nil {
 				return err
 			}
 			defer cache.Close()
 
-			svc := pkg.NewService(cache, opts.Logger)
-			pkgs, err := svc.List(cmd.Context(), distro, port.QueryOpts{
-				Suites:     suites,
-				Components: components,
-			})
-			if err != nil {
-				return err
+			sources := buildPackageSources(opts, distros, releases, suites, backports)
+			if len(sources) == 0 {
+				return fmt.Errorf("no distros configured")
 			}
 
-			return renderSourcePackages(opts.Out, opts.Output, pkgs)
+			svc := pkg.NewService(cache, opts.Logger)
+			var allPkgs []distro.SourcePackage
+			for _, src := range sources {
+				srcSuites := make([]string, 0, len(src.Entries))
+				for _, e := range src.Entries {
+					srcSuites = append(srcSuites, e.Suite)
+				}
+				pkgs, err := svc.List(cmd.Context(), src.Name, port.QueryOpts{
+					Suites:     srcSuites,
+					Components: components,
+				})
+				if err != nil {
+					return err
+				}
+				allPkgs = append(allPkgs, pkgs...)
+			}
+
+			return renderSourcePackages(opts.Out, opts.Output, allPkgs)
 		},
 	}
 
-	cmd.Flags().StringVar(&distro, "distro", "", "distro to list from (required)")
-	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite")
+	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
+	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite type within release (release, updates, proposed)")
 	cmd.Flags().StringSliceVar(&components, "component", nil, "filter by component")
 
 	return cmd
@@ -354,21 +367,44 @@ func filterOnlyIn(results []pkg.DiffResult, sourceName string) []pkg.DiffResult 
 	return filtered
 }
 
-// buildPackageSources resolves --distro and --backport flags against config to produce source entries.
-// Backports are nested under their parent distro. The backport filter selects which backports to include:
-//   - empty/nil: include all backports
-//   - ["none"]: skip all backports
+// buildPackageSources resolves --distro, --release, --suite, and --backport flags against config
+// to produce source entries for the package cache.
+//
+// Suite types are expanded relative to each release: "release" → release name,
+// "updates" → "<release>-updates", etc.
+//
+// Backport filter semantics:
+//   - empty/nil or ["none"]: skip all backports (default)
 //   - ["gazpacho", "flamingo"]: include only those backports
-func buildPackageSources(opts *Options, distros, backports []string) []pkg.ProjectSource {
+func buildPackageSources(opts *Options, distros, releases, suites, backports []string) []pkg.ProjectSource {
 	cfg := opts.Config.Packages
 	var sources []pkg.ProjectSource
 
+	// Build backport filter.
+	// nil → include all backports (used by cache sync)
+	// ["none"] → skip all backports (default for query commands)
+	// ["gazpacho", ...] → include only named backports
 	bpFilter := make(map[string]bool, len(backports))
 	for _, bp := range backports {
 		bpFilter[bp] = true
 	}
-	skipAllBackports := bpFilter["none"]
-	filterBackports := len(bpFilter) > 0 && !skipAllBackports
+	includeAllBackports := backports == nil
+	skipAllBackports := !includeAllBackports && (len(bpFilter) == 0 || bpFilter["none"])
+	filterBackports := !includeAllBackports && !skipAllBackports
+
+	// Build release filter.
+	relFilter := make(map[string]bool, len(releases))
+	for _, r := range releases {
+		relFilter[r] = true
+	}
+	filterReleases := len(relFilter) > 0
+
+	// Build suite-type filter.
+	stFilter := make(map[string]bool, len(suites))
+	for _, s := range suites {
+		stFilter[s] = true
+	}
+	filterSuiteTypes := len(stFilter) > 0
 
 	// Resolve distros.
 	distroNames := distros
@@ -387,46 +423,94 @@ func buildPackageSources(opts *Options, distros, backports []string) []pkg.Proje
 			opts.Logger.Warn("unknown distro in config, skipping", "distro", name)
 			continue
 		}
-		var entries []port.SourceEntry
-		for _, suite := range d.Suites {
-			for _, comp := range d.Components {
-				entries = append(entries, port.SourceEntry{
-					Mirror:    d.Mirror,
-					Suite:     suite,
-					Component: comp,
-				})
+
+		// When backports are requested without an explicit --release filter,
+		// infer releases from the config:
+		//   - parent_release (where packages are uploaded natively) → full main suites
+		//   - backport target (where the backport config lives) → backport pockets only
+		// e.g. --backport gazpacho: resolute gets full suites, noble gets only gazpacho pockets.
+		effectiveRelFilter := relFilter
+		effectiveFilterReleases := filterReleases
+		backportOnlyReleases := make(map[string]bool)
+		if filterBackports && !filterReleases {
+			effectiveRelFilter = make(map[string]bool)
+			parentReleases := make(map[string]bool)
+			for relName, rel := range d.Releases {
+				for bpName, bp := range rel.Backports {
+					if bpFilter[bpName] {
+						effectiveRelFilter[relName] = true
+						backportOnlyReleases[relName] = true
+						if bp.ParentRelease != "" {
+							effectiveRelFilter[bp.ParentRelease] = true
+							parentReleases[bp.ParentRelease] = true
+						}
+					}
+				}
 			}
-		}
-		sources = append(sources, pkg.ProjectSource{
-			Name:    name,
-			Entries: entries,
-		})
-
-		if skipAllBackports {
-			continue
+			// A release that is both a backport target and a parent release
+			// for another requested backport gets full suites.
+			for r := range parentReleases {
+				delete(backportOnlyReleases, r)
+			}
+			effectiveFilterReleases = len(effectiveRelFilter) > 0
 		}
 
-		// Include backports belonging to this distro.
-		for bpName, bp := range d.Backports {
-			if filterBackports && !bpFilter[bpName] {
+		var entries []port.SourceEntry
+		for relName, rel := range d.Releases {
+			if effectiveFilterReleases && !effectiveRelFilter[relName] {
 				continue
 			}
-			qualifiedName := name + "/" + bpName
-			var bpEntries []port.SourceEntry
-			for _, src := range bp.Sources {
-				for _, suite := range src.Suites {
-					for _, comp := range src.Components {
-						bpEntries = append(bpEntries, port.SourceEntry{
-							Mirror:    src.Mirror,
-							Suite:     suite,
+			// For backport-only releases, skip main suites — only include backport pockets.
+			if !backportOnlyReleases[relName] {
+				for _, suiteType := range rel.Suites {
+					if filterSuiteTypes && !stFilter[suiteType] {
+						continue
+					}
+					fullSuite := config.ExpandSuiteType(relName, suiteType)
+					for _, comp := range d.Components {
+						entries = append(entries, port.SourceEntry{
+							Mirror:    d.Mirror,
+							Suite:     fullSuite,
 							Component: comp,
 						})
 					}
 				}
 			}
+
+			if skipAllBackports {
+				continue
+			}
+
+			// Include backports belonging to this release.
+			for bpName, bp := range rel.Backports {
+				if filterBackports && !bpFilter[bpName] {
+					continue
+				}
+				qualifiedName := name + "/" + bpName
+				var bpEntries []port.SourceEntry
+				for _, src := range bp.Sources {
+					for _, suite := range src.Suites {
+						expandedSuite := config.ExpandBackportSuiteType(relName, bpName, suite)
+						for _, comp := range src.Components {
+							bpEntries = append(bpEntries, port.SourceEntry{
+								Mirror:    src.Mirror,
+								Suite:     expandedSuite,
+								Component: comp,
+							})
+						}
+					}
+				}
+				sources = append(sources, pkg.ProjectSource{
+					Name:    qualifiedName,
+					Entries: bpEntries,
+				})
+			}
+		}
+
+		if len(entries) > 0 {
 			sources = append(sources, pkg.ProjectSource{
-				Name:    qualifiedName,
-				Entries: bpEntries,
+				Name:    name,
+				Entries: entries,
 			})
 		}
 	}
@@ -676,7 +760,7 @@ func formatBytes(b int64) string {
 }
 
 func newPackagesDscCmd(opts *Options) *cobra.Command {
-	var distros, backports []string
+	var distros, releases, backports []string
 
 	cmd := &cobra.Command{
 		Use:   "dsc <pkg> <version> [<pkg> <version> ...]",
@@ -694,7 +778,7 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros, backports)
+			sources := buildPackageSources(opts, distros, releases, nil, backports)
 			if len(sources) == 0 {
 				return fmt.Errorf("no distros configured")
 			}
@@ -718,6 +802,7 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
 
 	return cmd
@@ -760,7 +845,7 @@ func renderDscTable(w io.Writer, results []pkg.DscResult) error {
 }
 
 func newPackagesRdependsCmd(opts *Options) *cobra.Command {
-	var distros, backports []string
+	var distros, releases, backports []string
 	var suites []string
 
 	cmd := &cobra.Command{
@@ -776,7 +861,7 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros, backports)
+			sources := buildPackageSources(opts, distros, releases, suites, backports)
 			if len(sources) == 0 {
 				return fmt.Errorf("no distros configured")
 			}
@@ -784,17 +869,29 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 			// Collect the set of backport source names for suite annotation.
 			backportNames := make(map[string]bool)
 			for distroName, d := range opts.Config.Packages.Distros {
-				for bpName := range d.Backports {
-					backportNames[distroName+"/"+bpName] = true
+				for _, rel := range d.Releases {
+					for bpName := range rel.Backports {
+						backportNames[distroName+"/"+bpName] = true
+					}
 				}
 			}
 
 			svc := pkg.NewService(cache, opts.Logger)
-			queryOpts := port.QueryOpts{Suites: suites}
 
 			// Query each source individually to tag backport results.
 			var results []distro.SourcePackageDetail
 			for _, src := range sources {
+				// Collect suite names from entries for this source to filter at query time.
+				suiteSet := make(map[string]bool, len(src.Entries))
+				for _, e := range src.Entries {
+					suiteSet[e.Suite] = true
+				}
+				var srcSuites []string
+				for s := range suiteSet {
+					srcSuites = append(srcSuites, s)
+				}
+				queryOpts := port.QueryOpts{Suites: srcSuites}
+
 				srcResults, err := svc.ReverseDepends(cmd.Context(), pkgName, []pkg.ProjectSource{src}, queryOpts)
 				if err != nil {
 					return err
@@ -818,7 +915,6 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 				for _, src := range sources {
 					srcPkgs, qErr := cache.Query(cmd.Context(), src.Name, port.QueryOpts{
 						Packages: []string{pkgName},
-						Suites:   suites,
 					})
 					if qErr == nil && len(srcPkgs) > 0 {
 						found = true
@@ -836,8 +932,9 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
-	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite")
+	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite type within release (release, updates, proposed)")
 
 	return cmd
 }
