@@ -3,6 +3,8 @@ package bug
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"sort"
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
@@ -37,16 +39,22 @@ type Service struct {
 	trackers map[string]ProjectBugTracker
 	// maps dedup key → list of watchtower project names
 	projectMap map[string][]string
+	logger     *slog.Logger
 }
 
 // NewService creates a bug service.
 // trackers maps dedup key to the tracker, projectMap maps dedup key to watchtower project names.
-func NewService(trackers map[string]ProjectBugTracker, projectMap map[string][]string) *Service {
-	return &Service{trackers: trackers, projectMap: projectMap}
+func NewService(trackers map[string]ProjectBugTracker, projectMap map[string][]string, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return &Service{trackers: trackers, projectMap: projectMap, logger: logger}
 }
 
 // Get fetches a single bug by ID. It tries each configured tracker until one succeeds.
 func (s *Service) Get(ctx context.Context, id string) (*forge.Bug, error) {
+	s.logger.Debug("getting bug", "id", id)
+
 	// Try each unique tracker (deduplicated).
 	seen := make(map[port.BugTracker]bool)
 	for _, pt := range s.trackers {
@@ -74,6 +82,15 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 		projFilter[p] = true
 	}
 
+	s.logger.Debug("listing bugs",
+		"tracker_count", len(s.trackers),
+		"projects_filter", opts.Projects,
+		"status_filter", opts.Status,
+		"importance_filter", opts.Importance,
+		"assignee", opts.Assignee,
+		"tags", opts.Tags,
+	)
+
 	var results []ProjectResult
 	var all []forge.BugTask
 
@@ -90,9 +107,12 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 				}
 			}
 			if !matched {
+				s.logger.Debug("skipping tracker (filtered)", "tracker", key)
 				continue
 			}
 		}
+
+		s.logger.Debug("querying tracker", "tracker", key, "projects", projectNames)
 
 		tasks, err := pt.Tracker.ListBugTasks(ctx, pt.ProjectID, forge.ListBugTasksOpts{
 			Status:     opts.Status,
@@ -102,6 +122,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 		})
 
 		if err != nil {
+			s.logger.Warn("tracker query failed", "tracker", key, "error", err)
 			for _, name := range projectNames {
 				results = append(results, ProjectResult{
 					ProjectName: name,
@@ -126,6 +147,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 				BugTasks:    expanded,
 			})
 			all = append(all, expanded...)
+			s.logger.Debug("tracker bugs fetched", "tracker", key, "project", name, "count", len(expanded))
 		}
 	}
 
@@ -133,6 +155,8 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].UpdatedAt.After(all[j].UpdatedAt)
 	})
+
+	s.logger.Debug("bugs aggregated", "total_count", len(all))
 
 	return all, results, nil
 }

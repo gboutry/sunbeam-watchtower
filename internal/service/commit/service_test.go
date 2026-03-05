@@ -53,7 +53,7 @@ func TestService_List_Aggregation(t *testing.T) {
 			},
 			ForgeType: forge.ForgeGerrit,
 		},
-	})
+	}, nil)
 
 	commits, results, err := svc.List(context.Background(), ListOptions{})
 	if err != nil {
@@ -95,7 +95,7 @@ func TestService_List_FilterByProject(t *testing.T) {
 			Source:    &mockCommitSource{commits: []forge.Commit{{SHA: "bbb", Message: "Gerrit commit"}}},
 			ForgeType: forge.ForgeGerrit,
 		},
-	})
+	}, nil)
 
 	commits, _, _ := svc.List(context.Background(), ListOptions{Projects: []string{"gh-project"}})
 	if len(commits) != 1 || commits[0].SHA != "aaa" {
@@ -113,7 +113,7 @@ func TestService_List_FilterByForge(t *testing.T) {
 			Source:    &mockCommitSource{commits: []forge.Commit{{SHA: "bbb"}}},
 			ForgeType: forge.ForgeGerrit,
 		},
-	})
+	}, nil)
 
 	commits, _, _ := svc.List(context.Background(), ListOptions{
 		Forges: []forge.ForgeType{forge.ForgeGerrit},
@@ -134,7 +134,7 @@ func TestService_List_FilterByAuthor(t *testing.T) {
 			},
 			ForgeType: forge.ForgeGitHub,
 		},
-	})
+	}, nil)
 
 	commits, _, _ := svc.List(context.Background(), ListOptions{Author: "alice"})
 	if len(commits) != 1 || commits[0].Author != "alice" {
@@ -154,7 +154,7 @@ func TestService_List_FilterByBugID(t *testing.T) {
 			},
 			ForgeType: forge.ForgeGitHub,
 		},
-	})
+	}, nil)
 
 	commits, _, _ := svc.List(context.Background(), ListOptions{BugID: "12345"})
 	if len(commits) != 2 {
@@ -177,7 +177,7 @@ func TestService_List_GracefulDegradation(t *testing.T) {
 			Source:    &mockCommitSource{err: fmt.Errorf("connection refused")},
 			ForgeType: forge.ForgeGerrit,
 		},
-	})
+	}, nil)
 
 	commits, results, err := svc.List(context.Background(), ListOptions{})
 	if err != nil {
@@ -200,7 +200,7 @@ func TestService_List_GracefulDegradation(t *testing.T) {
 }
 
 func TestService_List_Empty(t *testing.T) {
-	svc := NewService(map[string]ProjectSource{})
+	svc := NewService(map[string]ProjectSource{}, nil)
 
 	commits, results, err := svc.List(context.Background(), ListOptions{})
 	if err != nil {
@@ -224,7 +224,7 @@ func TestService_List_BugIDNoMatch(t *testing.T) {
 			},
 			ForgeType: forge.ForgeGitHub,
 		},
-	})
+	}, nil)
 
 	commits, _, _ := svc.List(context.Background(), ListOptions{BugID: "12345"})
 	if len(commits) != 0 {
@@ -240,7 +240,7 @@ func TestNewServiceFromForges(t *testing.T) {
 
 	svc := NewServiceFromForges(map[string]ProjectForge{
 		"project": {Forge: mock, ProjectID: "org/repo"},
-	})
+	}, nil)
 
 	commits, _, err := svc.List(context.Background(), ListOptions{})
 	if err != nil {

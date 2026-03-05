@@ -24,12 +24,13 @@ func newBugShowCmd(opts *Options) *cobra.Command {
 		Short: "Show a bug and its tasks",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("bug show command started", "id", args[0])
 			trackers, projectMap, err := buildBugTrackers(opts)
 			if err != nil {
 				return err
 			}
 
-			svc := bug.NewService(trackers, projectMap)
+			svc := bug.NewService(trackers, projectMap, opts.Logger)
 
 			b, err := svc.Get(cmd.Context(), args[0])
 			if err != nil {
@@ -56,12 +57,13 @@ func newBugListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List bug tasks across bug trackers",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("bug list command started")
 			trackers, projectMap, err := buildBugTrackers(opts)
 			if err != nil {
 				return err
 			}
 
-			svc := bug.NewService(trackers, projectMap)
+			svc := bug.NewService(trackers, projectMap, opts.Logger)
 
 			listOpts := bug.ListOptions{
 				Projects:   projects,

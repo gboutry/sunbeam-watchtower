@@ -28,6 +28,7 @@ func newReviewShowCmd(opts *Options) *cobra.Command {
 		Short: "Show a merge request",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("review show command started", "project", project, "id", args[0])
 			if project == "" {
 				return fmt.Errorf("--project is required for review show")
 			}
@@ -37,7 +38,7 @@ func newReviewShowCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			svc := review.NewService(clients)
+			svc := review.NewService(clients, opts.Logger)
 
 			mr, err := svc.Get(cmd.Context(), project, args[0])
 			if err != nil {
@@ -65,12 +66,18 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List merge requests across forges",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("review list command started",
+				"projects", projects,
+				"forges", forges,
+				"state", state,
+				"author", author,
+			)
 			clients, err := buildForgeClients(opts)
 			if err != nil {
 				return err
 			}
 
-			svc := review.NewService(clients)
+			svc := review.NewService(clients, opts.Logger)
 
 			listOpts := review.ListOptions{
 				Projects: projects,

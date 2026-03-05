@@ -65,7 +65,7 @@ func TestService_List_Aggregation(t *testing.T) {
 	svc := NewService(map[string]ProjectForge{
 		"my-gh-project":     {Forge: ghForge, ProjectID: "org/repo"},
 		"my-gerrit-project": {Forge: gerritForge, ProjectID: "openstack/nova"},
-	})
+	}, nil)
 
 	mrs, results, err := svc.List(context.Background(), ListOptions{})
 	if err != nil {
@@ -103,7 +103,7 @@ func TestService_List_FilterByProject(t *testing.T) {
 	svc := NewService(map[string]ProjectForge{
 		"gh-project":     {Forge: ghForge, ProjectID: "org/repo"},
 		"gerrit-project": {Forge: gerritForge, ProjectID: "openstack/nova"},
-	})
+	}, nil)
 
 	mrs, _, _ := svc.List(context.Background(), ListOptions{Projects: []string{"gh-project"}})
 	if len(mrs) != 1 || mrs[0].ID != "#1" {
@@ -124,7 +124,7 @@ func TestService_List_FilterByForge(t *testing.T) {
 	svc := NewService(map[string]ProjectForge{
 		"gh-project":     {Forge: ghForge, ProjectID: "org/repo"},
 		"gerrit-project": {Forge: gerritForge, ProjectID: "openstack/nova"},
-	})
+	}, nil)
 
 	mrs, _, _ := svc.List(context.Background(), ListOptions{Forges: []forge.ForgeType{forge.ForgeGerrit}})
 	if len(mrs) != 1 || mrs[0].ID != "100" {
@@ -143,7 +143,7 @@ func TestService_List_FilterByAuthor(t *testing.T) {
 
 	svc := NewService(map[string]ProjectForge{
 		"project": {Forge: f, ProjectID: "org/repo"},
-	})
+	}, nil)
 
 	mrs, _, _ := svc.List(context.Background(), ListOptions{Author: "alice"})
 	if len(mrs) != 1 || mrs[0].Author != "alice" {
@@ -164,7 +164,7 @@ func TestService_List_GracefulDegradation(t *testing.T) {
 	svc := NewService(map[string]ProjectForge{
 		"good-project": {Forge: goodForge, ProjectID: "org/repo"},
 		"bad-project":  {Forge: badForge, ProjectID: "openstack/nova"},
-	})
+	}, nil)
 
 	mrs, results, err := svc.List(context.Background(), ListOptions{})
 	if err != nil {
@@ -197,7 +197,7 @@ func TestService_Get(t *testing.T) {
 
 	svc := NewService(map[string]ProjectForge{
 		"my-project": {Forge: f, ProjectID: "org/repo"},
-	})
+	}, nil)
 
 	mr, err := svc.Get(context.Background(), "my-project", "#1")
 	if err != nil {
@@ -212,7 +212,7 @@ func TestService_Get(t *testing.T) {
 }
 
 func TestService_Get_UnknownProject(t *testing.T) {
-	svc := NewService(map[string]ProjectForge{})
+	svc := NewService(map[string]ProjectForge{}, nil)
 
 	_, err := svc.Get(context.Background(), "nonexistent", "#1")
 	if err == nil {
@@ -228,7 +228,7 @@ func TestService_Get_NotFound(t *testing.T) {
 
 	svc := NewService(map[string]ProjectForge{
 		"my-project": {Forge: f, ProjectID: "org/repo"},
-	})
+	}, nil)
 
 	_, err := svc.Get(context.Background(), "my-project", "#999")
 	if err == nil {

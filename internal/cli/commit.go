@@ -30,12 +30,18 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 		Use:   "log",
 		Short: "List commits across forges",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("commit log command started",
+				"projects", projects,
+				"forges", forges,
+				"branch", branch,
+				"author", author,
+			)
 			sources, err := buildCommitSources(opts)
 			if err != nil {
 				return err
 			}
 
-			svc := commit.NewService(sources)
+			svc := commit.NewService(sources, opts.Logger)
 
 			listOpts := commit.ListOptions{
 				Projects: projects,
@@ -62,6 +68,7 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 				}
 			}
 
+			opts.Logger.Debug("commit log complete", "total_commits", len(commits))
 			return renderCommits(opts.Out, opts.Output, commits)
 		},
 	}
@@ -86,6 +93,7 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 		Use:   "track",
 		Short: "Find commits referencing a bug ID",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("commit track command started", "bugID", bugID)
 			if bugID == "" {
 				return fmt.Errorf("--bug-id is required")
 			}
@@ -95,7 +103,7 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			svc := commit.NewService(sources)
+			svc := commit.NewService(sources, opts.Logger)
 
 			listOpts := commit.ListOptions{
 				Projects: projects,

@@ -6,6 +6,7 @@ package gitcache
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"os"
@@ -25,8 +26,11 @@ type Cache struct {
 	logger  *slog.Logger
 }
 
-// NewCache creates a new git cache rooted at baseDir.
+// NewCache creates a new git cache rooted at baseDir. If logger is nil, a no-op logger is used.
 func NewCache(baseDir string, logger *slog.Logger) *Cache {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	return &Cache{baseDir: baseDir, logger: logger}
 }
 
@@ -68,7 +72,9 @@ func (c *Cache) repoPath(cloneURL string) (string, error) {
 		p += ".git"
 	}
 
-	return filepath.Join(c.baseDir, host, p), nil
+	resolved := filepath.Join(c.baseDir, host, p)
+	c.logger.Debug("resolved repo path", "cloneURL", cloneURL, "path", resolved)
+	return resolved, nil
 }
 
 // EnsureRepo clones the repository if missing, or fetches if it already exists.
@@ -126,6 +132,7 @@ func (c *Cache) fetchRepo(ctx context.Context, path string) error {
 
 // ListCommits reads commit history from a cached repository.
 func (c *Cache) ListCommits(ctx context.Context, cloneURL string, opts forge.ListCommitsOpts) ([]forge.Commit, error) {
+	c.logger.Debug("listing commits from cache", "cloneURL", cloneURL, "branch", opts.Branch)
 	path, err := c.repoPath(cloneURL)
 	if err != nil {
 		return nil, err
@@ -193,11 +200,13 @@ func (c *Cache) ListCommits(ctx context.Context, cloneURL string, opts forge.Lis
 		return nil, fmt.Errorf("iterating commits: %w", err)
 	}
 
+	c.logger.Debug("commits read from cache", "cloneURL", cloneURL, "count", len(result))
 	return result, nil
 }
 
 // Remove deletes a single cached repository.
 func (c *Cache) Remove(cloneURL string) error {
+	c.logger.Debug("removing cached repo", "cloneURL", cloneURL)
 	path, err := c.repoPath(cloneURL)
 	if err != nil {
 		return err
@@ -207,5 +216,6 @@ func (c *Cache) Remove(cloneURL string) error {
 
 // RemoveAll deletes all cached repositories.
 func (c *Cache) RemoveAll() error {
+	c.logger.Debug("removing all cached repos")
 	return os.RemoveAll(c.baseDir)
 }

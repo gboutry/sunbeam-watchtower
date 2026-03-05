@@ -47,7 +47,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			gitClient := git.NewClient()
+			gitClient := git.NewClient(opts.Logger)
 
 			svc := build.NewService(builders, repoMgr, gitClient, opts.Logger)
 

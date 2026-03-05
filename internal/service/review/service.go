@@ -3,6 +3,8 @@ package review
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"sort"
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
@@ -33,11 +35,15 @@ type ProjectResult struct {
 // Service aggregates reviews across multiple forges.
 type Service struct {
 	projects map[string]ProjectForge
+	logger   *slog.Logger
 }
 
 // NewService creates a review service with the given project-to-forge mappings.
-func NewService(projects map[string]ProjectForge) *Service {
-	return &Service{projects: projects}
+func NewService(projects map[string]ProjectForge, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return &Service{projects: projects, logger: logger}
 }
 
 // Get returns a single merge request by project name and ID.
@@ -46,6 +52,8 @@ func (s *Service) Get(ctx context.Context, project string, id string) (*forge.Me
 	if !ok {
 		return nil, fmt.Errorf("unknown project %q", project)
 	}
+
+	s.logger.Debug("getting merge request", "project", project, "id", id)
 
 	mr, err := pf.Forge.GetMergeRequest(ctx, pf.ProjectID, id)
 	if err != nil {
@@ -67,16 +75,28 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.MergeRequ
 		forgeFilter[f] = true
 	}
 
+	s.logger.Debug("listing merge requests",
+		"project_count", len(s.projects),
+		"projects_filter", opts.Projects,
+		"forges_filter", opts.Forges,
+		"state", opts.State,
+		"author", opts.Author,
+	)
+
 	var results []ProjectResult
 	var all []forge.MergeRequest
 
 	for name, pf := range s.projects {
 		if len(projFilter) > 0 && !projFilter[name] {
+			s.logger.Debug("skipping project (filtered)", "project", name)
 			continue
 		}
 		if len(forgeFilter) > 0 && !forgeFilter[pf.Forge.Type()] {
+			s.logger.Debug("skipping project (filtered)", "project", name, "forge", pf.Forge.Type())
 			continue
 		}
+
+		s.logger.Debug("querying project for reviews", "project", name)
 
 		mrs, err := pf.Forge.ListMergeRequests(ctx, pf.ProjectID, forge.ListMergeRequestsOpts{
 			State:  opts.State,
@@ -86,12 +106,14 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.MergeRequ
 		result := ProjectResult{ProjectName: name}
 		if err != nil {
 			result.Err = fmt.Errorf("%s: %w", name, err)
+			s.logger.Warn("project query failed", "project", name, "error", err)
 		} else {
 			for i := range mrs {
 				mrs[i].Repo = name
 			}
 			result.MergeRequests = mrs
 			all = append(all, mrs...)
+			s.logger.Debug("project reviews fetched", "project", name, "count", len(mrs))
 		}
 		results = append(results, result)
 	}
@@ -100,6 +122,8 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.MergeRequ
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].UpdatedAt.After(all[j].UpdatedAt)
 	})
+
+	s.logger.Debug("reviews aggregated", "total_count", len(all))
 
 	return all, results, nil
 }

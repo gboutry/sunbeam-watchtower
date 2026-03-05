@@ -49,7 +49,7 @@ func initTestRepo(t *testing.T) string {
 }
 
 func TestIsRepo(t *testing.T) {
-	c := adapter.NewClient()
+	c := adapter.NewClient(nil)
 	dir := initTestRepo(t)
 	if !c.IsRepo(dir) {
 		t.Error("expected IsRepo to return true for a git repo")
@@ -61,7 +61,7 @@ func TestIsRepo(t *testing.T) {
 }
 
 func TestHeadSHA(t *testing.T) {
-	c := adapter.NewClient()
+	c := adapter.NewClient(nil)
 	dir := initTestRepo(t)
 	sha, err := c.HeadSHA(dir)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestHeadSHA(t *testing.T) {
 }
 
 func TestHasUncommittedChanges(t *testing.T) {
-	c := adapter.NewClient()
+	c := adapter.NewClient(nil)
 	dir := initTestRepo(t)
 
 	// Clean repo should have no uncommitted changes.
@@ -99,7 +99,7 @@ func TestHasUncommittedChanges(t *testing.T) {
 }
 
 func TestAddAndRemoveRemote(t *testing.T) {
-	c := adapter.NewClient()
+	c := adapter.NewClient(nil)
 	dir := initTestRepo(t)
 
 	if err := c.AddRemote(dir, "upstream", "https://example.com/repo.git"); err != nil {

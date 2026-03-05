@@ -27,6 +27,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 		Use:   "sync",
 		Short: "Clone missing repos and fetch all cached repos",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("starting cache sync")
 			cache, err := buildGitCache(opts)
 			if err != nil {
 				return err
@@ -37,6 +38,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("no configuration loaded")
 			}
 
+			synced := 0
 			for _, proj := range cfg.Projects {
 				if project != "" && proj.Name != project {
 					continue
@@ -51,9 +53,12 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 				fmt.Fprintf(opts.Out, "syncing %s (%s)...\n", proj.Name, cloneURL)
 				if _, err := cache.EnsureRepo(cmd.Context(), cloneURL); err != nil {
 					fmt.Fprintf(opts.ErrOut, "warning: %s: %v\n", proj.Name, err)
+				} else {
+					synced++
 				}
 			}
 
+			opts.Logger.Debug("sync complete", "repos_synced", synced)
 			fmt.Fprintln(opts.Out, "done.")
 			return nil
 		},
@@ -70,6 +75,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 		Use:   "clear",
 		Short: "Remove cached repos",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("clearing cache")
 			cache, err := buildGitCache(opts)
 			if err != nil {
 				return err
@@ -110,6 +116,7 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 		Use:   "status",
 		Short: "List cached repos with size info",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Logger.Debug("listing cache status")
 			cache, err := buildGitCache(opts)
 			if err != nil {
 				return err

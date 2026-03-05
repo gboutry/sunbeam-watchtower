@@ -53,7 +53,7 @@ func TestService_List_Aggregation(t *testing.T) {
 		map[string][]string{
 			"launchpad:snap-openstack": {"sunbeam", "microstack"},
 		},
-	)
+		nil)
 
 	tasks, results, err := svc.List(context.Background(), ListOptions{})
 	if err != nil {
@@ -95,7 +95,7 @@ func TestService_List_FilterByProject(t *testing.T) {
 		map[string][]string{
 			"launchpad:snap-openstack": {"sunbeam", "microstack"},
 		},
-	)
+		nil)
 
 	tasks, _, _ := svc.List(context.Background(), ListOptions{Projects: []string{"sunbeam"}})
 	if len(tasks) != 1 {
@@ -122,7 +122,7 @@ func TestService_List_Deduplication(t *testing.T) {
 		map[string][]string{
 			"launchpad:snap-openstack": {"sunbeam", "microstack"},
 		},
-	)
+		nil)
 
 	_, _, _ = svc.List(context.Background(), ListOptions{})
 	if callCount != 1 {
@@ -149,7 +149,7 @@ func TestService_List_GracefulDegradation(t *testing.T) {
 			"launchpad:good-project": {"good"},
 			"launchpad:bad-project":  {"bad"},
 		},
-	)
+		nil)
 
 	tasks, results, err := svc.List(context.Background(), ListOptions{})
 	if err != nil {
@@ -209,7 +209,7 @@ func TestService_Get(t *testing.T) {
 		map[string][]string{
 			"launchpad:snap-openstack": {"sunbeam"},
 		},
-	)
+		nil)
 
 	bug, err := svc.Get(context.Background(), "12345")
 	if err != nil {
@@ -227,6 +227,7 @@ func TestService_Get_NotConfigured(t *testing.T) {
 	svc := NewService(
 		map[string]ProjectBugTracker{},
 		map[string][]string{},
+		nil,
 	)
 
 	_, err := svc.Get(context.Background(), "12345")

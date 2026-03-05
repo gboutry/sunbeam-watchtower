@@ -6,6 +6,8 @@ package commit
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"sort"
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
@@ -43,15 +45,19 @@ type ProjectResult struct {
 // Service aggregates commits across multiple forges.
 type Service struct {
 	projects map[string]ProjectSource
+	logger   *slog.Logger
 }
 
 // NewService creates a commit service from ProjectSource mappings.
-func NewService(projects map[string]ProjectSource) *Service {
-	return &Service{projects: projects}
+func NewService(projects map[string]ProjectSource, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return &Service{projects: projects, logger: logger}
 }
 
 // NewServiceFromForges creates a commit service from legacy ProjectForge mappings.
-func NewServiceFromForges(projects map[string]ProjectForge) *Service {
+func NewServiceFromForges(projects map[string]ProjectForge, logger *slog.Logger) *Service {
 	sources := make(map[string]ProjectSource, len(projects))
 	for name, pf := range projects {
 		sources[name] = ProjectSource{
@@ -62,7 +68,7 @@ func NewServiceFromForges(projects map[string]ProjectForge) *Service {
 			ForgeType: pf.Forge.Type(),
 		}
 	}
-	return &Service{projects: sources}
+	return NewService(sources, logger)
 }
 
 // List returns commits across all configured projects, applying filters.
@@ -77,16 +83,29 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.Commit, [
 		forgeFilter[f] = true
 	}
 
+	s.logger.Debug("listing commits",
+		"project_count", len(s.projects),
+		"projects_filter", opts.Projects,
+		"forges_filter", opts.Forges,
+		"branch", opts.Branch,
+		"author", opts.Author,
+		"bug_id", opts.BugID,
+	)
+
 	var results []ProjectResult
 	var all []forge.Commit
 
 	for name, ps := range s.projects {
 		if len(projFilter) > 0 && !projFilter[name] {
+			s.logger.Debug("skipping project (filtered)", "project", name)
 			continue
 		}
 		if len(forgeFilter) > 0 && !forgeFilter[ps.ForgeType] {
+			s.logger.Debug("skipping project (filtered)", "project", name, "forge", ps.ForgeType)
 			continue
 		}
+
+		s.logger.Debug("querying project", "project", name, "forge", ps.ForgeType)
 
 		commits, err := ps.Source.ListCommits(ctx, forge.ListCommitsOpts{
 			Branch: opts.Branch,
@@ -96,6 +115,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.Commit, [
 		result := ProjectResult{ProjectName: name}
 		if err != nil {
 			result.Err = fmt.Errorf("%s: %w", name, err)
+			s.logger.Warn("project query failed", "project", name, "error", err)
 		} else {
 			for i := range commits {
 				commits[i].Repo = name
@@ -107,6 +127,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.Commit, [
 
 			result.Commits = commits
 			all = append(all, commits...)
+			s.logger.Debug("project commits fetched", "project", name, "commit_count", len(commits))
 		}
 		results = append(results, result)
 	}
@@ -115,6 +136,8 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.Commit, [
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].Date.After(all[j].Date)
 	})
+
+	s.logger.Debug("commits aggregated", "total_count", len(all))
 
 	return all, results, nil
 }

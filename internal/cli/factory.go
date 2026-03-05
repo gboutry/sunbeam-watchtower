@@ -28,6 +28,8 @@ func buildForgeClients(opts *Options) (map[string]review.ProjectForge, error) {
 		return nil, fmt.Errorf("no configuration loaded")
 	}
 
+	opts.Logger.Debug("building forge clients", "project_count", len(cfg.Projects))
+
 	result := make(map[string]review.ProjectForge, len(cfg.Projects))
 
 	// Cache one client per forge type/host to avoid creating duplicates.
@@ -38,6 +40,8 @@ func buildForgeClients(opts *Options) (map[string]review.ProjectForge, error) {
 	for _, proj := range cfg.Projects {
 		var pf review.ProjectForge
 		code := proj.Code
+
+		opts.Logger.Debug("configuring forge client", "project", proj.Name, "forge", code.Forge)
 
 		switch code.Forge {
 		case "github":
@@ -247,7 +251,10 @@ func buildGitCache(opts *Options) (*gitcache.Cache, error) {
 	if err != nil {
 		return nil, err
 	}
-	return gitcache.NewCache(filepath.Join(cacheDir, "repos"), opts.Logger), nil
+	opts.Logger.Debug("resolved cache directory", "path", cacheDir)
+	reposDir := filepath.Join(cacheDir, "repos")
+	opts.Logger.Debug("initializing git cache", "cacheDir", reposDir)
+	return gitcache.NewCache(reposDir, opts.Logger), nil
 }
 
 // buildCommitSources creates commit sources backed by the local git cache.
@@ -256,6 +263,8 @@ func buildCommitSources(opts *Options) (map[string]commit.ProjectSource, error) 
 	if cfg == nil {
 		return nil, fmt.Errorf("no configuration loaded")
 	}
+
+	opts.Logger.Debug("building commit sources", "project_count", len(cfg.Projects))
 
 	cache, err := buildGitCache(opts)
 	if err != nil {
@@ -268,6 +277,8 @@ func buildCommitSources(opts *Options) (map[string]commit.ProjectSource, error) 
 		if err != nil {
 			return nil, fmt.Errorf("project %s: %w", proj.Name, err)
 		}
+
+		opts.Logger.Debug("configured commit source", "project", proj.Name, "cloneURL", cloneURL)
 
 		forgeType := forgeTypeFromConfig(proj.Code.Forge)
 		result[proj.Name] = commit.ProjectSource{

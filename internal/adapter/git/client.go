@@ -5,6 +5,8 @@ package git
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"net/url"
 	"os/user"
 	"strings"
@@ -16,18 +18,28 @@ import (
 )
 
 // Client implements port.GitClient using go-git.
-type Client struct{}
+type Client struct {
+	logger *slog.Logger
+}
 
 var _ port.GitClient = (*Client)(nil)
 
-func NewClient() *Client { return &Client{} }
+// NewClient creates a new git Client. If logger is nil, a no-op logger is used.
+func NewClient(logger *slog.Logger) *Client {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return &Client{logger: logger}
+}
 
 func (c *Client) IsRepo(path string) bool {
+	c.logger.Debug("checking if path is repo", "path", path)
 	_, err := gogit.PlainOpen(path)
 	return err == nil
 }
 
 func (c *Client) HeadSHA(path string) (string, error) {
+	c.logger.Debug("reading HEAD SHA", "path", path)
 	repo, err := gogit.PlainOpen(path)
 	if err != nil {
 		return "", fmt.Errorf("open repo %s: %w", path, err)
@@ -36,10 +48,13 @@ func (c *Client) HeadSHA(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("get HEAD for %s: %w", path, err)
 	}
-	return ref.Hash().String(), nil
+	sha := ref.Hash().String()
+	c.logger.Debug("HEAD SHA resolved", "path", path, "sha", sha)
+	return sha, nil
 }
 
 func (c *Client) HasUncommittedChanges(path string) (bool, error) {
+	c.logger.Debug("checking for uncommitted changes", "path", path)
 	repo, err := gogit.PlainOpen(path)
 	if err != nil {
 		return false, fmt.Errorf("open repo %s: %w", path, err)
@@ -56,6 +71,7 @@ func (c *Client) HasUncommittedChanges(path string) (bool, error) {
 }
 
 func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) error {
+	c.logger.Debug("pushing", "path", path, "remote", remote, "localRef", localRef, "remoteRef", remoteRef, "force", force)
 	repo, err := gogit.PlainOpen(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
@@ -121,6 +137,7 @@ func effectiveUser() (string, error) {
 }
 
 func (c *Client) AddRemote(path, name, url string) error {
+	c.logger.Debug("adding remote", "path", path, "name", name, "url", url)
 	repo, err := gogit.PlainOpen(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
@@ -139,6 +156,7 @@ func (c *Client) AddRemote(path, name, url string) error {
 }
 
 func (c *Client) RemoveRemote(path, name string) error {
+	c.logger.Debug("removing remote", "path", path, "name", name)
 	repo, err := gogit.PlainOpen(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
