@@ -20,7 +20,7 @@ import (
 func newPackagesCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "packages",
-		Short: "Compare source package versions across distros and backports",
+		Short: "Compare source package versions across distros",
 	}
 	cmd.AddCommand(
 		newPackagesDiffCmd(opts),
@@ -33,7 +33,7 @@ func newPackagesCmd(opts *Options) *cobra.Command {
 }
 
 func newPackagesDiffCmd(opts *Options) *cobra.Command {
-	var distros, backports []string
+	var distros []string
 	var suites, components []string
 	var merge bool
 	var release string
@@ -43,7 +43,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "diff <set>",
-		Short: "Compare package versions across distros and backports",
+		Short: "Compare package versions across distros",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			setName := args[0]
@@ -58,9 +58,9 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros, backports)
+			sources := buildPackageSources(opts, distros)
 			if len(sources) == 0 {
-				return fmt.Errorf("no distros or backports configured")
+				return fmt.Errorf("no distros configured")
 			}
 
 			svc := pkg.NewService(cache, opts.Logger)
@@ -147,7 +147,6 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
-	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite")
 	cmd.Flags().StringSliceVar(&components, "component", nil, "filter by component")
 	cmd.Flags().BoolVar(&merge, "merge", false, "merge suites per source into a single column showing highest version")
@@ -160,7 +159,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 }
 
 func newPackagesShowCmd(opts *Options) *cobra.Command {
-	var distros, backports []string
+	var distros []string
 	var merge bool
 	var release string
 
@@ -177,7 +176,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros, backports)
+			sources := buildPackageSources(opts, distros)
 			svc := pkg.NewService(cache, opts.Logger)
 
 			result, err := svc.Show(cmd.Context(), pkgName, sources)
@@ -200,7 +199,6 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
-	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to query (default: all configured)")
 	cmd.Flags().BoolVar(&merge, "merge", false, "merge suites per source into a single column showing highest version")
 	cmd.Flags().StringVar(&release, "release", "", "upstream release to compare against (e.g. 2025.1)")
 
@@ -354,8 +352,9 @@ func filterOnlyIn(results []pkg.DiffResult, sourceName string) []pkg.DiffResult 
 	return filtered
 }
 
-// buildPackageSources resolves --distro and --backport flags against config to produce source entries.
-func buildPackageSources(opts *Options, distros, backports []string) []pkg.ProjectSource {
+// buildPackageSources resolves --distro flags against config to produce source entries.
+// Backports are automatically included from each selected distro.
+func buildPackageSources(opts *Options, distros []string) []pkg.ProjectSource {
 	cfg := opts.Config.Packages
 	var sources []pkg.ProjectSource
 
@@ -390,41 +389,26 @@ func buildPackageSources(opts *Options, distros, backports []string) []pkg.Proje
 			Name:    name,
 			Entries: entries,
 		})
-	}
 
-	// Resolve backports. "none" means skip all backports.
-	backportNames := backports
-	if len(backportNames) == 0 {
-		for name := range cfg.Backports {
-			backportNames = append(backportNames, name)
-		}
-	}
-
-	for _, name := range backportNames {
-		if name == "none" {
-			continue
-		}
-		bp, ok := cfg.Backports[name]
-		if !ok {
-			opts.Logger.Warn("unknown backport in config, skipping", "backport", name)
-			continue
-		}
-		var entries []port.SourceEntry
-		for _, src := range bp.Sources {
-			for _, suite := range src.Suites {
-				for _, comp := range src.Components {
-					entries = append(entries, port.SourceEntry{
-						Mirror:    src.Mirror,
-						Suite:     suite,
-						Component: comp,
-					})
+		// Include backports belonging to this distro.
+		for bpName, bp := range d.Backports {
+			var bpEntries []port.SourceEntry
+			for _, src := range bp.Sources {
+				for _, suite := range src.Suites {
+					for _, comp := range src.Components {
+						bpEntries = append(bpEntries, port.SourceEntry{
+							Mirror:    src.Mirror,
+							Suite:     suite,
+							Component: comp,
+						})
+					}
 				}
 			}
+			sources = append(sources, pkg.ProjectSource{
+				Name:    bpName,
+				Entries: bpEntries,
+			})
 		}
-		sources = append(sources, pkg.ProjectSource{
-			Name:    name,
-			Entries: entries,
-		})
 	}
 
 	return sources
@@ -672,7 +656,7 @@ func formatBytes(b int64) string {
 }
 
 func newPackagesDscCmd(opts *Options) *cobra.Command {
-	var distros, backports []string
+	var distros []string
 
 	cmd := &cobra.Command{
 		Use:   "dsc <pkg> <version> [<pkg> <version> ...]",
@@ -690,9 +674,9 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros, backports)
+			sources := buildPackageSources(opts, distros)
 			if len(sources) == 0 {
-				return fmt.Errorf("no distros or backports configured")
+				return fmt.Errorf("no distros configured")
 			}
 
 			var pairs []pkg.PackageVersionPair
@@ -714,7 +698,6 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
-	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to query (default: all configured)")
 
 	return cmd
 }
@@ -756,7 +739,7 @@ func renderDscTable(w io.Writer, results []pkg.DscResult) error {
 }
 
 func newPackagesRdependsCmd(opts *Options) *cobra.Command {
-	var distros, backports []string
+	var distros []string
 	var suites []string
 
 	cmd := &cobra.Command{
@@ -772,15 +755,17 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 			}
 			defer cache.Close()
 
-			sources := buildPackageSources(opts, distros, backports)
+			sources := buildPackageSources(opts, distros)
 			if len(sources) == 0 {
-				return fmt.Errorf("no distros or backports configured")
+				return fmt.Errorf("no distros configured")
 			}
 
 			// Collect the set of backport source names for suite annotation.
 			backportNames := make(map[string]bool)
-			for name := range opts.Config.Packages.Backports {
-				backportNames[name] = true
+			for _, d := range opts.Config.Packages.Distros {
+				for name := range d.Backports {
+					backportNames[name] = true
+				}
 			}
 
 			svc := pkg.NewService(cache, opts.Logger)
@@ -825,7 +810,6 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
-	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to query (\"none\" to skip, default: none)")
 	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite")
 
 	return cmd

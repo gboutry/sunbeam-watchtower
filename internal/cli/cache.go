@@ -49,7 +49,7 @@ func newCacheCmd(opts *Options) *cobra.Command {
 
 func newCacheSyncCmd(opts *Options) *cobra.Command {
 	var project string
-	var distros, backports []string
+	var distros []string
 
 	cmd := &cobra.Command{
 		Use:   "sync [types...]",
@@ -69,7 +69,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 			}
 
 			if wantCacheType(args, cacheTypePackagesIndex) {
-				if err := syncPackagesIndex(cmd, opts, distros, backports); err != nil {
+				if err := syncPackagesIndex(cmd, opts, distros); err != nil {
 					return err
 				}
 			}
@@ -86,7 +86,6 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 	cmd.Flags().StringVar(&project, "project", "", "sync only this project (git only)")
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to update (packages-index only, default: all configured)")
-	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to update (packages-index only, default: all configured)")
 
 	return cmd
 }
@@ -154,7 +153,7 @@ func syncGitCache(cmd *cobra.Command, opts *Options, project string) error {
 	return nil
 }
 
-func syncPackagesIndex(cmd *cobra.Command, opts *Options, distros, backports []string) error {
+func syncPackagesIndex(cmd *cobra.Command, opts *Options, distros []string) error {
 	opts.Logger.Debug("starting packages index sync")
 	cache, err := buildDistroCache(opts)
 	if err != nil {
@@ -162,9 +161,9 @@ func syncPackagesIndex(cmd *cobra.Command, opts *Options, distros, backports []s
 	}
 	defer cache.Close()
 
-	sources := buildPackageSources(opts, distros, backports)
+	sources := buildPackageSources(opts, distros)
 	if len(sources) == 0 {
-		return fmt.Errorf("no distros or backports configured (check --distro/--backport flags and config)")
+		return fmt.Errorf("no distros configured (check --distro flag and config)")
 	}
 
 	svc := pkg.NewService(cache, opts.Logger)

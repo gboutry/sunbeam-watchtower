@@ -82,9 +82,10 @@ type DistroSourceConfig struct {
 
 // DistroConfig defines an APT distribution (e.g. Ubuntu, Debian).
 type DistroConfig struct {
-	Mirror     string   `mapstructure:"mirror" yaml:"mirror"`
-	Suites     []string `mapstructure:"suites" yaml:"suites"`
-	Components []string `mapstructure:"components" yaml:"components"`
+	Mirror     string                    `mapstructure:"mirror" yaml:"mirror"`
+	Suites     []string                  `mapstructure:"suites" yaml:"suites"`
+	Components []string                  `mapstructure:"components" yaml:"components"`
+	Backports  map[string]BackportConfig `mapstructure:"backports" yaml:"backports,omitempty"`
 }
 
 // BackportConfig defines a backport source group (e.g. UCA, OSBPO).
@@ -101,10 +102,9 @@ type UpstreamConfig struct {
 
 // PackagesConfig holds configuration for the packages subcommand.
 type PackagesConfig struct {
-	Distros   map[string]DistroConfig  `mapstructure:"distros" yaml:"distros,omitempty"`
-	Backports map[string]BackportConfig `mapstructure:"backports" yaml:"backports,omitempty"`
-	Sets      map[string][]string      `mapstructure:"sets" yaml:"sets,omitempty"`
-	Upstream  *UpstreamConfig          `mapstructure:"upstream" yaml:"upstream,omitempty"`
+	Distros  map[string]DistroConfig `mapstructure:"distros" yaml:"distros,omitempty"`
+	Sets     map[string][]string     `mapstructure:"sets" yaml:"sets,omitempty"`
+	Upstream *UpstreamConfig         `mapstructure:"upstream" yaml:"upstream,omitempty"`
 }
 
 // Config is the top-level configuration.
