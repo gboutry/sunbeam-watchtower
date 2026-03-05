@@ -109,6 +109,12 @@ func syncGitCache(cmd *cobra.Command, opts *Options, project string) error {
 		opts.Logger.Warn("could not build forge clients for MR sync", "error", err)
 	}
 
+	// Progress output goes to stderr when structured output is requested.
+	progressOut := opts.Out
+	if opts.Output == "json" || opts.Output == "yaml" {
+		progressOut = opts.ErrOut
+	}
+
 	synced := 0
 	for _, proj := range cfg.Projects {
 		if project != "" && proj.Name != project {
@@ -127,7 +133,7 @@ func syncGitCache(cmd *cobra.Command, opts *Options, project string) error {
 			syncOpts = &port.SyncOptions{ExtraRefSpecs: refSpecs}
 		}
 
-		fmt.Fprintf(opts.Out, "syncing %s (%s)...\n", proj.Name, cloneURL)
+		fmt.Fprintf(progressOut, "syncing %s (%s)...\n", proj.Name, cloneURL)
 		if _, err := cache.EnsureRepo(cmd.Context(), cloneURL, syncOpts); err != nil {
 			fmt.Fprintf(opts.ErrOut, "warning: %s: %v\n", proj.Name, err)
 		} else {
@@ -151,7 +157,7 @@ func syncGitCache(cmd *cobra.Command, opts *Options, project string) error {
 	}
 
 	opts.Logger.Debug("git sync complete", "repos_synced", synced)
-	fmt.Fprintln(opts.Out, "git sync done.")
+	fmt.Fprintln(progressOut, "git sync done.")
 	return nil
 }
 
@@ -172,7 +178,12 @@ func syncPackagesIndex(cmd *cobra.Command, opts *Options, distros, releases, bac
 	if err := svc.UpdateCache(cmd.Context(), sources); err != nil {
 		return err
 	}
-	fmt.Fprintln(opts.Out, "packages index sync done.")
+
+	progressOut := opts.Out
+	if opts.Output == "json" || opts.Output == "yaml" {
+		progressOut = opts.ErrOut
+	}
+	fmt.Fprintln(progressOut, "packages index sync done.")
 	return nil
 }
 
@@ -237,8 +248,13 @@ func clearGitCache(opts *Options, project string) error {
 		return err
 	}
 
+	progressOut := opts.Out
+	if opts.Output == "json" || opts.Output == "yaml" {
+		progressOut = opts.ErrOut
+	}
+
 	if project == "" {
-		fmt.Fprintf(opts.Out, "removing all cached git repos from %s\n", cache.CacheDir())
+		fmt.Fprintf(progressOut, "removing all cached git repos from %s\n", cache.CacheDir())
 		return cache.RemoveAll()
 	}
 
@@ -255,7 +271,7 @@ func clearGitCache(opts *Options, project string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", proj.Name, err)
 		}
-		fmt.Fprintf(opts.Out, "removing cached git repo for %s\n", proj.Name)
+		fmt.Fprintf(progressOut, "removing cached git repo for %s\n", proj.Name)
 		return cache.Remove(cloneURL)
 	}
 
@@ -269,7 +285,11 @@ func clearPackagesIndex(opts *Options) error {
 		return err
 	}
 
-	fmt.Fprintf(opts.Out, "removing packages index cache from %s\n", cache.CacheDir())
+	progressOut := opts.Out
+	if opts.Output == "json" || opts.Output == "yaml" {
+		progressOut = opts.ErrOut
+	}
+	fmt.Fprintf(progressOut, "removing packages index cache from %s\n", cache.CacheDir())
 	return cache.RemoveAll()
 }
 
@@ -280,6 +300,8 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Logger.Debug("listing cache status")
 
+			status := cacheFullStatus{}
+
 			// Git repos status.
 			gitCache, err := buildGitCache(opts)
 			if err != nil {
@@ -287,11 +309,8 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 			}
 
 			cacheDir := gitCache.CacheDir()
-			fmt.Fprintln(opts.Out, "=== Git Repos ===")
-			if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
-				fmt.Fprintln(opts.Out, "  (none)")
-			} else {
-				fmt.Fprintf(opts.Out, "directory: %s\n", cacheDir)
+			status.Git.Directory = cacheDir
+			if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
 				_ = filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
 					if err != nil {
 						return nil
@@ -301,44 +320,34 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 					}
 					rel, _ := filepath.Rel(cacheDir, path)
 					size, _ := dirSize(path)
-					fmt.Fprintf(opts.Out, "  %s  (%s)\n", rel, formatSize(size))
+					status.Git.Repos = append(status.Git.Repos, cacheEntry{Name: rel, Size: formatSize(size)})
 					return filepath.SkipDir
 				})
 			}
 
 			// Packages index status.
-			fmt.Fprintln(opts.Out, "\n=== Packages Index ===")
 			distroCache, err := buildDistroCache(opts)
 			if err != nil {
-				fmt.Fprintf(opts.Out, "  (unavailable: %v)\n", err)
-				return nil
-			}
-			defer distroCache.Close()
-
-			svc := pkg.NewService(distroCache, opts.Logger)
-			statuses, err := svc.CacheStatus()
-			if err != nil {
-				return err
-			}
-			if len(statuses) == 0 {
-				fmt.Fprintln(opts.Out, "  (none)")
+				status.Packages.Error = err.Error()
 			} else {
-				fmt.Fprintf(opts.Out, "directory: %s\n", distroCache.CacheDir())
-				if err := renderCacheStatus(opts.Out, opts.Output, statuses); err != nil {
+				defer distroCache.Close()
+				status.Packages.Directory = distroCache.CacheDir()
+
+				svc := pkg.NewService(distroCache, opts.Logger)
+				statuses, err := svc.CacheStatus()
+				if err != nil {
 					return err
 				}
+				status.Packages.Sources = statuses
 			}
 
 			// Upstream repos status.
-			fmt.Fprintln(opts.Out, "\n=== Upstream Repos ===")
 			upDir, err := upstreamCacheDir()
 			if err != nil {
 				return err
 			}
-			if _, err := os.Stat(upDir); os.IsNotExist(err) {
-				fmt.Fprintln(opts.Out, "  (none)")
-			} else {
-				fmt.Fprintf(opts.Out, "directory: %s\n", upDir)
+			status.Upstream.Directory = upDir
+			if _, err := os.Stat(upDir); !os.IsNotExist(err) {
 				entries, err := os.ReadDir(upDir)
 				if err != nil {
 					return err
@@ -348,11 +357,11 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 						continue
 					}
 					size, _ := dirSize(filepath.Join(upDir, e.Name()))
-					fmt.Fprintf(opts.Out, "  %s  (%s)\n", e.Name(), formatSize(size))
+					status.Upstream.Repos = append(status.Upstream.Repos, cacheEntry{Name: e.Name(), Size: formatSize(size)})
 				}
 			}
 
-			return nil
+			return renderCacheFullStatus(opts.Out, opts.Output, &status)
 		},
 	}
 }
@@ -414,7 +423,7 @@ func syncUpstreamRepos(cmd *cobra.Command, opts *Options) error {
 		return fmt.Errorf("no configuration loaded")
 	}
 	if cfg.Packages.Upstream == nil {
-		fmt.Fprintln(opts.Out, "upstream repos: not configured, skipping.")
+		opts.Logger.Debug("upstream repos: not configured, skipping")
 		return nil
 	}
 
@@ -424,6 +433,11 @@ func syncUpstreamRepos(cmd *cobra.Command, opts *Options) error {
 	}
 	if err := os.MkdirAll(upDir, 0o755); err != nil {
 		return fmt.Errorf("creating upstream cache dir: %w", err)
+	}
+
+	progressOut := opts.Out
+	if opts.Output == "json" || opts.Output == "yaml" {
+		progressOut = opts.ErrOut
 	}
 
 	repos := map[string]string{}
@@ -437,17 +451,17 @@ func syncUpstreamRepos(cmd *cobra.Command, opts *Options) error {
 	for label, repoURL := range repos {
 		localPath := upstreamRepoPath(upDir, repoURL)
 		if _, err := os.Stat(localPath); err == nil {
-			fmt.Fprintf(opts.Out, "fetching %s (%s)...\n", label, repoURL)
+			fmt.Fprintf(progressOut, "fetching %s (%s)...\n", label, repoURL)
 			gitCmd := exec.CommandContext(cmd.Context(), "git", "-C", localPath, "fetch", "--all")
-			gitCmd.Stdout = opts.Out
+			gitCmd.Stdout = progressOut
 			gitCmd.Stderr = opts.ErrOut
 			if err := gitCmd.Run(); err != nil {
 				fmt.Fprintf(opts.ErrOut, "warning: fetch %s: %v\n", label, err)
 			}
 		} else {
-			fmt.Fprintf(opts.Out, "cloning %s (%s)...\n", label, repoURL)
+			fmt.Fprintf(progressOut, "cloning %s (%s)...\n", label, repoURL)
 			gitCmd := exec.CommandContext(cmd.Context(), "git", "clone", "--bare", repoURL, localPath)
-			gitCmd.Stdout = opts.Out
+			gitCmd.Stdout = progressOut
 			gitCmd.Stderr = opts.ErrOut
 			if err := gitCmd.Run(); err != nil {
 				fmt.Fprintf(opts.ErrOut, "warning: clone %s: %v\n", label, err)
@@ -455,7 +469,7 @@ func syncUpstreamRepos(cmd *cobra.Command, opts *Options) error {
 		}
 	}
 
-	fmt.Fprintln(opts.Out, "upstream repos sync done.")
+	fmt.Fprintln(progressOut, "upstream repos sync done.")
 	return nil
 }
 
@@ -465,7 +479,11 @@ func clearUpstreamRepos(opts *Options) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Out, "removing upstream repos cache from %s\n", upDir)
+	progressOut := opts.Out
+	if opts.Output == "json" || opts.Output == "yaml" {
+		progressOut = opts.ErrOut
+	}
+	fmt.Fprintf(progressOut, "removing upstream repos cache from %s\n", upDir)
 	if err := os.RemoveAll(upDir); err != nil {
 		return fmt.Errorf("removing upstream cache: %w", err)
 	}

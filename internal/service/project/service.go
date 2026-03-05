@@ -24,17 +24,17 @@ const (
 
 // SyncAction represents a single action taken (or planned) during sync.
 type SyncAction struct {
-	Project    string
-	Series     string
-	ActionType ActionType
-	OldValue   string // previous dev focus (for set_dev_focus)
-	NewValue   string // new dev focus (for set_dev_focus)
+	Project    string     `json:"project" yaml:"project"`
+	Series     string     `json:"series" yaml:"series"`
+	ActionType ActionType `json:"action_type" yaml:"action_type"`
+	OldValue   string     `json:"old_value,omitempty" yaml:"old_value,omitempty"`
+	NewValue   string     `json:"new_value,omitempty" yaml:"new_value,omitempty"`
 }
 
 // SyncResult holds the outcome of a sync operation.
 type SyncResult struct {
-	Actions []SyncAction
-	Errors  []error
+	Actions []SyncAction `json:"actions" yaml:"actions"`
+	Errors  []error      `json:"-" yaml:"-"`
 }
 
 // SyncOptions controls the sync behavior.

@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 func newConfigCmd(opts *Options) *cobra.Command {
@@ -26,13 +25,12 @@ func newConfigShowCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("no configuration loaded")
 			}
 
-			data, err := yaml.Marshal(opts.Config)
-			if err != nil {
-				return fmt.Errorf("marshalling config: %w", err)
+			switch opts.Output {
+			case "json":
+				return renderJSON(opts.Out, opts.Config)
+			default:
+				return renderYAML(opts.Out, opts.Config)
 			}
-
-			fmt.Fprint(opts.Out, string(data))
-			return nil
 		},
 	}
 }

@@ -163,38 +163,11 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			for _, a := range result.Actions {
-				switch a.ActionType {
-				case bugsync.ActionStatusUpdate:
-					if dryRun {
-						fmt.Fprintf(opts.Out, "would update: Bug #%s task %q %s → %s\n", a.BugID, a.TaskTitle, a.OldStatus, a.NewStatus)
-					} else {
-						fmt.Fprintf(opts.Out, "updated: Bug #%s task %q %s → %s\n", a.BugID, a.TaskTitle, a.OldStatus, a.NewStatus)
-					}
-				case bugsync.ActionSeriesAssignment:
-					if dryRun {
-						fmt.Fprintf(opts.Out, "would assign: Bug #%s to series %q on project %q\n", a.BugID, a.Series, a.Project)
-					} else {
-						fmt.Fprintf(opts.Out, "assigned: Bug #%s to series %q on project %q\n", a.BugID, a.Series, a.Project)
-					}
-				case bugsync.ActionAddProjectTask:
-					if dryRun {
-						fmt.Fprintf(opts.Out, "would add: Bug #%s task on project %q\n", a.BugID, a.Project)
-					} else {
-						fmt.Fprintf(opts.Out, "added: Bug #%s task on project %q\n", a.BugID, a.Project)
-					}
-				}
-			}
-
 			for _, e := range result.Errors {
 				fmt.Fprintf(opts.ErrOut, "warning: %v\n", e)
 			}
 
-			if len(result.Actions) == 0 && len(result.Errors) == 0 {
-				fmt.Fprintln(opts.Out, "No bugs to sync.")
-			}
-
-			return nil
+			return renderBugSyncResult(opts.Out, opts.Output, result, dryRun)
 		},
 	}
 

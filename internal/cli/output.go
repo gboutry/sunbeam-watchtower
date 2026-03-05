@@ -9,6 +9,8 @@ import (
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
+	"github.com/gboutry/sunbeam-watchtower/internal/service/bugsync"
+	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
 	"gopkg.in/yaml.v3"
 )
 
@@ -369,4 +371,155 @@ func renderRecipesTable(w io.Writer, recipes []port.Recipe) error {
 		)
 	}
 	return tw.Flush()
+}
+
+// renderBugSyncResult writes bug sync results in the requested format.
+func renderBugSyncResult(w io.Writer, format string, result *bugsync.SyncResult, dryRun bool) error {
+	switch format {
+	case "json":
+		return renderJSON(w, result)
+	case "yaml":
+		return renderYAML(w, result)
+	default:
+		return renderBugSyncTable(w, result, dryRun)
+	}
+}
+
+func renderBugSyncTable(w io.Writer, result *bugsync.SyncResult, dryRun bool) error {
+	if len(result.Actions) == 0 {
+		fmt.Fprintln(w, "No bugs to sync.")
+		return nil
+	}
+	prefix := ""
+	if dryRun {
+		prefix = "would "
+	}
+	for _, a := range result.Actions {
+		switch a.ActionType {
+		case bugsync.ActionStatusUpdate:
+			fmt.Fprintf(w, "%supdate: Bug #%s task %q %s → %s\n", prefix, a.BugID, a.TaskTitle, a.OldStatus, a.NewStatus)
+		case bugsync.ActionSeriesAssignment:
+			fmt.Fprintf(w, "%sassign: Bug #%s to series %q on project %q\n", prefix, a.BugID, a.Series, a.Project)
+		case bugsync.ActionAddProjectTask:
+			fmt.Fprintf(w, "%sadd: Bug #%s task on project %q\n", prefix, a.BugID, a.Project)
+		}
+	}
+	return nil
+}
+
+// renderProjectSyncResult writes project sync results in the requested format.
+func renderProjectSyncResult(w io.Writer, format string, result *projectsvc.SyncResult, dryRun bool) error {
+	switch format {
+	case "json":
+		return renderJSON(w, result)
+	case "yaml":
+		return renderYAML(w, result)
+	default:
+		return renderProjectSyncTable(w, result, dryRun)
+	}
+}
+
+func renderProjectSyncTable(w io.Writer, result *projectsvc.SyncResult, dryRun bool) error {
+	if len(result.Actions) == 0 {
+		fmt.Fprintln(w, "No changes needed.")
+		return nil
+	}
+	prefix := ""
+	if dryRun {
+		prefix = "would "
+	}
+	for _, a := range result.Actions {
+		switch a.ActionType {
+		case projectsvc.ActionCreateSeries:
+			fmt.Fprintf(w, "%screate: series %q on project %q\n", prefix, a.Series, a.Project)
+		case projectsvc.ActionSetDevFocus:
+			fmt.Fprintf(w, "%sset: development focus to %q on project %q\n", prefix, a.Series, a.Project)
+		case projectsvc.ActionDevFocusUnchanged:
+			fmt.Fprintf(w, "unchanged: development focus already %q on project %q\n", a.Series, a.Project)
+		}
+	}
+	return nil
+}
+
+// renderStringList writes a list of strings in the requested format.
+func renderStringList(w io.Writer, format string, items []string) error {
+	switch format {
+	case "json":
+		return renderJSON(w, items)
+	case "yaml":
+		return renderYAML(w, items)
+	default:
+		for _, item := range items {
+			fmt.Fprintln(w, item)
+		}
+		return nil
+	}
+}
+
+type cacheEntry struct {
+	Name string `json:"name" yaml:"name"`
+	Size string `json:"size" yaml:"size"`
+}
+
+type cacheFullStatus struct {
+	Git struct {
+		Directory string       `json:"directory" yaml:"directory"`
+		Repos     []cacheEntry `json:"repos" yaml:"repos"`
+	} `json:"git" yaml:"git"`
+	Packages struct {
+		Directory string             `json:"directory,omitempty" yaml:"directory,omitempty"`
+		Error     string             `json:"error,omitempty" yaml:"error,omitempty"`
+		Sources   []port.CacheStatus `json:"sources" yaml:"sources"`
+	} `json:"packages" yaml:"packages"`
+	Upstream struct {
+		Directory string       `json:"directory" yaml:"directory"`
+		Repos     []cacheEntry `json:"repos" yaml:"repos"`
+	} `json:"upstream" yaml:"upstream"`
+}
+
+func renderCacheFullStatus(w io.Writer, format string, status *cacheFullStatus) error {
+	switch format {
+	case "json":
+		return renderJSON(w, status)
+	case "yaml":
+		return renderYAML(w, status)
+	default:
+		return renderCacheFullStatusTable(w, status)
+	}
+}
+
+func renderCacheFullStatusTable(w io.Writer, status *cacheFullStatus) error {
+	fmt.Fprintln(w, "=== Git Repos ===")
+	if len(status.Git.Repos) == 0 {
+		fmt.Fprintln(w, "  (none)")
+	} else {
+		fmt.Fprintf(w, "directory: %s\n", status.Git.Directory)
+		for _, r := range status.Git.Repos {
+			fmt.Fprintf(w, "  %s  (%s)\n", r.Name, r.Size)
+		}
+	}
+
+	fmt.Fprintln(w, "\n=== Packages Index ===")
+	if status.Packages.Error != "" {
+		fmt.Fprintf(w, "  (unavailable: %s)\n", status.Packages.Error)
+	} else if len(status.Packages.Sources) == 0 {
+		fmt.Fprintln(w, "  (none)")
+	} else {
+		fmt.Fprintf(w, "directory: %s\n", status.Packages.Directory)
+		if err := renderCacheStatusTable(w, status.Packages.Sources); err != nil {
+			return err
+		}
+	}
+
+	fmt.Fprintln(w, "\n=== Upstream Repos ===")
+	if len(status.Upstream.Repos) == 0 {
+		fmt.Fprintln(w, "  (none)")
+	} else {
+		fmt.Fprintf(w, "directory: %s\n", status.Upstream.Directory)
+		for _, r := range status.Upstream.Repos {
+			fmt.Fprintf(w, "  %s  (%s)\n", r.Name, r.Size)
+		}
+	}
+
+	return nil
 }

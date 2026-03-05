@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/git"
@@ -193,15 +192,7 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			for _, name := range deleted {
-				if dryRun {
-					fmt.Fprintf(opts.Out, "would delete: %s\n", name)
-				} else {
-					fmt.Fprintf(opts.Out, "deleted: %s\n", name)
-				}
-			}
-
-			return nil
+			return renderStringList(opts.Out, opts.Output, deleted)
 		},
 	}
 

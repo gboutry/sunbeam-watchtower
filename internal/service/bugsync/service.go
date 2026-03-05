@@ -28,22 +28,22 @@ const (
 
 // SyncAction represents a single action taken (or planned) during sync.
 type SyncAction struct {
-	BugID      string
-	TaskTitle  string
-	OldStatus  string
-	NewStatus  string
-	SelfLink   string
-	URL        string
-	Series     string // series name if assigned
-	Project    string // LP project name
-	ActionType ActionType
+	BugID      string     `json:"bug_id" yaml:"bug_id"`
+	TaskTitle  string     `json:"task_title" yaml:"task_title"`
+	OldStatus  string     `json:"old_status,omitempty" yaml:"old_status,omitempty"`
+	NewStatus  string     `json:"new_status,omitempty" yaml:"new_status,omitempty"`
+	SelfLink   string     `json:"self_link,omitempty" yaml:"self_link,omitempty"`
+	URL        string     `json:"url,omitempty" yaml:"url,omitempty"`
+	Series     string     `json:"series,omitempty" yaml:"series,omitempty"`
+	Project    string     `json:"project,omitempty" yaml:"project,omitempty"`
+	ActionType ActionType `json:"action_type" yaml:"action_type"`
 }
 
 // SyncResult holds the outcome of a sync operation.
 type SyncResult struct {
-	Actions []SyncAction
-	Skipped int
-	Errors  []error
+	Actions []SyncAction `json:"actions" yaml:"actions"`
+	Skipped int          `json:"skipped" yaml:"skipped"`
+	Errors  []error      `json:"-" yaml:"-"`
 }
 
 // SyncOptions controls the sync behavior.

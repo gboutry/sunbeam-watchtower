@@ -329,8 +329,8 @@ projects:
 		t.Fatalf("Execute() error: %v", err)
 	}
 
-	if !strings.Contains(out.String(), "no Launchpad projects") {
-		t.Errorf("expected 'no Launchpad projects' message, got: %s", out.String())
+	if !strings.Contains(out.String(), "No changes needed") {
+		t.Errorf("expected 'No changes needed' message, got: %s", out.String())
 	}
 }
 

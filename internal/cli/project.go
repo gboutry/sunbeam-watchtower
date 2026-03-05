@@ -64,8 +64,7 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 			}
 
 			if len(projectConfigs) == 0 {
-				fmt.Fprintln(opts.Out, "no Launchpad projects found in configuration")
-				return nil
+				return renderProjectSyncResult(opts.Out, opts.Output, &projectsvc.SyncResult{}, dryRun)
 			}
 
 			lpClient := newLaunchpadClient(cfg.Launchpad, opts)
@@ -88,30 +87,11 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			for _, a := range result.Actions {
-				switch a.ActionType {
-				case projectsvc.ActionCreateSeries:
-					if dryRun {
-						fmt.Fprintf(opts.Out, "would create: series %q on project %q\n", a.Series, a.Project)
-					} else {
-						fmt.Fprintf(opts.Out, "created: series %q on project %q\n", a.Series, a.Project)
-					}
-				case projectsvc.ActionSetDevFocus:
-					if dryRun {
-						fmt.Fprintf(opts.Out, "would set: development focus to %q on project %q\n", a.Series, a.Project)
-					} else {
-						fmt.Fprintf(opts.Out, "set: development focus to %q on project %q\n", a.Series, a.Project)
-					}
-				case projectsvc.ActionDevFocusUnchanged:
-					fmt.Fprintf(opts.Out, "unchanged: development focus already %q on project %q\n", a.Series, a.Project)
-				}
-			}
-
 			for _, e := range result.Errors {
 				fmt.Fprintf(opts.ErrOut, "error: %v\n", e)
 			}
 
-			return nil
+			return renderProjectSyncResult(opts.Out, opts.Output, result, dryRun)
 		},
 	}
 
