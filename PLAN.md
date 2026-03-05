@@ -379,6 +379,9 @@ When `--backport gazpacho` is given without `--release`, the CLI infers:
 ### Per-source suite filtering
 `Diff` derives per-source suite filters from `ProjectSource.Entries` when entries are present. This prevents suites from one source leaking into another's bbolt query (e.g. backport suite `noble` not matching noble main suites in the `ubuntu` bucket).
 
+### --only-in auto-inference
+When `--only-in` names a backport source (e.g. `ubuntu/gazpacho`), the diff command auto-includes that backport and scopes to the named distro. This avoids requiring the user to also pass `--backport gazpacho --distro ubuntu`.
+
 ### Bug correlation
 - Parse commit messages for LP bug references (`LP: #NNNNN`, `Closes-Bug: #NNNNN`, `Partial-Bug:`, `Related-Bug:`)
 - `commit track --bug-id` finds commits referencing a specific bug across all projects
@@ -427,7 +430,7 @@ watchtower
 ├── packages
 │   ├── diff <set>              --distro --release --backport --suite --component --merge --upstream-release --behind-upstream --only-in --constraints
 │   ├── show <pkg>              --distro --release --backport --merge --upstream-release
-│   ├── list                    --distro --release --suite --component
+│   ├── list                    --distro --release --backport --suite --component
 │   ├── dsc <pkg> <ver> [...]   --distro --release --backport
 │   └── rdepends <pkg>          --distro --release --backport --suite
 ├── review

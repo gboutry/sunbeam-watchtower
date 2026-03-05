@@ -53,6 +53,34 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("unknown package set %q", setName)
 			}
 
+			// If --only-in names a backport source (e.g. "ubuntu/gazpacho"),
+			// ensure that backport is included and scope to that distro.
+			if onlyIn != "" {
+				if parts := strings.SplitN(onlyIn, "/", 2); len(parts) == 2 {
+					distroName := parts[0]
+					bpName := parts[1]
+					// Scope to the named distro if no --distro given.
+					if len(distros) == 0 {
+						distros = []string{distroName}
+					}
+					found := false
+					for _, bp := range backports {
+						if bp == bpName {
+							found = true
+							break
+						}
+					}
+					if !found {
+						backports = append([]string{}, backports...)
+						if len(backports) == 1 && backports[0] == "none" {
+							backports = []string{bpName}
+						} else {
+							backports = append(backports, bpName)
+						}
+					}
+				}
+			}
+
 			cache, err := buildDistroCache(opts)
 			if err != nil {
 				return err
