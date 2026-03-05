@@ -35,6 +35,7 @@ type CodeConfig struct {
 	Owner   string `mapstructure:"owner" yaml:"owner,omitempty"`
 	Host    string `mapstructure:"host" yaml:"host,omitempty"`
 	Project string `mapstructure:"project" yaml:"project"`
+	GitURL  string `mapstructure:"git_url" yaml:"git_url,omitempty"` // explicit clone URL override
 }
 
 // BugTrackerConfig specifies a bug tracker for a project.

@@ -179,7 +179,7 @@ func (g *GitHubForge) repoCommitToCommit(repo string, rc *github.RepositoryCommi
 			c.Date = rc.Commit.Author.GetDate().Time
 		}
 	}
-	c.BugRefs = extractBugRefs(c.Message)
+	c.BugRefs = ExtractBugRefs(c.Message)
 	return c
 }
 

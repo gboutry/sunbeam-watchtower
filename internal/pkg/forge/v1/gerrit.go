@@ -137,7 +137,7 @@ func (g *GerritForge) changeToCommit(repo string, c *gerrit.ChangeInfo) Commit {
 		Date:    c.Updated.Time,
 	}
 	commit.Author = gerritOwnerName(&c.Owner)
-	commit.BugRefs = extractBugRefs(c.Subject)
+	commit.BugRefs = ExtractBugRefs(c.Subject)
 	return commit
 }
 

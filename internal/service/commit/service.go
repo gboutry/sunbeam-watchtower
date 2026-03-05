@@ -9,13 +9,19 @@ import (
 	"sort"
 
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
-	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
 
 // ProjectForge pairs a Forge client with the project identifier it expects.
+// Deprecated: Use ProjectSource instead.
 type ProjectForge struct {
-	Forge     port.Forge
+	Forge     ForgeClient
 	ProjectID string // e.g. "owner/repo" for GitHub, project path for Gerrit/LP
+}
+
+// ForgeClient is the minimal interface needed from a forge for commit listing.
+type ForgeClient interface {
+	Type() forge.ForgeType
+	ListCommits(ctx context.Context, repo string, opts forge.ListCommitsOpts) ([]forge.Commit, error)
 }
 
 // ListOptions controls filtering for List.
@@ -36,12 +42,27 @@ type ProjectResult struct {
 
 // Service aggregates commits across multiple forges.
 type Service struct {
-	projects map[string]ProjectForge
+	projects map[string]ProjectSource
 }
 
-// NewService creates a commit service with the given project-to-forge mappings.
-func NewService(projects map[string]ProjectForge) *Service {
+// NewService creates a commit service from ProjectSource mappings.
+func NewService(projects map[string]ProjectSource) *Service {
 	return &Service{projects: projects}
+}
+
+// NewServiceFromForges creates a commit service from legacy ProjectForge mappings.
+func NewServiceFromForges(projects map[string]ProjectForge) *Service {
+	sources := make(map[string]ProjectSource, len(projects))
+	for name, pf := range projects {
+		sources[name] = ProjectSource{
+			Source: &ForgeCommitSource{
+				Forge:     pf.Forge,
+				ProjectID: pf.ProjectID,
+			},
+			ForgeType: pf.Forge.Type(),
+		}
+	}
+	return &Service{projects: sources}
 }
 
 // List returns commits across all configured projects, applying filters.
@@ -59,15 +80,15 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.Commit, [
 	var results []ProjectResult
 	var all []forge.Commit
 
-	for name, pf := range s.projects {
+	for name, ps := range s.projects {
 		if len(projFilter) > 0 && !projFilter[name] {
 			continue
 		}
-		if len(forgeFilter) > 0 && !forgeFilter[pf.Forge.Type()] {
+		if len(forgeFilter) > 0 && !forgeFilter[ps.ForgeType] {
 			continue
 		}
 
-		commits, err := pf.Forge.ListCommits(ctx, pf.ProjectID, forge.ListCommitsOpts{
+		commits, err := ps.Source.ListCommits(ctx, forge.ListCommitsOpts{
 			Branch: opts.Branch,
 			Author: opts.Author,
 		})

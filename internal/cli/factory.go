@@ -3,10 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/andygrunwald/go-gerrit"
 	"github.com/google/go-github/v68/github"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/gitcache"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/launchpad"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
@@ -14,6 +17,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/bug"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
+	"github.com/gboutry/sunbeam-watchtower/internal/service/commit"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/review"
 )
 
@@ -221,4 +225,73 @@ func buildRepoManager(opts *Options) (port.RepoManager, error) {
 	}
 
 	return lpadapter.NewRepoManager(lpClient, opts.Logger), nil
+}
+
+// resolveCacheDir returns the cache directory for sunbeam-watchtower.
+// It uses $XDG_CACHE_HOME/sunbeam-watchtower if set, otherwise ~/.cache/sunbeam-watchtower.
+func resolveCacheDir() (string, error) {
+	base := os.Getenv("XDG_CACHE_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("determining home directory: %w", err)
+		}
+		base = filepath.Join(home, ".cache")
+	}
+	return filepath.Join(base, "sunbeam-watchtower"), nil
+}
+
+// buildGitCache creates a shared git cache instance.
+func buildGitCache(opts *Options) (*gitcache.Cache, error) {
+	cacheDir, err := resolveCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	return gitcache.NewCache(filepath.Join(cacheDir, "repos"), opts.Logger), nil
+}
+
+// buildCommitSources creates commit sources backed by the local git cache.
+func buildCommitSources(opts *Options) (map[string]commit.ProjectSource, error) {
+	cfg := opts.Config
+	if cfg == nil {
+		return nil, fmt.Errorf("no configuration loaded")
+	}
+
+	cache, err := buildGitCache(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]commit.ProjectSource, len(cfg.Projects))
+	for _, proj := range cfg.Projects {
+		cloneURL, err := proj.Code.CloneURL()
+		if err != nil {
+			return nil, fmt.Errorf("project %s: %w", proj.Name, err)
+		}
+
+		forgeType := forgeTypeFromConfig(proj.Code.Forge)
+		result[proj.Name] = commit.ProjectSource{
+			Source: &commit.CachedGitSource{
+				Cache:    cache,
+				CloneURL: cloneURL,
+				Code:     proj.Code,
+			},
+			ForgeType: forgeType,
+		}
+	}
+
+	return result, nil
+}
+
+func forgeTypeFromConfig(forgeName string) forge.ForgeType {
+	switch forgeName {
+	case "github":
+		return forge.ForgeGitHub
+	case "launchpad":
+		return forge.ForgeLaunchpad
+	case "gerrit":
+		return forge.ForgeGerrit
+	default:
+		return forge.ForgeGitHub
+	}
 }

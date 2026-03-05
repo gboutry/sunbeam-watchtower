@@ -13,8 +13,8 @@ var bugRefPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)Related-Bug:\s*#?(\d+)`),
 }
 
-// extractBugRefs parses a commit message for LP bug references.
-func extractBugRefs(message string) []string {
+// ExtractBugRefs parses a commit message for LP bug references.
+func ExtractBugRefs(message string) []string {
 	seen := make(map[string]bool)
 	var refs []string
 

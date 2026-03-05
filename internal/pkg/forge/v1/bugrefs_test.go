@@ -67,13 +67,13 @@ func TestExtractBugRefs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractBugRefs(tt.message)
+			got := ExtractBugRefs(tt.message)
 			if len(got) != len(tt.want) {
-				t.Fatalf("extractBugRefs() = %v, want %v", got, tt.want)
+				t.Fatalf("ExtractBugRefs() = %v, want %v", got, tt.want)
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
-					t.Errorf("extractBugRefs()[%d] = %q, want %q", i, got[i], tt.want[i])
+					t.Errorf("ExtractBugRefs()[%d] = %q, want %q", i, got[i], tt.want[i])
 				}
 			}
 		})

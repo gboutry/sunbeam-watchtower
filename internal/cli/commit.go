@@ -30,12 +30,12 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 		Use:   "log",
 		Short: "List commits across forges",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clients, err := buildCommitClients(opts)
+			sources, err := buildCommitSources(opts)
 			if err != nil {
 				return err
 			}
 
-			svc := commit.NewService(clients)
+			svc := commit.NewService(sources)
 
 			listOpts := commit.ListOptions{
 				Projects: projects,
@@ -90,12 +90,12 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--bug-id is required")
 			}
 
-			clients, err := buildCommitClients(opts)
+			sources, err := buildCommitSources(opts)
 			if err != nil {
 				return err
 			}
 
-			svc := commit.NewService(clients)
+			svc := commit.NewService(sources)
 
 			listOpts := commit.ListOptions{
 				Projects: projects,
@@ -132,21 +132,4 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&branch, "branch", "", "branch to list commits from")
 
 	return cmd
-}
-
-// buildCommitClients converts forge clients to commit.ProjectForge map.
-func buildCommitClients(opts *Options) (map[string]commit.ProjectForge, error) {
-	reviewClients, err := buildForgeClients(opts)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]commit.ProjectForge, len(reviewClients))
-	for name, pf := range reviewClients {
-		result[name] = commit.ProjectForge{
-			Forge:     pf.Forge,
-			ProjectID: pf.ProjectID,
-		}
-	}
-	return result, nil
 }
