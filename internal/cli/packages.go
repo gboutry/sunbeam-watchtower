@@ -368,6 +368,9 @@ func buildPackageSources(opts *Options, distros, backports []string) []pkg.Proje
 	}
 
 	for _, name := range distroNames {
+		if name == "none" {
+			continue
+		}
 		d, ok := cfg.Distros[name]
 		if !ok {
 			opts.Logger.Warn("unknown distro in config, skipping", "distro", name)
@@ -389,7 +392,7 @@ func buildPackageSources(opts *Options, distros, backports []string) []pkg.Proje
 		})
 	}
 
-	// Resolve backports.
+	// Resolve backports. "none" means skip all backports.
 	backportNames := backports
 	if len(backportNames) == 0 {
 		for name := range cfg.Backports {
@@ -398,6 +401,9 @@ func buildPackageSources(opts *Options, distros, backports []string) []pkg.Proje
 	}
 
 	for _, name := range backportNames {
+		if name == "none" {
+			continue
+		}
 		bp, ok := cfg.Backports[name]
 		if !ok {
 			opts.Logger.Warn("unknown backport in config, skipping", "backport", name)
@@ -771,16 +777,32 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("no distros or backports configured")
 			}
 
+			// Collect the set of backport source names for suite annotation.
+			backportNames := make(map[string]bool)
+			for name := range opts.Config.Packages.Backports {
+				backportNames[name] = true
+			}
+
 			svc := pkg.NewService(cache, opts.Logger)
 			queryOpts := port.QueryOpts{Suites: suites}
-			results, err := svc.ReverseDepends(cmd.Context(), pkgName, sources, queryOpts)
-			if err != nil {
-				return err
+
+			// Query each source individually to tag backport results.
+			var results []distro.SourcePackageDetail
+			for _, src := range sources {
+				srcResults, err := svc.ReverseDepends(cmd.Context(), pkgName, []pkg.ProjectSource{src}, queryOpts)
+				if err != nil {
+					return err
+				}
+				if backportNames[src.Name] {
+					for i := range srcResults {
+						srcResults[i].Suite = srcResults[i].Suite + "/" + src.Name
+					}
+				}
+				results = append(results, srcResults...)
 			}
 
 			if len(results) == 0 {
 				// Check whether the queried name exists as a source package.
-				// If not, it is likely a binary package name.
 				found := false
 				for _, src := range sources {
 					srcPkgs, qErr := cache.Query(cmd.Context(), src.Name, port.QueryOpts{
@@ -803,7 +825,7 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
-	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to query (\"none\" to skip, default: none)")
 	cmd.Flags().StringSliceVar(&suites, "suite", nil, "filter by suite")
 
 	return cmd
