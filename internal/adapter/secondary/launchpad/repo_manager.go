@@ -109,7 +109,11 @@ func (m *RepoManager) GetGitRef(ctx context.Context, repoSelfLink, refPath strin
 	if err != nil {
 		return "", fmt.Errorf("getting git ref %q: %w", refPath, err)
 	}
-	return ref.SelfLink, nil
+	// LP's getRefByPath may return a ref without self_link; construct it.
+	if ref.SelfLink != "" {
+		return ref.SelfLink, nil
+	}
+	return repoSelfLink + "/+ref/" + refPath, nil
 }
 
 func (m *RepoManager) WaitForGitRef(ctx context.Context, repoSelfLink, refPath string, timeout time.Duration) (string, error) {

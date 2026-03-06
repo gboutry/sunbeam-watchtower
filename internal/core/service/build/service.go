@@ -277,6 +277,9 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		status := s.assessRecipe(ctx, pb, name)
 		refLink := gitRefLinks[name]
 		bp := buildPaths[name]
+		s.logger.Debug("dispatching recipe action",
+			"recipe", name, "action", status.Action,
+			"repoSelfLink", repoSelfLink, "gitRefLink", refLink, "buildPath", bp)
 		rr := s.executeAction(ctx, pb, status, opts, repoSelfLink, refLink, bp)
 		result.RecipeResults = append(result.RecipeResults, rr)
 
