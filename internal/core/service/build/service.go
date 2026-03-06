@@ -114,11 +114,8 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 	}
 
 	owner := opts.Owner
-	if owner == "" {
-		owner = pb.Owner
-	}
-	// Local mode: resolve from LP Me() if still empty
 	if owner == "" && opts.Source == "local" {
+		// Local mode: resolve from LP Me() — config owner is the remote/official owner.
 		if s.repoManager == nil {
 			return nil, fmt.Errorf("local mode requires a RepoManager")
 		}
@@ -127,6 +124,9 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 			return nil, fmt.Errorf("resolving current LP user: %w", err)
 		}
 		owner = me
+	}
+	if owner == "" {
+		owner = pb.Owner
 	}
 	if owner == "" {
 		return nil, fmt.Errorf("no owner configured for project %q (set build.owner in config or use --owner)", projectName)
