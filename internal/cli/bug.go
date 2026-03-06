@@ -2,10 +2,8 @@ package cli
 
 import (
 	"fmt"
-	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/port"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/bug"
+	"github.com/gboutry/sunbeam-watchtower/internal/appclient"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/bugsync"
 	"github.com/spf13/cobra"
 )
@@ -28,20 +26,11 @@ func newBugShowCmd(opts *Options) *cobra.Command {
 		Short: "Show a bug and its tasks",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.Logger.Debug("bug show command started", "id", args[0])
-			trackers, projectMap, err := buildBugTrackers(opts)
+			result, err := opts.Client.BugsGet(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-
-			svc := bug.NewService(trackers, projectMap, opts.Logger)
-
-			b, err := svc.Get(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-
-			return renderBugDetail(opts.Out, opts.Output, b)
+			return renderBugDetail(opts.Out, opts.Output, result)
 		},
 	}
 
@@ -61,35 +50,20 @@ func newBugListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List bug tasks across bug trackers",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.Logger.Debug("bug list command started")
-			trackers, projectMap, err := buildBugTrackers(opts)
-			if err != nil {
-				return err
-			}
-
-			svc := bug.NewService(trackers, projectMap, opts.Logger)
-
-			listOpts := bug.ListOptions{
+			result, err := opts.Client.BugsList(cmd.Context(), appclient.BugsListOptions{
 				Projects:   projects,
 				Status:     status,
 				Importance: importance,
 				Assignee:   assignee,
 				Tags:       tags,
-			}
-
-			tasks, results, err := svc.List(cmd.Context(), listOpts)
+			})
 			if err != nil {
 				return err
 			}
-
-			// Report per-tracker errors.
-			for _, r := range results {
-				if r.Err != nil {
-					fmt.Fprintf(opts.ErrOut, "warning: %v\n", r.Err)
-				}
+			for _, w := range result.Warnings {
+				fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
 			}
-
-			return renderBugTasks(opts.Out, opts.Output, tasks)
+			return renderBugTasks(opts.Out, opts.Output, result.Tasks)
 		},
 	}
 
@@ -114,60 +88,23 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 		Short: "Update LP bug statuses from cached commits",
 		Long:  "Scans cached commits for LP bug references and updates bug task statuses to Fix Committed. Also assigns bugs to the appropriate LP series based on which branches contain the fix.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.Logger.Debug("bug sync command started", "dry_run", dryRun)
-
-			sources, err := buildCommitSources(opts)
-			if err != nil {
-				return err
-			}
-
-			trackers, _, err := buildBugTrackers(opts)
-			if err != nil {
-				return err
-			}
-
-			// Use the first available bug tracker and collect LP project names.
-			var tracker port.BugTracker
-			var lpProjects []string
-			for _, pt := range trackers {
-				if tracker == nil {
-					tracker = pt.Tracker
-				}
-				lpProjects = append(lpProjects, pt.ProjectID)
-			}
-			if tracker == nil {
-				return fmt.Errorf("no bug tracker configured")
-			}
-
-			// Build watchtower project → LP bug project mapping.
-			lpProjectMap := make(map[string][]string)
-			for _, proj := range opts.Config.Projects {
-				for _, b := range proj.Bugs {
-					if b.Forge == "launchpad" {
-						lpProjectMap[proj.Name] = append(lpProjectMap[proj.Name], b.Project)
-					}
-				}
-			}
-
-			svc := bugsync.NewService(sources, tracker, lpProjects, lpProjectMap, opts.Logger)
-			syncOpts := bugsync.SyncOptions{
+			result, err := opts.Client.BugsSync(cmd.Context(), appclient.BugsSyncOptions{
 				Projects: projects,
 				DryRun:   dryRun,
-			}
-			if days > 0 {
-				since := time.Now().AddDate(0, 0, -days)
-				syncOpts.Since = &since
-			}
-			result, err := svc.Sync(cmd.Context(), syncOpts)
+				Days:     days,
+			})
 			if err != nil {
 				return err
 			}
-
 			for _, e := range result.Errors {
-				fmt.Fprintf(opts.ErrOut, "warning: %v\n", e)
+				fmt.Fprintf(opts.ErrOut, "warning: %s\n", e)
 			}
-
-			return renderBugSyncResult(opts.Out, opts.Output, result, dryRun)
+			// Convert to bugsync.SyncResult for the renderer.
+			syncResult := &bugsync.SyncResult{
+				Actions: result.Actions,
+				Skipped: result.Skipped,
+			}
+			return renderBugSyncResult(opts.Out, opts.Output, syncResult, dryRun)
 		},
 	}
 

@@ -10,33 +10,33 @@ import (
 
 // Bug is a forge-agnostic bug with its associated tasks.
 type Bug struct {
-	Forge       ForgeType
-	ID          string // "12345" for LP, "#123" for GH
-	Title       string
-	Description string
-	Owner       string
-	Tags        []string
-	URL         string
-	Tasks       []BugTask
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	Forge       ForgeType `json:"forge"`
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Owner       string    `json:"owner"`
+	Tags        []string  `json:"tags,omitempty"`
+	URL         string    `json:"url"`
+	Tasks       []BugTask `json:"tasks"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // BugTask is a forge-agnostic bug task.
 type BugTask struct {
-	Forge      ForgeType
-	Project    string // watchtower project name
-	BugID      string // bug identifier ("12345" for LP, "#123" for GH)
-	Title      string
-	Status     string // "New", "Confirmed", "In Progress", etc.
-	Importance string // "Critical", "High", "Medium", "Low", etc.
-	Assignee   string
-	Tags       []string
-	URL        string
-	SelfLink   string // API self link for updates (LP-specific)
-	TargetName string // LP project slug (e.g. "snap-openstack")
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	Forge      ForgeType `json:"forge"`
+	Project    string    `json:"project"`
+	BugID      string    `json:"bug_id"`
+	Title      string    `json:"title"`
+	Status     string    `json:"status"`
+	Importance string    `json:"importance"`
+	Assignee   string    `json:"assignee,omitempty"`
+	Tags       []string  `json:"tags,omitempty"`
+	URL        string    `json:"url"`
+	SelfLink   string    `json:"self_link,omitempty"`
+	TargetName string    `json:"target_name,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // ProjectSeries is a forge-agnostic project series.

@@ -21,6 +21,17 @@ internal/
 │   ├── launchpad/              ← LP recipe builders (rock/charm/snap) + repo manager + project manager
 │   └── openstack/              ← OpenStack upstream provider (deliverables, constraints, name mapping)
 │
+├── api/                        ← HTTP server (huma v2 + chi router)
+│   └── server.go               ← Server struct, health endpoint, TCP/unix listener, graceful shutdown
+│
+├── appclient/                  ← typed HTTP client for the Watchtower API
+│   ├── client.go               ← Client struct, NewClient (unix/TCP), get/post helpers, Huma error handling
+│   ├── packages.go             ← PackagesDiff, PackagesShow, PackagesList, PackagesRdepends, PackagesDsc, PackagesCacheStatus, PackagesCacheSync
+│   └── bugs.go                 ← BugsList, BugsGet, BugsSync
+│
+├── app/                        ← shared application layer (used by both CLI and HTTP API)
+│   └── app.go                  ← App struct, lazy singletons (DistroCache, GitCache), factory methods for all services
+│
 ├── cli/                        ← cobra command tree + factory wiring
 │   ├── root.go                 ← global flags: --config, --verbose, --output, --no-color
 │   ├── auth.go                 ← watchtower auth login|status
@@ -29,11 +40,12 @@ internal/
 │   ├── cache.go                ← watchtower cache sync|clear|status (git + packages-index + upstream-repos types)
 │   ├── commit.go               ← watchtower commit log|track
 │   ├── config_cmd.go           ← watchtower config show
-│   ├── factory.go              ← builds forge clients, commit sources, bug trackers, distro cache, etc.
+│   ├── factory.go              ← thin wrappers delegating to app.App methods
 │   ├── output.go               ← shared table/json/yaml rendering
 │   ├── packages.go             ← watchtower packages diff|show|list|rdepends|dsc
 │   ├── project.go              ← watchtower project sync
 │   ├── review.go               ← watchtower review list|show
+│   ├── serve.go                ← watchtower serve (HTTP API server with signal handling)
 │   └── version.go              ← watchtower version
 │
 ├── config/                     ← viper-based config loading + validation
@@ -732,6 +744,15 @@ Main Menu
 - [x] JSON/YAML struct tags on `bugsync.SyncAction/SyncResult` and `projectsvc.SyncAction/SyncResult`
 
 ### Next Steps
+- [x] HTTP server skeleton (`internal/api/server.go`) — huma v2 + chi, health endpoint, TCP/unix socket, graceful shutdown
+- [x] Bug API handlers (`internal/api/bugs.go`) — GET /api/v1/bugs, GET /api/v1/bugs/{id}, POST /api/v1/bugs/sync; JSON tags added to `forge.Bug` and `forge.BugTask`
+- [x] Packages API handlers (`internal/api/packages.go`) — GET diff/{set}, show/{name}, list, rdepends/{name}, dsc, cache/status; POST cache/sync; upstream annotation & filtering helpers
+- [x] `watchtower serve` command (`internal/cli/serve.go`) — starts HTTP server, registers all API handlers, configurable listen address (tcp/unix), graceful shutdown on SIGINT/SIGTERM
+- [x] HTTP client library (`internal/appclient/`) — typed Go client for all API endpoints (packages + bugs), unix socket + TCP support, Huma error handling
+- [x] CLI packages commands use HTTP client (`internal/cli/packages.go`) — all 5 package subcommands (diff, show, list, dsc, rdepends) refactored from direct service calls to `opts.Client.*` methods; server-side helpers (annotateUpstream, filterBehindUpstream, filterOnlyIn, stripDebianVersion) removed from CLI; render functions kept as presentation layer
+- [x] CLI bugs commands use HTTP client (`internal/cli/bug.go`) — all 3 bug subcommands (show, list, sync) refactored to use `opts.Client.Bugs*` methods; removed direct buildBugTrackers/buildCommitSources calls
+- [x] CLI-server integration (`internal/cli/root.go`) — embedded server auto-started on random port for local CLI use; `--server` flag + `WATCHTOWER_SERVER` env var for external server; `PersistentPostRunE` gracefully shuts down embedded server
+- [x] OpenAPI 3.1 spec verified — 11 endpoints: health, 7 packages, 3 bugs; spec served at `/openapi.json`
 - [ ] MCP server
 - [ ] TUI dashboard (`charmbracelet/bubbletea`)
 - [ ] Release tracking (snap/charm store APIs)

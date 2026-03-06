@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	pkg "github.com/gboutry/sunbeam-watchtower/internal/service/package"
@@ -189,16 +190,7 @@ func syncPackagesIndex(cmd *cobra.Command, opts *Options, distros, releases, bac
 
 // convertToMRMetadata converts forge MergeRequests to port.MRMetadata entries.
 func convertToMRMetadata(mrs []forge.MergeRequest, forgeName string) []port.MRMetadata {
-	result := make([]port.MRMetadata, 0, len(mrs))
-	for _, mr := range mrs {
-		result = append(result, port.MRMetadata{
-			ID:     mr.ID,
-			State:  mr.State,
-			URL:    mr.URL,
-			GitRef: mrGitRef(forgeName, mr.ID),
-		})
-	}
-	return result
+	return app.ConvertToMRMetadata(mrs, forgeName)
 }
 
 func newCacheClearCmd(opts *Options) *cobra.Command {
@@ -402,17 +394,11 @@ func formatSize(bytes int64) string {
 }
 
 func upstreamCacheDir() (string, error) {
-	cacheDir, err := resolveCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(cacheDir, "upstream"), nil
+	return app.UpstreamCacheDir()
 }
 
 func upstreamRepoPath(cacheDir, repoURL string) string {
-	name := filepath.Base(repoURL)
-	name = strings.TrimSuffix(name, ".git")
-	return filepath.Join(cacheDir, name)
+	return app.UpstreamRepoPath(cacheDir, repoURL)
 }
 
 func syncUpstreamRepos(cmd *cobra.Command, opts *Options) error {

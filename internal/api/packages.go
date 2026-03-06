@@ -1,0 +1,551 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
+package api
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"sort"
+	"strings"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/port"
+	pkg "github.com/gboutry/sunbeam-watchtower/internal/service/package"
+)
+
+// --- Request / Response types ------------------------------------------------
+
+// PackagesDiffInput holds parameters for the diff endpoint.
+type PackagesDiffInput struct {
+	Set             string   `path:"set" doc:"Package set name" example:"openstack"`
+	Distros         []string `query:"distro" doc:"Filter by distro name"`
+	Releases        []string `query:"release" doc:"Filter by distro release"`
+	Suites          []string `query:"suite" doc:"Filter by suite type (release, updates, proposed)"`
+	Backports       []string `query:"backport" doc:"Backports to include (default: none)"`
+	Merge           bool     `query:"merge" doc:"Merge suites per source into highest version"`
+	UpstreamRelease string   `query:"upstream_release" doc:"Upstream release to compare against" example:"2025.1"`
+	BehindUpstream  bool     `query:"behind_upstream" doc:"Show only packages behind upstream"`
+	OnlyIn          string   `query:"only_in" doc:"Show only packages present in the named source"`
+	Constraints     string   `query:"constraints" doc:"Include upper-constraints packages for the given release"`
+}
+
+// PackagesDiffOutput is the response for the diff endpoint.
+type PackagesDiffOutput struct {
+	Body []pkg.DiffResult `doc:"List of package diff results"`
+}
+
+// PackagesShowInput holds parameters for the show endpoint.
+type PackagesShowInput struct {
+	Name            string   `path:"name" doc:"Source package name" example:"nova"`
+	Distros         []string `query:"distro" doc:"Filter by distro name"`
+	Releases        []string `query:"release" doc:"Filter by distro release"`
+	Suites          []string `query:"suite" doc:"Filter by suite type"`
+	Backports       []string `query:"backport" doc:"Backports to include (default: none)"`
+	Merge           bool     `query:"merge" doc:"Merge suites per source into highest version"`
+	UpstreamRelease string   `query:"upstream_release" doc:"Upstream release to compare against" example:"2025.1"`
+}
+
+// PackagesShowOutput is the response for the show endpoint.
+type PackagesShowOutput struct {
+	Body *pkg.DiffResult `doc:"Package version information across sources"`
+}
+
+// PackagesListInput holds parameters for the list endpoint.
+type PackagesListInput struct {
+	Distros    []string `query:"distro" required:"true" doc:"Distro(s) to list packages from"`
+	Releases   []string `query:"release" doc:"Filter by distro release"`
+	Suites     []string `query:"suite" doc:"Filter by suite type"`
+	Components []string `query:"component" doc:"Filter by component"`
+	Backports  []string `query:"backport" doc:"Backports to include (default: none)"`
+}
+
+// PackagesListOutput is the response for the list endpoint.
+type PackagesListOutput struct {
+	Body []distro.SourcePackage `doc:"List of source packages"`
+}
+
+// PackagesRdependsInput holds parameters for the rdepends endpoint.
+type PackagesRdependsInput struct {
+	Name      string   `path:"name" doc:"Source package name to find reverse build-dependencies for" example:"oslo.config"`
+	Distros   []string `query:"distro" doc:"Filter by distro name"`
+	Releases  []string `query:"release" doc:"Filter by distro release"`
+	Suites    []string `query:"suite" doc:"Filter by suite type"`
+	Backports []string `query:"backport" doc:"Backports to include (default: none)"`
+}
+
+// PackagesRdependsOutput is the response for the rdepends endpoint.
+type PackagesRdependsOutput struct {
+	Body []distro.SourcePackageDetail `doc:"Source packages that build-depend on the queried package"`
+}
+
+// PackagesDscInput holds parameters for the dsc endpoint.
+type PackagesDscInput struct {
+	Packages  []string `query:"packages" required:"true" doc:"Package/version pairs in name=version format" example:"nova=2025.1-0ubuntu1"`
+	Distros   []string `query:"distro" doc:"Filter by distro name"`
+	Releases  []string `query:"release" doc:"Filter by distro release"`
+	Backports []string `query:"backport" doc:"Backports to include (default: none)"`
+}
+
+// PackagesDscOutput is the response for the dsc endpoint.
+type PackagesDscOutput struct {
+	Body []pkg.DscResult `doc:"DSC URL lookup results"`
+}
+
+// PackagesCacheStatusOutput is the response for the cache status endpoint.
+type PackagesCacheStatusOutput struct {
+	Body []port.CacheStatus `doc:"Cache status for each indexed source group"`
+}
+
+// PackagesCacheSyncInput holds the request body for the cache sync endpoint.
+type PackagesCacheSyncInput struct {
+	Body struct {
+		Distros   []string `json:"distros" doc:"Distros to sync (default: all configured)"`
+		Releases  []string `json:"releases" doc:"Releases to sync (default: all configured)"`
+		Backports []string `json:"backports" doc:"Backports to sync (default: all configured)"`
+	}
+}
+
+// PackagesCacheSyncOutput is the response for the cache sync endpoint.
+type PackagesCacheSyncOutput struct {
+	Body struct {
+		Status string `json:"status" example:"ok" doc:"Sync result status"`
+	}
+}
+
+// --- Route registration ------------------------------------------------------
+
+// RegisterPackagesAPI registers all package-related endpoints on the given huma API.
+func RegisterPackagesAPI(api huma.API, application *app.App) {
+	// GET /api/v1/packages/diff/{set}
+	huma.Register(api, huma.Operation{
+		OperationID: "packages-diff",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/packages/diff/{set}",
+		Summary:     "Compare package versions across distros",
+		Tags:        []string{"packages"},
+	}, func(ctx context.Context, input *PackagesDiffInput) (*PackagesDiffOutput, error) {
+		setName := input.Set
+		packages, ok := application.Config.Packages.Sets[setName]
+		if !ok {
+			return nil, huma.Error404NotFound(fmt.Sprintf("unknown package set %q", setName))
+		}
+
+		// When --only-in names a backport source, auto-scope distro and backport filters.
+		distros := input.Distros
+		backports := input.Backports
+		if input.OnlyIn != "" {
+			if parts := strings.SplitN(input.OnlyIn, "/", 2); len(parts) == 2 {
+				if len(distros) == 0 {
+					distros = []string{parts[0]}
+				}
+				bpName := parts[1]
+				found := false
+				for _, bp := range backports {
+					if bp == bpName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					if len(backports) == 1 && backports[0] == "none" {
+						backports = []string{bpName}
+					} else {
+						backports = append(backports, bpName)
+					}
+				}
+			}
+		}
+
+		if len(backports) == 0 {
+			backports = []string{"none"}
+		}
+
+		cache, err := application.DistroCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+		}
+
+		sources := application.BuildPackageSources(distros, input.Releases, input.Suites, backports)
+		if len(sources) == 0 {
+			return nil, huma.Error400BadRequest("no distros configured or matched filters")
+		}
+
+		svc := pkg.NewService(cache, application.Logger)
+		results, err := svc.Diff(ctx, pkg.DiffOpts{
+			Packages: packages,
+			Sources:  sources,
+		})
+		if err != nil {
+			return nil, huma.Error500InternalServerError("diff failed", err)
+		}
+
+		// --constraints: merge upper-constraints packages into the diff.
+		if input.Constraints != "" {
+			provider, pErr := application.BuildUpstreamProvider()
+			if pErr != nil {
+				return nil, huma.Error500InternalServerError("upstream provider error", pErr)
+			}
+			if provider == nil {
+				return nil, huma.Error400BadRequest("constraints requires upstream provider configuration")
+			}
+			constraintMap, cErr := provider.GetConstraints(ctx, input.Constraints)
+			if cErr != nil {
+				return nil, huma.Error500InternalServerError(
+					fmt.Sprintf("fetching constraints for %s", input.Constraints), cErr)
+			}
+
+			existing := make(map[string]bool, len(results))
+			for _, r := range results {
+				existing[r.Package] = true
+			}
+			for pypiName, ver := range constraintMap {
+				pkgName := provider.MapPackageName(pypiName, port.DeliverableOther)
+				if existing[pkgName] {
+					continue
+				}
+				extra, qErr := svc.Show(ctx, pkgName, sources)
+				if qErr != nil {
+					continue
+				}
+				extra.Upstream = ver
+				results = append(results, *extra)
+				existing[pkgName] = true
+			}
+			sort.Slice(results, func(i, j int) bool {
+				return results[i].Package < results[j].Package
+			})
+		}
+
+		// Annotate upstream versions when requested.
+		effectiveRelease := input.UpstreamRelease
+		if effectiveRelease == "" && input.Constraints != "" {
+			effectiveRelease = input.Constraints
+		}
+		if effectiveRelease != "" {
+			_ = annotateUpstreamResults(ctx, application, results, effectiveRelease)
+		}
+
+		// --behind-upstream: keep only packages where distro < upstream.
+		if input.BehindUpstream {
+			results = filterBehindUpstreamResults(results, sources)
+		}
+
+		// --only-in: keep only packages present in the named source.
+		if input.OnlyIn != "" {
+			var filtered []pkg.DiffResult
+			for _, r := range results {
+				if len(r.Versions[input.OnlyIn]) > 0 {
+					filtered = append(filtered, r)
+				}
+			}
+			results = filtered
+		}
+
+		return &PackagesDiffOutput{Body: results}, nil
+	})
+
+	// GET /api/v1/packages/show/{name}
+	huma.Register(api, huma.Operation{
+		OperationID: "packages-show",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/packages/show/{name}",
+		Summary:     "Show all versions of a package across distros",
+		Tags:        []string{"packages"},
+	}, func(ctx context.Context, input *PackagesShowInput) (*PackagesShowOutput, error) {
+		backports := input.Backports
+		if len(backports) == 0 {
+			backports = []string{"none"}
+		}
+
+		cache, err := application.DistroCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+		}
+
+		sources := application.BuildPackageSources(input.Distros, input.Releases, input.Suites, backports)
+		svc := pkg.NewService(cache, application.Logger)
+
+		result, err := svc.Show(ctx, input.Name, sources)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("show failed", err)
+		}
+
+		if input.UpstreamRelease != "" {
+			results := []pkg.DiffResult{*result}
+			_ = annotateUpstreamResults(ctx, application, results, input.UpstreamRelease)
+			result = &results[0]
+		}
+
+		return &PackagesShowOutput{Body: result}, nil
+	})
+
+	// GET /api/v1/packages/list
+	huma.Register(api, huma.Operation{
+		OperationID: "packages-list",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/packages/list",
+		Summary:     "List packages in a distro",
+		Tags:        []string{"packages"},
+	}, func(ctx context.Context, input *PackagesListInput) (*PackagesListOutput, error) {
+		backports := input.Backports
+		if len(backports) == 0 {
+			backports = []string{"none"}
+		}
+
+		cache, err := application.DistroCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+		}
+
+		sources := application.BuildPackageSources(input.Distros, input.Releases, input.Suites, backports)
+		if len(sources) == 0 {
+			return nil, huma.Error400BadRequest("no distros configured or matched filters")
+		}
+
+		svc := pkg.NewService(cache, application.Logger)
+		var allPkgs []distro.SourcePackage
+		for _, src := range sources {
+			srcSuites := make([]string, 0, len(src.Entries))
+			for _, e := range src.Entries {
+				srcSuites = append(srcSuites, e.Suite)
+			}
+			pkgs, qErr := svc.List(ctx, src.Name, port.QueryOpts{
+				Suites:     srcSuites,
+				Components: input.Components,
+			})
+			if qErr != nil {
+				return nil, huma.Error500InternalServerError("list failed", qErr)
+			}
+			allPkgs = append(allPkgs, pkgs...)
+		}
+
+		return &PackagesListOutput{Body: allPkgs}, nil
+	})
+
+	// GET /api/v1/packages/rdepends/{name}
+	huma.Register(api, huma.Operation{
+		OperationID: "packages-rdepends",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/packages/rdepends/{name}",
+		Summary:     "Find source packages that build-depend on a given package",
+		Tags:        []string{"packages"},
+	}, func(ctx context.Context, input *PackagesRdependsInput) (*PackagesRdependsOutput, error) {
+		backports := input.Backports
+		if len(backports) == 0 {
+			backports = []string{"none"}
+		}
+
+		cache, err := application.DistroCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+		}
+
+		sources := application.BuildPackageSources(input.Distros, input.Releases, input.Suites, backports)
+		if len(sources) == 0 {
+			return nil, huma.Error400BadRequest("no distros configured or matched filters")
+		}
+
+		svc := pkg.NewService(cache, application.Logger)
+
+		var results []distro.SourcePackageDetail
+		for _, src := range sources {
+			suiteSet := make(map[string]bool, len(src.Entries))
+			for _, e := range src.Entries {
+				suiteSet[e.Suite] = true
+			}
+			var srcSuites []string
+			for s := range suiteSet {
+				srcSuites = append(srcSuites, s)
+			}
+			queryOpts := port.QueryOpts{Suites: srcSuites}
+
+			srcResults, qErr := svc.ReverseDepends(ctx, input.Name, []pkg.ProjectSource{src}, queryOpts)
+			if qErr != nil {
+				return nil, huma.Error500InternalServerError("rdepends failed", qErr)
+			}
+			results = append(results, srcResults...)
+		}
+
+		return &PackagesRdependsOutput{Body: results}, nil
+	})
+
+	// GET /api/v1/packages/dsc
+	huma.Register(api, huma.Operation{
+		OperationID: "packages-dsc",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/packages/dsc",
+		Summary:     "Look up .dsc file URLs for source package/version pairs",
+		Tags:        []string{"packages"},
+	}, func(ctx context.Context, input *PackagesDscInput) (*PackagesDscOutput, error) {
+		var pairs []pkg.PackageVersionPair
+		for _, p := range input.Packages {
+			parts := strings.SplitN(p, "=", 2)
+			if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+				return nil, huma.Error400BadRequest(
+					fmt.Sprintf("invalid package format %q; expected name=version", p))
+			}
+			pairs = append(pairs, pkg.PackageVersionPair{
+				Package: parts[0],
+				Version: parts[1],
+			})
+		}
+
+		backports := input.Backports
+		if len(backports) == 0 {
+			backports = []string{"none"}
+		}
+
+		cache, err := application.DistroCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+		}
+
+		sources := application.BuildPackageSources(input.Distros, input.Releases, nil, backports)
+		if len(sources) == 0 {
+			return nil, huma.Error400BadRequest("no distros configured or matched filters")
+		}
+
+		svc := pkg.NewService(cache, application.Logger)
+		results, err := svc.FindDsc(ctx, pairs, sources)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("dsc lookup failed", err)
+		}
+
+		return &PackagesDscOutput{Body: results}, nil
+	})
+
+	// GET /api/v1/packages/cache/status
+	huma.Register(api, huma.Operation{
+		OperationID: "packages-cache-status",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/packages/cache/status",
+		Summary:     "Get package cache status",
+		Tags:        []string{"packages"},
+	}, func(ctx context.Context, _ *struct{}) (*PackagesCacheStatusOutput, error) {
+		cache, err := application.DistroCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+		}
+
+		svc := pkg.NewService(cache, application.Logger)
+		statuses, err := svc.CacheStatus()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("cache status failed", err)
+		}
+
+		return &PackagesCacheStatusOutput{Body: statuses}, nil
+	})
+
+	// POST /api/v1/packages/cache/sync
+	huma.Register(api, huma.Operation{
+		OperationID: "packages-cache-sync",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/packages/cache/sync",
+		Summary:     "Sync the package cache",
+		Tags:        []string{"packages"},
+	}, func(ctx context.Context, input *PackagesCacheSyncInput) (*PackagesCacheSyncOutput, error) {
+		cache, err := application.DistroCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+		}
+
+		// nil backports means include all (sync everything).
+		var backports []string
+		if len(input.Body.Backports) > 0 {
+			backports = input.Body.Backports
+		}
+		sources := application.BuildPackageSources(input.Body.Distros, input.Body.Releases, nil, backports)
+
+		svc := pkg.NewService(cache, application.Logger)
+		if err := svc.UpdateCache(ctx, sources); err != nil {
+			return nil, huma.Error500InternalServerError("cache sync failed", err)
+		}
+
+		out := &PackagesCacheSyncOutput{}
+		out.Body.Status = "ok"
+		return out, nil
+	})
+}
+
+// --- Helpers -----------------------------------------------------------------
+
+// annotateUpstreamResults populates the Upstream field on each DiffResult.
+func annotateUpstreamResults(ctx context.Context, application *app.App, results []pkg.DiffResult, release string) error {
+	provider, err := application.BuildUpstreamProvider()
+	if err != nil {
+		return err
+	}
+	if provider == nil {
+		return fmt.Errorf("no upstream provider configured")
+	}
+
+	deliverables, err := provider.ListDeliverables(ctx, release)
+	if err != nil {
+		return fmt.Errorf("listing deliverables: %w", err)
+	}
+
+	upstreamVersions := make(map[string]string, len(deliverables))
+	for _, d := range deliverables {
+		pkgName := provider.MapPackageName(d.Name, d.Type)
+		if d.Version != "" {
+			upstreamVersions[pkgName] = d.Version
+		}
+	}
+
+	constraints, cErr := provider.GetConstraints(ctx, release)
+	if cErr != nil {
+		application.Logger.Debug("upstream constraints unavailable", "error", cErr)
+	}
+
+	for i := range results {
+		if v, ok := upstreamVersions[results[i].Package]; ok {
+			results[i].Upstream = v
+		} else if constraints != nil {
+			name := results[i].Package
+			if v, ok := constraints[name]; ok {
+				results[i].Upstream = v
+			} else {
+				for cName, cVer := range constraints {
+					mapped := provider.MapPackageName(cName, port.DeliverableOther)
+					if mapped == name {
+						results[i].Upstream = cVer
+						break
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// filterBehindUpstreamResults keeps only results where distro version < upstream.
+func filterBehindUpstreamResults(results []pkg.DiffResult, sources []pkg.ProjectSource) []pkg.DiffResult {
+	var filtered []pkg.DiffResult
+	for _, r := range results {
+		if r.Upstream == "" {
+			continue
+		}
+		// Check if any source version is behind upstream.
+		behind := false
+		for _, src := range sources {
+			for _, sp := range r.Versions[src.Name] {
+				if sp.Version != "" && sp.Version < r.Upstream {
+					behind = true
+					break
+				}
+			}
+			if behind {
+				break
+			}
+		}
+		if behind {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
