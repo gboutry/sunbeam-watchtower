@@ -199,7 +199,7 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 			_ = s.gitClient.RemoveRemote(opts.LocalPath, remoteName)
 		}()
 
-		refBranch := "refs/heads/" + sha[:8]
+		refBranch := "refs/heads/tmp-" + sha[:8]
 		if err := s.gitClient.Push(opts.LocalPath, remoteName, "HEAD", refBranch, true); err != nil {
 			return nil, fmt.Errorf("push to LP: %w", err)
 		}
