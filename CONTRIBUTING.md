@@ -4,6 +4,8 @@
 
 - Go 1.24+ (see `go.mod` for exact version)
 - Git
+- [pre-commit](https://pre-commit.com/) (recommended)
+- [arch-go](https://github.com/arch-go/arch-go) (recommended)
 
 ## Getting started
 
@@ -12,35 +14,55 @@ git clone https://github.com/gboutry/sunbeam-watchtower.git
 cd sunbeam-watchtower
 go build ./...
 go test ./...
+pre-commit install
 ```
 
 ## Project structure
 
+The project follows strict **hexagonal architecture** (ports and adapters), enforced by `arch-go` and `depguard`:
+
 ```
-cmd/watchtower/          Entry point
+cmd/watchtower/                    Thin entrypoint
 internal/
-├── adapter/             Concrete implementations of port interfaces
-│   ├── git/             go-git backed GitClient
-│   ├── gitcache/        Local bare-clone cache for commit history
-│   └── launchpad/       Launchpad recipe builders and repo manager
-├── cli/                 Cobra commands, factory wiring, output rendering
-├── config/              Config structs, loading, validation
-├── pkg/
-│   ├── forge/v1/        Forge implementations (GitHub, Gerrit, Launchpad)
-│   └── launchpad/v1/    Raw Launchpad REST API client
-├── port/                Interface definitions (hexagonal architecture)
-└── service/             Business logic
-    ├── bug/             Bug aggregation across trackers
-    ├── build/           Build triggering, listing, downloading
-    ├── commit/          Commit aggregation across sources
-    └── review/          Merge request aggregation
+├── adapter/
+│   ├── primary/                   Driving adapters (input → calls core)
+│   │   ├── api/                   HTTP server, handlers, API-specific DTOs
+│   │   └── cli/                   Cobra commands, output rendering
+│   └── secondary/                 Driven adapters (output → implements ports)
+│       ├── distrocache/           Distro package index cache
+│       ├── git/                   go-git backed GitClient
+│       ├── gitcache/              Local bare-clone cache for commit history
+│       ├── launchpad/             LP recipe builders, repo manager, project manager
+│       └── openstack/             OpenStack upstream deliverable mapping
+├── app/                           Composition root (wires adapters + services)
+├── config/                        Config structs, loading, validation
+└── core/
+    ├── port/                      Interface definitions only
+    └── service/                   Domain logic and use cases
+        ├── bug/                   Bug aggregation across trackers
+        ├── bugsync/               Cross-references bugs ↔ commits
+        ├── build/                 Build triggering, listing, downloading
+        ├── commit/                Commit aggregation across sources
+        ├── package/               Package version comparison
+        ├── project/               LP project metadata sync
+        └── review/                Merge request aggregation
+pkg/                               Public reusable packages
+├── client/                        Typed HTTP client for the watchtower API
+├── distro/v1/                     Distro version parsing and comparison
+├── dto/v1/                        Shared data contracts
+├── forge/v1/                      Forge implementations (GitHub, Gerrit, Launchpad)
+└── launchpad/v1/                  Raw Launchpad REST API client
 ```
 
-The project follows **hexagonal architecture** (ports and adapters):
-- `internal/port/` defines all interfaces
-- `internal/adapter/` provides concrete implementations
-- `internal/service/` contains business logic that depends only on port interfaces
-- `internal/cli/` wires everything together via factory functions
+### Dependency rules
+
+- **`internal/core/port`** — interfaces only; depends on nothing except `pkg/*`
+- **`internal/core/service/*`** — depends only on `internal/core/port` and `pkg/*`
+- **Primary adapters** (`api`, `cli`) — call core services through ports; never import secondary adapters
+- **Secondary adapters** — implement port interfaces; never import services or primary adapters
+- **`pkg/*`** — never imports `internal/*`
+
+These rules are machine-enforced by `arch-go` (see `arch-go.yml`) and `depguard` (see `.golangci.yml`).
 
 ## Building
 
@@ -49,7 +71,7 @@ The project follows **hexagonal architecture** (ports and adapters):
 go build -o watchtower ./cmd/watchtower
 
 # Build with version info
-go build -ldflags "-X github.com/gboutry/sunbeam-watchtower/internal/cli.Version=v1.0.0" -o watchtower ./cmd/watchtower
+go build -ldflags "-X github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/cli.Version=v1.0.0" -o watchtower ./cmd/watchtower
 ```
 
 ## Running tests
@@ -60,14 +82,25 @@ go test ./...
 
 # Specific package
 go test ./internal/config/...
-go test ./internal/adapter/gitcache/...
-go test ./internal/service/commit/...
+go test ./internal/adapter/secondary/gitcache/...
+go test ./internal/core/service/commit/...
 
 # With verbose output
-go test -v ./internal/service/commit/...
+go test -v ./internal/core/service/commit/...
 
 # With race detection
 go test -race ./...
+```
+
+## Linting and architecture checks
+
+```bash
+# Full pre-commit suite (recommended)
+pre-commit run --all-files
+
+# Individual checks
+golangci-lint run ./...
+arch-go --color no
 ```
 
 ## Debug logging
@@ -85,7 +118,7 @@ This sets the log level to `DEBUG`, which surfaces detailed tracing across every
 | Layer | What gets logged |
 |-------|-----------------|
 | **CLI commands** | Command start with filter parameters, result counts |
-| **Factory** | Forge client configuration, commit source wiring, cache directory resolution |
+| **App wiring** | Forge client configuration, commit source wiring, cache directory resolution |
 | **Services** | Per-project query/skip decisions, fetch counts, aggregation totals, warnings on errors |
 | **Git cache** | Clone/fetch operations, path resolution, commit read counts |
 | **Git client** | Every operation: push, remote management, HEAD resolution |
@@ -139,21 +172,28 @@ Guidelines:
 
 ### Adding a new forge
 
-1. Implement the `forge.Forge` interface in `internal/pkg/forge/v1/`
+1. Implement the `forge.Forge` interface in `pkg/forge/v1/`
 2. Add a new `ForgeType` constant
-3. Wire it in `internal/cli/factory.go` `buildForgeClients()`
+3. Wire it in `internal/app/app.go` (`BuildForgeClients`)
 4. Add config validation in `internal/config/config.go`
 5. Update `CloneURL()` and `CommitURL()` in `internal/config/giturl.go`
 
 ### Adding a new service
 
-1. Define any new port interfaces in `internal/port/`
-2. Create the service in `internal/service/<name>/`
+1. Define any new port interfaces in `internal/core/port/`
+2. Create the service in `internal/core/service/<name>/`
 3. Accept port interfaces (not concrete types) in the constructor
 4. Accept a `*slog.Logger` with nil-safe default
-5. Wire it in `internal/cli/factory.go`
-6. Add CLI commands in `internal/cli/<name>.go`
-7. Register in `internal/cli/root.go`
+5. Wire it in `internal/app/app.go`
+6. Add API handlers in `internal/adapter/primary/api/<name>.go`
+7. Add CLI commands in `internal/adapter/primary/cli/<name>.go`
+8. Register the CLI command in `internal/adapter/primary/cli/root.go`
+
+### Adding a new adapter
+
+1. Define or reuse a port interface in `internal/core/port/`
+2. Implement the adapter in `internal/adapter/secondary/<name>/`
+3. Wire it in `internal/app/app.go`
 
 ### Adding a new cache type
 
@@ -166,9 +206,9 @@ sunbeam-watchtower/
 └── <other>/     ← future cache types
 ```
 
-1. Define a port interface in `internal/port/`
-2. Implement the adapter in `internal/adapter/<name>/`
-3. Integrate via factory functions in `internal/cli/factory.go`
+1. Define a port interface in `internal/core/port/`
+2. Implement the adapter in `internal/adapter/secondary/<name>/`
+3. Wire it in `internal/app/app.go`
 
 ## Code style
 
@@ -183,5 +223,5 @@ sunbeam-watchtower/
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Make your changes with tests
-4. Ensure `go build ./...`, `go test ./...`, and `go vet ./...` pass
+4. Ensure all checks pass: `pre-commit run --all-files`
 5. Submit a pull request against `main`

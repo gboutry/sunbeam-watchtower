@@ -106,6 +106,13 @@ The refactor is currently validated by all of the following:
 - `arch-go --color no`
 - `pre-commit run --all-files`
 
+## Contributor readiness
+
+- `README.md` — up-to-date with current architecture and commands
+- `CONTRIBUTING.md` — synced with hexagonal layout, dependency rules, and architecture guidelines
+- `AGENTS.md` — Launchpad API quirks for AI agent consumers
+- `arch-go.yml` + `.golangci.yml` — machine-enforced boundaries (zero manual review burden)
+
 ## Remaining follow-ups
 
 These are still the main gaps before TUI and MCP work:
