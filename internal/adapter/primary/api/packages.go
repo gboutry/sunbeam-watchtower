@@ -310,7 +310,12 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *PackagesDetailInput) (*PackagesDetailOutput, error) {
 		backports := input.Backports
 		if len(backports) == 0 {
-			backports = []string{"none"}
+			if input.Version != "" {
+				// Exact version: search all sources including backports.
+				backports = nil
+			} else {
+				backports = []string{"none"}
+			}
 		}
 
 		cache, err := application.DistroCache()
