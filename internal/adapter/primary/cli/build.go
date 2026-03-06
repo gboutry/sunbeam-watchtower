@@ -255,13 +255,21 @@ func prepareLocalList(cmd *cobra.Command, opts *Options, localPath, prefix strin
 	}
 
 	// Resolve owner.
-	if listOpts.Owner == "" {
-		lpOwner, err := repoMgr.GetCurrentUser(ctx)
+	lpOwner := listOpts.Owner
+	if lpOwner == "" {
+		lpOwner, err = repoMgr.GetCurrentUser(ctx)
 		if err != nil {
 			return fmt.Errorf("get current LP user: %w", err)
 		}
 		listOpts.Owner = lpOwner
 	}
+
+	// Resolve LP project for local builds.
+	lpProject, err := repoMgr.GetOrCreateProject(ctx, lpOwner)
+	if err != nil {
+		return fmt.Errorf("get LP project: %w", err)
+	}
+	listOpts.LPProject = lpProject
 
 	// Resolve HEAD SHA.
 	sha, err := gitClient.HeadSHA(localPath)
@@ -269,7 +277,7 @@ func prepareLocalList(cmd *cobra.Command, opts *Options, localPath, prefix strin
 		return fmt.Errorf("resolve HEAD SHA: %w", err)
 	}
 
-	// Compute temp recipe names from all configured projects.
+	// Compute temp recipe names from matching configured projects.
 	filterProjects := make(map[string]bool, len(listOpts.Projects))
 	for _, p := range listOpts.Projects {
 		filterProjects[p] = true
@@ -296,11 +304,14 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 	var state, source, localPath, prefix, owner string
 
 	cmd := &cobra.Command{
-		Use:   "list",
+		Use:   "list [projects...]",
 		Short: "List builds across projects",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Positional args and --project flag are merged.
+			allProjects := append(projects, args...)
+
 			listOpts := client.BuildsListOptions{
-				Projects: projects,
+				Projects: allProjects,
 				All:      all,
 				State:    state,
 			}

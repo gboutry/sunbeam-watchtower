@@ -44,6 +44,7 @@ type BuildsListInput struct {
 	All         bool     `query:"all" doc:"Show all builds (not just active)"`
 	State       string   `query:"state" doc:"Filter by state"`
 	Owner       string   `query:"owner" doc:"Override LP owner"`
+	LPProject   string   `query:"lp_project" doc:"Override LP project for recipe lookup"`
 	RecipeNames []string `query:"recipe" doc:"Explicit recipe names (overrides project config)"`
 }
 
@@ -153,6 +154,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			All:         input.All,
 			State:       input.State,
 			Owner:       input.Owner,
+			LPProject:   input.LPProject,
 			RecipeNames: input.RecipeNames,
 		})
 		if err != nil {

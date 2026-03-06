@@ -37,6 +37,7 @@ type BuildsListOptions struct {
 	All         bool
 	State       string
 	Owner       string
+	LPProject   string
 	RecipeNames []string
 }
 
@@ -59,6 +60,9 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 	}
 	if opts.Owner != "" {
 		q.Set("owner", opts.Owner)
+	}
+	if opts.LPProject != "" {
+		q.Set("lp_project", opts.LPProject)
 	}
 	for _, v := range opts.RecipeNames {
 		q.Add("recipe", v)

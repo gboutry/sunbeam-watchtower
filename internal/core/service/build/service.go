@@ -75,6 +75,7 @@ type ListOpts struct {
 	All         bool     // show all builds, not just active
 	State       string   // filter by state
 	Owner       string   // override project owner
+	LPProject   string   // override LP project for recipe lookup
 	RecipeNames []string // explicit recipe names (overrides project config)
 }
 
@@ -435,13 +436,18 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 			owner = opts.Owner
 		}
 
+		lpProject := pb.RecipeProject()
+		if opts.LPProject != "" {
+			lpProject = opts.LPProject
+		}
+
 		recipeNames := pb.Recipes
 		if len(opts.RecipeNames) > 0 {
 			recipeNames = opts.RecipeNames
 		}
 
 		for _, recipeName := range recipeNames {
-			recipe, err := pb.Builder.GetRecipe(ctx, owner, pb.RecipeProject(), recipeName)
+			recipe, err := pb.Builder.GetRecipe(ctx, owner, lpProject, recipeName)
 			if err != nil {
 				s.logger.Warn("error getting recipe", "project", name, "recipe", recipeName, "error", err)
 				continue
