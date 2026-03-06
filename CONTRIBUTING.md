@@ -211,6 +211,28 @@ sunbeam-watchtower/
 2. Implement the adapter in `internal/adapter/secondary/<name>/`
 3. Wire it in `internal/app/app.go`
 
+### Build service architecture
+
+The build service (`internal/core/service/build/`) supports local and remote build
+modes on Launchpad. Key types and interfaces:
+
+- **`ArtifactStrategy`** (`strategy.go`) — per-artifact-type strategy interface
+  (rock, charm, snap). Includes series-aware helpers:
+  - `OfficialRecipeName(artifactName, series, devFocus string) string` — returns
+    `artifactName` for the dev-focus series, `artifactName-series` otherwise.
+  - `BranchForSeries(series, devFocus, defaultBranch string) string` — returns
+    `defaultBranch` for the dev-focus series, `stable/<series>` otherwise.
+- **`ProjectBuilder`** (`project_builder.go`) — carries series-aware metadata
+  (`LPProject`, `Series`, `DevFocus`, `OfficialCodehosting`) alongside the
+  code-project identity. `RecipeProject()` resolves the LP project for recipe
+  operations.
+- **`port.RepoManager`** (`internal/core/port/build.go`) — abstracts the LP git
+  repo lifecycle. `GetDefaultRepo(ctx, projectName)` discovers the project's
+  official git repo and default branch. `GetCurrentUser(ctx)` resolves the
+  authenticated LP user for local builds.
+- **`Trigger()`** in the build service selects local vs remote mode via the
+  `Source` field in `TriggerOpts` (`"local"` or `"remote"`).
+
 ## Code style
 
 - Follow standard Go conventions (`gofmt`, `go vet`)

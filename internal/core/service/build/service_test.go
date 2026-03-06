@@ -85,13 +85,38 @@ func (m *mockRecipeBuilder) GetBuildFileURLs(_ context.Context, buildSelfLink st
 
 // mockRepoManager implements port.RepoManager for testing.
 type mockRepoManager struct {
-	project      string
-	repoSelfLink string
-	gitSSHURL    string
-	refSelfLink  string
-	createErr    error
-	repoErr      error
-	refErr       error
+	currentUser   string
+	project       string
+	repoSelfLink  string
+	gitSSHURL     string
+	refSelfLink   string
+	defaultBranch string
+	createErr     error
+	repoErr       error
+	refErr        error
+	defaultErr    error
+}
+
+func (m *mockRepoManager) GetCurrentUser(_ context.Context) (string, error) {
+	if m.currentUser != "" {
+		return m.currentUser, nil
+	}
+	return "test-user", nil
+}
+
+func (m *mockRepoManager) GetDefaultRepo(_ context.Context, projectName string) (string, string, error) {
+	if m.defaultErr != nil {
+		return "", "", m.defaultErr
+	}
+	link := m.repoSelfLink
+	if link == "" {
+		link = "https://api.launchpad.net/devel/~owner/" + projectName + "/+git/" + projectName
+	}
+	branch := m.defaultBranch
+	if branch == "" {
+		branch = "main"
+	}
+	return link, branch, nil
 }
 
 func (m *mockRepoManager) GetOrCreateProject(_ context.Context, _ string) (string, error) {
@@ -151,6 +176,18 @@ func (m *mockStrategy) TempRecipeName(name, sha, prefix string) string {
 }
 func (m *mockStrategy) DiscoverRecipes(_ string) ([]string, error) {
 	return []string{"discovered-recipe"}, nil
+}
+func (m *mockStrategy) OfficialRecipeName(name, series, devFocus string) string {
+	if series == devFocus {
+		return name
+	}
+	return name + "-" + series
+}
+func (m *mockStrategy) BranchForSeries(series, devFocus, defaultBranch string) string {
+	if series == devFocus {
+		return defaultBranch
+	}
+	return "stable/" + series
 }
 
 func testLogger() *slog.Logger {
@@ -591,6 +628,161 @@ func TestList_Sorting(t *testing.T) {
 			t.Errorf("builds[%d].CreatedAt (%v) > builds[%d].CreatedAt (%v) — not sorted descending",
 				i, builds[i].CreatedAt, i-1, builds[i-1].CreatedAt)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Trigger: local mode resolves owner from Me()
+// ---------------------------------------------------------------------------
+
+func TestTrigger_LocalMode_ResolvesOwnerFromMe(t *testing.T) {
+	// Project has NO owner configured; local mode should resolve via GetCurrentUser.
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{},
+	}
+	repoMgr := &mockRepoManager{
+		currentUser:  "test-user",
+		project:      "test-project",
+		repoSelfLink: "/repo/sunbeam",
+		gitSSHURL:    "git+ssh://lp/repo",
+		refSelfLink:  "/ref/abc12345",
+	}
+	gitCli := &mockGitClient{
+		isRepo:  true,
+		headSHA: "abc12345deadbeef",
+	}
+
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {Builder: builder, Owner: "", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+		},
+		repoMgr, gitCli, testLogger(),
+	)
+
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Source:    "local",
+		LocalPath: "/tmp/repo",
+		Prefix:    "tmp",
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	if len(result.RecipeResults) != 1 {
+		t.Fatalf("expected 1 recipe result, got %d", len(result.RecipeResults))
+	}
+	rr := result.RecipeResults[0]
+	if rr.Error != nil {
+		t.Errorf("unexpected error: %v", rr.Error)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Trigger: remote mode with official codehosting expands series
+// ---------------------------------------------------------------------------
+
+func TestTrigger_RemoteMode_UsesOfficialRepo(t *testing.T) {
+	// All recipes start as not-found so the service tries to create them.
+	// The mock CreateRecipe fills them in.
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{},
+	}
+	repoMgr := &mockRepoManager{
+		repoSelfLink:  "/repo/rocks",
+		defaultBranch: "main",
+		refSelfLink:   "/ref/heads/main",
+	}
+
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {
+				Builder:             builder,
+				Owner:               "team",
+				Project:             "ubuntu-openstack-rocks",
+				Recipes:             []string{"nova-consolidated"},
+				Series:              []string{"2024.1", "2025.1"},
+				DevFocus:            "2025.1",
+				OfficialCodehosting: true,
+				Strategy:            &mockStrategy{},
+			},
+		},
+		repoMgr, nil, testLogger(),
+	)
+
+	result, err := svc.Trigger(context.Background(), "sunbeam", []string{"nova-consolidated"}, TriggerOpts{Source: "remote"})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	// Should expand into 2 recipes: nova-consolidated-2024.1 and nova-consolidated
+	if len(result.RecipeResults) != 2 {
+		t.Fatalf("expected 2 recipe results, got %d", len(result.RecipeResults))
+	}
+
+	names := map[string]bool{}
+	for _, rr := range result.RecipeResults {
+		names[rr.Name] = true
+	}
+	if !names["nova-consolidated"] {
+		t.Error("expected recipe 'nova-consolidated' (dev focus)")
+	}
+	if !names["nova-consolidated-2024.1"] {
+		t.Error("expected recipe 'nova-consolidated-2024.1' (non-dev series)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Trigger: remote mode without official_codehosting creates recipe error
+// ---------------------------------------------------------------------------
+
+func TestTrigger_RemoteMode_FailsWithoutOfficialCodehosting(t *testing.T) {
+	// Without OfficialCodehosting=true, remote mode has no git info.
+	// Recipes that don't exist will fail to create (no repoSelfLink).
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{},
+	}
+
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {
+				Builder:             builder,
+				Owner:               "team",
+				Project:             "sunbeam",
+				Recipes:             []string{"keystone"},
+				OfficialCodehosting: false,
+				Strategy:            &mockStrategy{},
+			},
+		},
+		nil, nil, testLogger(),
+	)
+
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{Source: "remote"})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	if len(result.RecipeResults) != 1 {
+		t.Fatalf("expected 1 recipe result, got %d", len(result.RecipeResults))
+	}
+	rr := result.RecipeResults[0]
+	if rr.Error == nil {
+		t.Fatal("expected error when recipe not found and OfficialCodehosting is false")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ProjectBuilder tests
+// ---------------------------------------------------------------------------
+
+func TestProjectBuilder_RecipeProject(t *testing.T) {
+	pb := ProjectBuilder{Project: "ubuntu-openstack-rocks"}
+	if got := pb.RecipeProject(); got != "ubuntu-openstack-rocks" {
+		t.Errorf("RecipeProject() = %q, want %q", got, "ubuntu-openstack-rocks")
+	}
+
+	pb.LPProject = "custom-lp-project"
+	if got := pb.RecipeProject(); got != "custom-lp-project" {
+		t.Errorf("RecipeProject() = %q, want %q", got, "custom-lp-project")
 	}
 }
 

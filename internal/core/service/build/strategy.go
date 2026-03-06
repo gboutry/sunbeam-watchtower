@@ -28,4 +28,14 @@ type ArtifactStrategy interface {
 	// DiscoverRecipes finds artifact names by scanning a local repo directory
 	// for metadata files. Returns the list of discovered recipe names.
 	DiscoverRecipes(repoPath string) ([]string, error)
+
+	// OfficialRecipeName returns the recipe name for official/remote builds.
+	// For the development focus series, returns just the artifact name.
+	// For other series, returns artifactName-series.
+	OfficialRecipeName(artifactName, series, devFocus string) string
+
+	// BranchForSeries returns the git branch for a given series.
+	// For the development focus, returns the repo's default branch (e.g. "main").
+	// For other series, returns "stable/<series>".
+	BranchForSeries(series, devFocus, defaultBranch string) string
 }

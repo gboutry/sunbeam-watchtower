@@ -42,6 +42,20 @@ func (s *RockStrategy) TempRecipeName(name, sha, prefix string) string {
 	return prefix + "-" + short + "-" + name
 }
 
+func (s *RockStrategy) OfficialRecipeName(artifactName, series, devFocus string) string {
+	if series == devFocus {
+		return artifactName
+	}
+	return artifactName + "-" + series
+}
+
+func (s *RockStrategy) BranchForSeries(series, devFocus, defaultBranch string) string {
+	if series == devFocus {
+		return defaultBranch
+	}
+	return "stable/" + series
+}
+
 type rockcraftPlatformEntry struct {
 	BuildOn  yaml.Node `yaml:"build-on"`
 	BuildFor yaml.Node `yaml:"build-for"`

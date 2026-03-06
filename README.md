@@ -109,9 +109,31 @@ Each project has:
   development_focus: 2024.2     # optional: must be one of the declared series
   build:                        # optional
     owner: my-team
+    official_codehosting: false # when true, use LP's default git repo for remote builds
+    lp_project: my-lp-project  # LP project for recipe ops (defaults to code.project)
     recipes:
       - recipe-name
     prepare_command: make prepare
+```
+
+When `official_codehosting` is `true`, remote builds resolve the project's default
+git repository via the LP API (`GetDefaultRepository`) and create series-based
+recipes automatically. The `lp_project` field overrides which LP project is used
+for recipe operations (useful when the LP project name differs from `code.project`).
+
+Example project configured for official remote builds:
+
+```yaml
+- name: ubuntu-openstack-rocks
+  artifact_type: rock
+  code:
+    forge: github
+    owner: canonical
+    project: ubuntu-openstack-rocks
+  build:
+    owner: canonical
+    official_codehosting: true
+    lp_project: ubuntu-openstack-rocks
 ```
 
 The `git_url` field is useful when the clone URL cannot be derived from the forge type and project name (e.g., Launchpad repos with complex paths like `~owner/project/+git/repo`).
@@ -199,17 +221,22 @@ watchtower bug show 12345
 
 ### `watchtower build`
 
-Manage Launchpad builds (rocks, charms, snaps).
+Manage Launchpad builds (rocks, charms, snaps). Two build modes are supported:
+
+- **Local** (`--source local`): pushes the local git tree to a temporary LP repo,
+  creates temporary recipes, and triggers builds. Ideal for development and testing.
+- **Remote** (`--source remote`): uses the project's official LP git repo (code
+  mirror) and creates series-based recipes. Used for official builds.
 
 ```bash
-# Trigger builds for a project
-watchtower build trigger my-project
+# Local build (development) — push local tree and trigger
+watchtower build trigger --source local --local-path /path/to/repo ubuntu-openstack-rocks nova-consolidated keystone
+
+# Remote build (official, series-based)
+watchtower build trigger --source remote ubuntu-openstack-rocks nova-consolidated keystone
 
 # Trigger and wait for completion
 watchtower build trigger my-project --wait --timeout 2h
-
-# Trigger from a local git repo
-watchtower build trigger my-project --source local --local-path ./my-repo
 
 # List builds
 watchtower build list --project my-project
@@ -220,6 +247,10 @@ watchtower build download my-project --artifacts-dir ./output
 # Clean up temporary recipes
 watchtower build cleanup --project my-project --dry-run
 ```
+
+In remote mode with series configured, each artifact expands into per-series
+recipes: `<artifact>` for the dev-focus series (default branch) and
+`<artifact>-<series>` for other series (`stable/<series>` branch).
 
 ### `watchtower project`
 

@@ -32,6 +32,26 @@ func NewRepoManager(client *lp.Client, logger *slog.Logger) *RepoManager {
 	return &RepoManager{client: client, logger: logger}
 }
 
+func (m *RepoManager) GetCurrentUser(ctx context.Context) (string, error) {
+	person, err := m.client.Me(ctx)
+	if err != nil {
+		return "", fmt.Errorf("getting current LP user: %w", err)
+	}
+	return person.Name, nil
+}
+
+func (m *RepoManager) GetDefaultRepo(ctx context.Context, projectName string) (string, string, error) {
+	repo, err := m.client.GetDefaultRepositoryForProject(ctx, projectName)
+	if err != nil {
+		return "", "", fmt.Errorf("getting default repo for project %q: %w", projectName, err)
+	}
+	defaultBranch := repo.DefaultBranch
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+	return repo.SelfLink, defaultBranch, nil
+}
+
 func (m *RepoManager) GetOrCreateProject(ctx context.Context, owner string) (string, error) {
 	projectName := owner + "-sunbeam-remote-build"
 

@@ -53,6 +53,20 @@ func (s *CharmStrategy) TempRecipeName(name, sha, prefix string) string {
 	return prefix + "-" + short + "-" + name
 }
 
+func (s *CharmStrategy) OfficialRecipeName(artifactName, series, devFocus string) string {
+	if series == devFocus {
+		return artifactName
+	}
+	return artifactName + "-" + series
+}
+
+func (s *CharmStrategy) BranchForSeries(series, devFocus, defaultBranch string) string {
+	if series == devFocus {
+		return defaultBranch
+	}
+	return "stable/" + series
+}
+
 type charmcraftBase struct {
 	Name          string   `yaml:"name"`
 	Channel       string   `yaml:"channel"`

@@ -236,6 +236,74 @@ func TestSnapStrategy_ParsePlatforms_Default(t *testing.T) {
 	sortedEqual(t, got, []string{"amd64"})
 }
 
+// --- OfficialRecipeName tests ---
+
+func TestRockStrategy_OfficialRecipeName(t *testing.T) {
+	s := &RockStrategy{}
+	// Dev focus returns artifact name only
+	if got := s.OfficialRecipeName("nova-consolidated", "2025.1", "2025.1"); got != "nova-consolidated" {
+		t.Errorf("OfficialRecipeName(dev focus) = %q, want %q", got, "nova-consolidated")
+	}
+	// Non-dev-focus appends series
+	if got := s.OfficialRecipeName("nova-consolidated", "2024.1", "2025.1"); got != "nova-consolidated-2024.1" {
+		t.Errorf("OfficialRecipeName(non-dev) = %q, want %q", got, "nova-consolidated-2024.1")
+	}
+}
+
+func TestCharmStrategy_OfficialRecipeName(t *testing.T) {
+	s := &CharmStrategy{}
+	if got := s.OfficialRecipeName("mysql-k8s", "2025.1", "2025.1"); got != "mysql-k8s" {
+		t.Errorf("OfficialRecipeName(dev focus) = %q, want %q", got, "mysql-k8s")
+	}
+	if got := s.OfficialRecipeName("mysql-k8s", "2024.1", "2025.1"); got != "mysql-k8s-2024.1" {
+		t.Errorf("OfficialRecipeName(non-dev) = %q, want %q", got, "mysql-k8s-2024.1")
+	}
+}
+
+func TestSnapStrategy_OfficialRecipeName(t *testing.T) {
+	s := &SnapStrategy{}
+	if got := s.OfficialRecipeName("mysnap", "2025.1", "2025.1"); got != "mysnap" {
+		t.Errorf("OfficialRecipeName(dev focus) = %q, want %q", got, "mysnap")
+	}
+	if got := s.OfficialRecipeName("mysnap", "2024.1", "2025.1"); got != "mysnap-2024.1" {
+		t.Errorf("OfficialRecipeName(non-dev) = %q, want %q", got, "mysnap-2024.1")
+	}
+}
+
+// --- BranchForSeries tests ---
+
+func TestRockStrategy_BranchForSeries(t *testing.T) {
+	s := &RockStrategy{}
+	// Dev focus returns default branch
+	if got := s.BranchForSeries("2025.1", "2025.1", "main"); got != "main" {
+		t.Errorf("BranchForSeries(dev focus) = %q, want %q", got, "main")
+	}
+	// Non-dev-focus returns stable/<series>
+	if got := s.BranchForSeries("2024.1", "2025.1", "main"); got != "stable/2024.1" {
+		t.Errorf("BranchForSeries(non-dev) = %q, want %q", got, "stable/2024.1")
+	}
+}
+
+func TestCharmStrategy_BranchForSeries(t *testing.T) {
+	s := &CharmStrategy{}
+	if got := s.BranchForSeries("2025.1", "2025.1", "main"); got != "main" {
+		t.Errorf("BranchForSeries(dev focus) = %q, want %q", got, "main")
+	}
+	if got := s.BranchForSeries("2024.1", "2025.1", "main"); got != "stable/2024.1" {
+		t.Errorf("BranchForSeries(non-dev) = %q, want %q", got, "stable/2024.1")
+	}
+}
+
+func TestSnapStrategy_BranchForSeries(t *testing.T) {
+	s := &SnapStrategy{}
+	if got := s.BranchForSeries("2025.1", "2025.1", "master"); got != "master" {
+		t.Errorf("BranchForSeries(dev focus) = %q, want %q", got, "master")
+	}
+	if got := s.BranchForSeries("2024.1", "2025.1", "master"); got != "stable/2024.1" {
+		t.Errorf("BranchForSeries(non-dev) = %q, want %q", got, "stable/2024.1")
+	}
+}
+
 // --- TempRecipeName tests ---
 
 func TestTempRecipeName(t *testing.T) {

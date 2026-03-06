@@ -51,9 +51,11 @@ type BugTrackerConfig struct {
 
 // ProjectBuildConfig holds per-project build settings.
 type ProjectBuildConfig struct {
-	Owner          string   `mapstructure:"owner" yaml:"owner"`
-	Recipes        []string `mapstructure:"recipes" yaml:"recipes,omitempty"`
-	PrepareCommand string   `mapstructure:"prepare_command" yaml:"prepare_command,omitempty"`
+	Owner               string   `mapstructure:"owner" yaml:"owner,omitempty"`
+	Recipes             []string `mapstructure:"recipes" yaml:"recipes,omitempty"`
+	PrepareCommand      string   `mapstructure:"prepare_command" yaml:"prepare_command,omitempty"`
+	OfficialCodehosting bool     `mapstructure:"official_codehosting" yaml:"official_codehosting,omitempty"`
+	LPProject           string   `mapstructure:"lp_project" yaml:"lp_project,omitempty"`
 }
 
 // ProjectConfig defines a project tracked across forges.
@@ -239,8 +241,8 @@ func (c *Config) Validate() error {
 			if p.ArtifactType == "" {
 				return fmt.Errorf("projects[%d] (%s): artifact_type is required when build is set", i, p.Name)
 			}
-			if p.Build.Owner == "" {
-				return fmt.Errorf("projects[%d] (%s): build.owner is required", i, p.Name)
+			if p.Build.OfficialCodehosting && p.Build.Owner == "" {
+				return fmt.Errorf("projects[%d] (%s): build.owner is required when official_codehosting is true", i, p.Name)
 			}
 		}
 

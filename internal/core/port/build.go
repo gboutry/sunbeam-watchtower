@@ -25,6 +25,8 @@ type RecipeBuilder interface {
 
 // RepoManager handles temporary git repo/branch lifecycle on LP.
 type RepoManager interface {
+	GetCurrentUser(ctx context.Context) (string, error)
+	GetDefaultRepo(ctx context.Context, projectName string) (repoSelfLink string, defaultBranch string, err error)
 	GetOrCreateProject(ctx context.Context, owner string) (projectName string, err error)
 	GetOrCreateRepo(ctx context.Context, owner, project, repoName string) (repoSelfLink, gitSSHURL string, err error)
 	GetGitRef(ctx context.Context, repoSelfLink, refPath string) (refSelfLink string, err error)

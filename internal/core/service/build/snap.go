@@ -42,6 +42,20 @@ func (s *SnapStrategy) TempRecipeName(name, sha, prefix string) string {
 	return prefix + "-" + short + "-" + name
 }
 
+func (s *SnapStrategy) OfficialRecipeName(artifactName, series, devFocus string) string {
+	if series == devFocus {
+		return artifactName
+	}
+	return artifactName + "-" + series
+}
+
+func (s *SnapStrategy) BranchForSeries(series, devFocus, defaultBranch string) string {
+	if series == devFocus {
+		return defaultBranch
+	}
+	return "stable/" + series
+}
+
 type snapcraftYAML struct {
 	Architectures []snapArchitecture            `yaml:"architectures"`
 	Platforms     map[string]*snapPlatformEntry `yaml:"platforms"`

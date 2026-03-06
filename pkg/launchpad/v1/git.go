@@ -97,6 +97,24 @@ func (c *Client) GetMergeProposal(ctx context.Context, selfLink string) (MergePr
 	return mp, nil
 }
 
+// GetDefaultRepository returns the default git repository for a Launchpad project.
+// It calls the getDefaultRepository operation on the /+git endpoint.
+func (c *Client) GetDefaultRepository(ctx context.Context, projectSelfLink string) (GitRepository, error) {
+	u := wsOpURL(c.resolveURL("/+git"), "getDefaultRepository", url.Values{
+		"target": {projectSelfLink},
+	})
+	var repo GitRepository
+	if err := c.GetJSON(ctx, u, &repo); err != nil {
+		return GitRepository{}, fmt.Errorf("fetching default repository for project: %w", err)
+	}
+	return repo, nil
+}
+
+// GetDefaultRepositoryForProject returns the default git repository for a project by name.
+func (c *Client) GetDefaultRepositoryForProject(ctx context.Context, projectName string) (GitRepository, error) {
+	return c.GetDefaultRepository(ctx, c.resolveURL("/"+projectName))
+}
+
 // SetMergeProposalStatus changes the status of a merge proposal.
 func (c *Client) SetMergeProposalStatus(ctx context.Context, mpSelfLink, status string) error {
 	form := url.Values{

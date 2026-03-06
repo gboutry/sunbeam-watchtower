@@ -295,12 +295,27 @@ func TestValidate_BuildWithoutOwner(t *testing.T) {
 				Name:         "p1",
 				ArtifactType: "charm",
 				Code:         CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
-				Build:        &ProjectBuildConfig{},
+				Build:        &ProjectBuildConfig{OfficialCodehosting: true},
 			},
 		},
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Error("Validate() should error for build without owner")
+		t.Error("Validate() should error for build without owner when official_codehosting is true")
+	}
+
+	// No error when official_codehosting is false and owner is empty
+	cfg2 := &Config{
+		Projects: []ProjectConfig{
+			{
+				Name:         "p2",
+				ArtifactType: "charm",
+				Code:         CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+				Build:        &ProjectBuildConfig{},
+			},
+		},
+	}
+	if err := cfg2.Validate(); err != nil {
+		t.Errorf("Validate() unexpected error for build without owner when official_codehosting is false: %v", err)
 	}
 }
 

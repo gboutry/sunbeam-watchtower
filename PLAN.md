@@ -145,6 +145,121 @@ back-fills the cache; on hit, it serves directly from the local bbolt store.
 - `cache_test.go` — tests for the bbolt storage layer (`Cache`): store/get bugs, store/list tasks, filtering, last-sync round-trip, remove, remove-all, status, and cache-dir.
 - `tracker_test.go` — tests for the `CachedBugTracker` decorator: cache-miss fallback, post-sync cache hits, write-through status updates, type delegation, and pass-through for GetProjectSeries/GetProject.
 
+## ProjectBuilder series support
+
+`ProjectBuilder` (`internal/core/service/build/project_builder.go`) now carries
+series-aware fields alongside the original code-project metadata:
+
+| Field                 | Purpose                                                       |
+|-----------------------|---------------------------------------------------------------|
+| `LPProject`           | LP project for recipe operations (may differ from `Project`) |
+| `Series`              | Series this project builds for (e.g. `["2024.1", "2025.1"]`) |
+| `DevFocus`            | Development-focus series (e.g. `"2025.1"`)                   |
+| `OfficialCodehosting` | Whether the project uses LP's official code mirror           |
+
+`RecipeProject()` helper returns `LPProject` when set, falling back to `Project`.
+
+All callers in `Trigger()`, `assessRecipe()`, `executeAction()`, `List()`,
+`Download()`, and `Cleanup()` use `pb.RecipeProject()`.
+
+## RepoManager port
+
+The `port.RepoManager` interface (`internal/core/port/build.go`) abstracts the
+temporary git repo / branch lifecycle on Launchpad:
+
+1. `GetCurrentUser(ctx)` — returns the authenticated LP username via `client.Me`.
+2. `GetDefaultRepo(ctx, projectName)` — returns the default git repo self-link and default branch for a project.
+3. `GetOrCreateProject(ctx, owner)` — ensures a `-sunbeam-remote-build` project exists.
+4. `GetOrCreateRepo(ctx, owner, project, repoName)` — ensures a git repo exists.
+5. `GetGitRef(ctx, repoSelfLink, refPath)` — fetches a git ref.
+6. `WaitForGitRef(ctx, repoSelfLink, refPath, timeout)` — polls until a ref appears.
+
+The sole implementation lives in `internal/adapter/secondary/launchpad/repo_manager.go`.
+
+## ArtifactStrategy series-aware naming
+
+`ArtifactStrategy` (`internal/core/service/build/strategy.go`) now exposes two
+series-aware helpers used by callers that create or look up recipes:
+
+| Method              | Signature                                              | Behaviour                                                                 |
+|---------------------|--------------------------------------------------------|---------------------------------------------------------------------------|
+| `OfficialRecipeName`| `(artifactName, series, devFocus string) string`       | Returns `artifactName` for the dev-focus series; `artifactName-series` otherwise |
+| `BranchForSeries`   | `(series, devFocus, defaultBranch string) string`      | Returns `defaultBranch` for the dev-focus series; `stable/<series>` otherwise    |
+
+All three concrete strategies (`RockStrategy`, `CharmStrategy`, `SnapStrategy`)
+share the same implementation today. Individual strategies can override the
+behaviour independently in the future.
+
+## Config: build settings
+
+Per-project build configuration is described in the
+[Build system design → Configuration](#configuration) section above.
+
+## Build system design
+
+The build system supports two distinct modes: **local** (development/testing) and
+**remote** (official builds).
+
+### Local mode (`--source local`)
+- Resolves the LP owner from the authenticated user via `repoManager.GetCurrentUser()`
+  when no explicit owner is configured.
+- Pushes local git HEAD to a temporary LP repo/branch.
+- All recipes share the same git ref.
+- Recipe names are rewritten to temp names via `Strategy.TempRecipeName`.
+- Build paths use the original artifact name (not the temp recipe name).
+
+### Remote mode (`--source remote`)
+- Uses the project's official LP git repo (code mirror) discovered via
+  `repoManager.GetDefaultRepo(ctx, projectName)`.
+- Creates official recipes on a per-series basis:
+  - **Dev-focus series**: recipe named `<artifact>`, built from the default branch.
+  - **Other series**: recipe named `<artifact>-<series>`, built from `stable/<series>`.
+- `ArtifactStrategy.OfficialRecipeName(artifactName, series, devFocus)` and
+  `ArtifactStrategy.BranchForSeries(series, devFocus, defaultBranch)` encapsulate
+  the naming and branch logic.
+- If no series are configured, all recipes use the default branch.
+- Build paths use the artifact name (without series suffix).
+- When `OfficialCodehosting` is false (legacy): expects recipes to already exist;
+  no git repo resolution or recipe creation is performed.
+
+### Owner resolution (source-aware)
+1. `opts.Owner` takes precedence.
+2. Falls back to `pb.Owner` from config.
+3. **Local mode only**: if still empty, resolves via `repoManager.GetCurrentUser()`.
+4. Returns an error if owner is still empty.
+
+### Configuration
+
+Per-project build settings live in `ProjectBuildConfig`:
+
+| Field                 | YAML key                | Purpose                                                          |
+|-----------------------|-------------------------|------------------------------------------------------------------|
+| `Owner`               | `owner`                 | LP owner for recipe operations (optional for local-only builds)  |
+| `Recipes`             | `recipes`               | Explicit recipe names to build                                   |
+| `PrepareCommand`      | `prepare_command`       | Shell command run before each build                              |
+| `OfficialCodehosting` | `official_codehosting`  | When true, use LP's default git repo for remote builds           |
+| `LPProject`           | `lp_project`            | LP project name for recipe ops (defaults to code.project)        |
+
+`build.owner` is only required when `official_codehosting` is true.
+For local-only builds the owner is resolved at runtime via the LP `Me()` API.
+
+### `executeAction` details
+- Accepts per-recipe `gitRefLink` and `buildPath` parameters.
+- Recipe creation is gated on having valid git ref info (not just source mode).
+- Uses `pb.RecipeProject()` for all LP project references.
+
+### Build service test coverage
+
+- `strategy_test.go` — tests for all three strategies (`RockStrategy`, `CharmStrategy`,
+  `SnapStrategy`): `ArtifactType`, `MetadataFileName`, `BuildPath`, `ParsePlatforms`,
+  `TempRecipeName`, `OfficialRecipeName`, and `BranchForSeries`.
+- `service_test.go` — tests for `Trigger()`:
+  - Remote mode: request-builds, all-succeeded, retry-failed, monitor-active, create-recipe,
+    official-repo series expansion, failure without `OfficialCodehosting`, multiple recipes.
+  - Local mode: full pipeline (push + create + request), owner resolution via `GetCurrentUser`.
+  - `ProjectBuilder.RecipeProject()` fallback logic.
+  - `List()`: active-only, all-builds, project filter, graceful degradation, sorting.
+
 ## Remaining follow-ups
 
 These are still the main gaps before TUI and MCP work:

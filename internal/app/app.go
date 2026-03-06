@@ -386,17 +386,34 @@ func (a *App) BuildRecipeBuilders() (map[string]build.ProjectBuilder, error) {
 
 		var owner string
 		var recipes []string
+		var lpProject string
+		var officialCodehosting bool
 		if proj.Build != nil {
 			owner = proj.Build.Owner
 			recipes = proj.Build.Recipes
+			lpProject = proj.Build.LPProject
+			officialCodehosting = proj.Build.OfficialCodehosting
+		}
+
+		series := proj.Series
+		if len(series) == 0 {
+			series = cfg.Launchpad.Series
+		}
+		devFocus := proj.DevelopmentFocus
+		if devFocus == "" {
+			devFocus = cfg.Launchpad.DevelopmentFocus
 		}
 
 		result[proj.Name] = build.ProjectBuilder{
-			Builder:  builder,
-			Owner:    owner,
-			Project:  proj.Code.Project,
-			Recipes:  recipes,
-			Strategy: strategy,
+			Builder:             builder,
+			Owner:               owner,
+			Project:             proj.Code.Project,
+			LPProject:           lpProject,
+			Recipes:             recipes,
+			Series:              series,
+			DevFocus:            devFocus,
+			OfficialCodehosting: officialCodehosting,
+			Strategy:            strategy,
 		}
 	}
 

@@ -113,9 +113,23 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		return nil, fmt.Errorf("unknown project %q", projectName)
 	}
 
-	owner := pb.Owner
-	if opts.Owner != "" {
-		owner = opts.Owner
+	owner := opts.Owner
+	if owner == "" {
+		owner = pb.Owner
+	}
+	// Local mode: resolve from LP Me() if still empty
+	if owner == "" && opts.Source == "local" {
+		if s.repoManager == nil {
+			return nil, fmt.Errorf("local mode requires a RepoManager")
+		}
+		me, err := s.repoManager.GetCurrentUser(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("resolving current LP user: %w", err)
+		}
+		owner = me
+	}
+	if owner == "" {
+		return nil, fmt.Errorf("no owner configured for project %q (set build.owner in config or use --owner)", projectName)
 	}
 	pb.Owner = owner
 
@@ -138,7 +152,12 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 	}
 
 	// Local mode: push local git to temp LP repo before recipe operations.
-	var repoSelfLink, gitRefLink string
+	var repoSelfLink string
+	// Per-recipe git ref links: key is recipe name, value is git ref self_link
+	gitRefLinks := make(map[string]string)
+	// Per-recipe build paths: key is recipe name, value is build path
+	buildPaths := make(map[string]string)
+
 	if opts.Source == "local" {
 		if opts.LocalPath == "" {
 			return nil, fmt.Errorf("local mode requires LocalPath")
@@ -185,7 +204,13 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		if err != nil {
 			return nil, fmt.Errorf("wait for git ref: %w", err)
 		}
-		gitRefLink = refLink
+
+		// All local recipes use the same ref
+		for _, name := range recipes {
+			tempName := pb.Strategy.TempRecipeName(name, sha, opts.Prefix)
+			gitRefLinks[tempName] = refLink
+			buildPaths[tempName] = pb.Strategy.BuildPath(name)
+		}
 
 		// Rewrite recipe names to temp names for local mode.
 		tempRecipes := make([]string, len(recipes))
@@ -193,6 +218,51 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 			tempRecipes[i] = pb.Strategy.TempRecipeName(name, sha, opts.Prefix)
 		}
 		recipes = tempRecipes
+
+	} else if opts.Source == "remote" && pb.OfficialCodehosting {
+		// Remote mode with official LP git repo: resolve repo and branches.
+		if s.repoManager == nil {
+			return nil, fmt.Errorf("remote mode requires a RepoManager")
+		}
+
+		lpProject := pb.RecipeProject()
+		repoLink, defaultBranch, err := s.repoManager.GetDefaultRepo(ctx, lpProject)
+		if err != nil {
+			return nil, fmt.Errorf("get default repo for %q: %w", lpProject, err)
+		}
+		repoSelfLink = repoLink
+
+		// If series are configured, expand artifacts into series-based recipes
+		if len(pb.Series) > 0 && len(pb.DevFocus) > 0 {
+			var expandedRecipes []string
+			for _, artifactName := range recipes {
+				for _, series := range pb.Series {
+					recipeName := pb.Strategy.OfficialRecipeName(artifactName, series, pb.DevFocus)
+					branch := pb.Strategy.BranchForSeries(series, pb.DevFocus, defaultBranch)
+					refPath := "refs/heads/" + branch
+
+					refLink, err := s.repoManager.GetGitRef(ctx, repoSelfLink, refPath)
+					if err != nil {
+						s.logger.Warn("branch not found, skipping", "branch", branch, "series", series, "error", err)
+						continue
+					}
+					gitRefLinks[recipeName] = refLink
+					buildPaths[recipeName] = pb.Strategy.BuildPath(artifactName)
+					expandedRecipes = append(expandedRecipes, recipeName)
+				}
+			}
+			recipes = expandedRecipes
+		} else {
+			// No series: use default branch for all recipes
+			refPath := "refs/heads/" + defaultBranch
+			refLink, err := s.repoManager.GetGitRef(ctx, repoSelfLink, refPath)
+			if err != nil {
+				return nil, fmt.Errorf("get git ref %q: %w", refPath, err)
+			}
+			for _, name := range recipes {
+				gitRefLinks[name] = refLink
+			}
+		}
 	}
 
 	result := &TriggerResult{Project: projectName}
@@ -200,7 +270,9 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 
 	for _, name := range recipes {
 		status := s.assessRecipe(ctx, pb, name)
-		rr := s.executeAction(ctx, pb, status, opts, repoSelfLink, gitRefLink)
+		refLink := gitRefLinks[name]
+		bp := buildPaths[name]
+		rr := s.executeAction(ctx, pb, status, opts, repoSelfLink, refLink, bp)
 		result.RecipeResults = append(result.RecipeResults, rr)
 
 		// Collect recipe pointers for wait loop.
@@ -233,7 +305,7 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 }
 
 func (s *Service) assessRecipe(ctx context.Context, pb ProjectBuilder, recipeName string) RecipeStatus {
-	recipe, err := pb.Builder.GetRecipe(ctx, pb.Owner, pb.Project, recipeName)
+	recipe, err := pb.Builder.GetRecipe(ctx, pb.Owner, pb.RecipeProject(), recipeName)
 	if err != nil {
 		return RecipeStatus{Name: recipeName, Action: ActionCreateRecipe}
 	}
@@ -274,22 +346,26 @@ func (s *Service) assessRecipe(ctx context.Context, pb ProjectBuilder, recipeNam
 	return RecipeStatus{Name: recipeName, Action: ActionRequestBuilds, Recipe: recipe, Builds: builds}
 }
 
-func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status RecipeStatus, opts TriggerOpts, repoSelfLink, gitRefLink string) RecipeResult {
+func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status RecipeStatus, opts TriggerOpts, repoSelfLink, gitRefLink, buildPath string) RecipeResult {
 	result := RecipeResult{Name: status.Name, Action: status.Action}
 
 	switch status.Action {
 	case ActionCreateRecipe:
-		if opts.Source != "local" {
-			result.Error = fmt.Errorf("recipe %q not found (create only supported in local mode)", status.Name)
+		if repoSelfLink == "" || gitRefLink == "" {
+			result.Error = fmt.Errorf("recipe %q not found (create requires git repo info; use local mode or enable official_codehosting)", status.Name)
 			return result
+		}
+		bp := buildPath
+		if bp == "" {
+			bp = pb.Strategy.BuildPath(status.Name)
 		}
 		recipe, err := pb.Builder.CreateRecipe(ctx, dto.CreateRecipeOpts{
 			Name:        status.Name,
 			Owner:       pb.Owner,
-			Project:     pb.Project,
+			Project:     pb.RecipeProject(),
 			GitRepoLink: repoSelfLink,
 			GitRefLink:  gitRefLink,
-			BuildPath:   pb.Strategy.BuildPath(status.Name),
+			BuildPath:   bp,
 		})
 		if err != nil {
 			result.Error = fmt.Errorf("create recipe %q: %w", status.Name, err)
@@ -399,7 +475,7 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 		var projBuilds []dto.Build
 
 		for _, recipeName := range pb.Recipes {
-			recipe, err := pb.Builder.GetRecipe(ctx, pb.Owner, pb.Project, recipeName)
+			recipe, err := pb.Builder.GetRecipe(ctx, pb.Owner, pb.RecipeProject(), recipeName)
 			if err != nil {
 				s.logger.Warn("error getting recipe", "project", name, "recipe", recipeName, "error", err)
 				continue
@@ -465,7 +541,7 @@ func (s *Service) Download(ctx context.Context, projectName string, recipeNames 
 	}
 
 	for _, name := range recipes {
-		recipe, err := pb.Builder.GetRecipe(ctx, pb.Owner, pb.Project, name)
+		recipe, err := pb.Builder.GetRecipe(ctx, pb.Owner, pb.RecipeProject(), name)
 		if err != nil {
 			return fmt.Errorf("recipe %q: %w", name, err)
 		}
@@ -572,7 +648,7 @@ func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) ([]string, erro
 				continue
 			}
 
-			recipe, err := pb.Builder.GetRecipe(ctx, projOwner, pb.Project, recipeName)
+			recipe, err := pb.Builder.GetRecipe(ctx, projOwner, pb.RecipeProject(), recipeName)
 			if err != nil {
 				s.logger.Warn("recipe not found for cleanup", "recipe", recipeName, "error", err)
 				continue
