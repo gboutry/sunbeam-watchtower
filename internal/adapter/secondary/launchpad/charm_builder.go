@@ -56,6 +56,18 @@ func (b *CharmBuilder) DeleteRecipe(ctx context.Context, recipeSelfLink string) 
 	return b.client.DeleteCharmRecipe(ctx, recipeSelfLink)
 }
 
+func (b *CharmBuilder) ListRecipesByOwner(ctx context.Context, owner string) ([]*dto.Recipe, error) {
+	recipes, err := b.client.FindCharmRecipesByOwner(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*dto.Recipe, len(recipes))
+	for i, r := range recipes {
+		out[i] = charmRecipeToPortRecipe(r)
+	}
+	return out, nil
+}
+
 func (b *CharmBuilder) RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error) {
 	br, err := b.client.RequestCharmRecipeBuilds(ctx, recipe.SelfLink, opts.Channels, opts.Architectures)
 	if err != nil {

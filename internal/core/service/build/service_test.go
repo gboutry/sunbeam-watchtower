@@ -21,10 +21,12 @@ type mockRecipeBuilder struct {
 	builds       map[string][]dto.Build       // recipe SelfLink → builds
 	buildReqs    map[string]*dto.BuildRequest // recipe SelfLink → request
 	fileURLs     map[string][]string          // build SelfLink → file URLs
+	ownerRecipes []*dto.Recipe                // ListRecipesByOwner result
 	createErr    error
 	requestErr   error
 	listErr      error
 	retryErr     error
+	ownerListErr error
 	retried      []string // tracks retried build self links
 }
 
@@ -81,6 +83,13 @@ func (m *mockRecipeBuilder) CancelBuild(_ context.Context, _ string) error { ret
 
 func (m *mockRecipeBuilder) GetBuildFileURLs(_ context.Context, buildSelfLink string) ([]string, error) {
 	return m.fileURLs[buildSelfLink], nil
+}
+
+func (m *mockRecipeBuilder) ListRecipesByOwner(_ context.Context, _ string) ([]*dto.Recipe, error) {
+	if m.ownerListErr != nil {
+		return nil, m.ownerListErr
+	}
+	return m.ownerRecipes, nil
 }
 
 // mockRepoManager implements port.RepoManager for testing.

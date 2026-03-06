@@ -40,12 +40,13 @@ type BuildsTriggerOutput struct {
 
 // BuildsListInput holds query parameters for listing builds.
 type BuildsListInput struct {
-	Projects    []string `query:"project" doc:"Filter by project name"`
-	All         bool     `query:"all" doc:"Show all builds (not just active)"`
-	State       string   `query:"state" doc:"Filter by state"`
-	Owner       string   `query:"owner" doc:"Override LP owner"`
-	LPProject   string   `query:"lp_project" doc:"Override LP project for recipe lookup"`
-	RecipeNames []string `query:"recipe" doc:"Explicit recipe names (overrides project config)"`
+	Projects     []string `query:"project" doc:"Filter by project name"`
+	All          bool     `query:"all" doc:"Show all builds (not just active)"`
+	State        string   `query:"state" doc:"Filter by state"`
+	Owner        string   `query:"owner" doc:"Override LP owner"`
+	LPProject    string   `query:"lp_project" doc:"Override LP project for recipe lookup"`
+	RecipeNames  []string `query:"recipe" doc:"Explicit recipe names (overrides project config)"`
+	RecipePrefix string   `query:"recipe_prefix" doc:"Filter recipes by name prefix"`
 }
 
 // BuildsListOutput is the response for listing builds.
@@ -150,12 +151,13 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		}
 
 		builds, _, err := svc.List(ctx, build.ListOpts{
-			Projects:    input.Projects,
-			All:         input.All,
-			State:       input.State,
-			Owner:       input.Owner,
-			LPProject:   input.LPProject,
-			RecipeNames: input.RecipeNames,
+			Projects:     input.Projects,
+			All:          input.All,
+			State:        input.State,
+			Owner:        input.Owner,
+			LPProject:    input.LPProject,
+			RecipeNames:  input.RecipeNames,
+			RecipePrefix: input.RecipePrefix,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list builds: %v", err))

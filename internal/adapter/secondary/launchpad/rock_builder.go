@@ -53,6 +53,18 @@ func (c *RockBuilder) DeleteRecipe(ctx context.Context, selfLink string) error {
 	return c.client.DeleteRockRecipe(ctx, selfLink)
 }
 
+func (c *RockBuilder) ListRecipesByOwner(ctx context.Context, owner string) ([]*dto.Recipe, error) {
+	recipes, err := c.client.FindRockRecipesByOwner(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*dto.Recipe, len(recipes))
+	for i, r := range recipes {
+		out[i] = rockRecipeToPortRecipe(r)
+	}
+	return out, nil
+}
+
 func (c *RockBuilder) RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error) {
 	br, err := c.client.RequestRockRecipeBuilds(ctx, recipe.SelfLink, opts.Channels, opts.Architectures)
 	if err != nil {

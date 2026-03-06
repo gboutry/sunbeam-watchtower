@@ -71,12 +71,13 @@ type RecipeResult = dto.BuildRecipeResult
 
 // ListOpts holds options for listing builds.
 type ListOpts struct {
-	Projects    []string
-	All         bool     // show all builds, not just active
-	State       string   // filter by state
-	Owner       string   // override project owner
-	LPProject   string   // override LP project for recipe lookup
-	RecipeNames []string // explicit recipe names (overrides project config)
+	Projects     []string
+	All          bool     // show all builds, not just active
+	State        string   // filter by state
+	Owner        string   // override project owner
+	LPProject    string   // override LP project for recipe lookup
+	RecipeNames  []string // explicit recipe names (overrides project config)
+	RecipePrefix string   // filter recipes by name prefix (used with ListRecipesByOwner)
 }
 
 // ProjectResult holds builds from one project, or an error.
@@ -444,6 +445,32 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 		recipeNames := pb.Recipes
 		if len(opts.RecipeNames) > 0 {
 			recipeNames = opts.RecipeNames
+		}
+
+		// When a prefix is given without explicit recipe names, discover
+		// recipes from LP and filter by prefix + LP project.
+		if opts.RecipePrefix != "" && len(opts.RecipeNames) == 0 {
+			if owner == "" {
+				s.logger.Warn("skipping prefix discovery: owner required", "project", name)
+				continue
+			}
+			allRecipes, err := pb.Builder.ListRecipesByOwner(ctx, owner)
+			if err != nil {
+				s.logger.Warn("error listing recipes by owner", "project", name, "error", err)
+				result.Err = err
+				results = append(results, result)
+				continue
+			}
+			recipeNames = nil
+			for _, r := range allRecipes {
+				if !strings.HasPrefix(r.Name, opts.RecipePrefix) {
+					continue
+				}
+				if lpProject != "" && r.Project != lpProject {
+					continue
+				}
+				recipeNames = append(recipeNames, r.Name)
+			}
 		}
 
 		for _, recipeName := range recipeNames {

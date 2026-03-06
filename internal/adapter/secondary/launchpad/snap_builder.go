@@ -61,6 +61,18 @@ func (s *SnapBuilder) DeleteRecipe(ctx context.Context, selfLink string) error {
 	return s.client.DeleteSnap(ctx, selfLink)
 }
 
+func (s *SnapBuilder) ListRecipesByOwner(ctx context.Context, owner string) ([]*dto.Recipe, error) {
+	snaps, err := s.client.FindSnapsByOwner(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*dto.Recipe, len(snaps))
+	for i, snap := range snaps {
+		out[i] = snapToPortRecipe(snap)
+	}
+	return out, nil
+}
+
 func (s *SnapBuilder) RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error) {
 	archiveLink := s.defaultArchive
 	if opts.ArchiveLink != "" {

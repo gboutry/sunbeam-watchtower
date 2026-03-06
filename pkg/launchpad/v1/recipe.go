@@ -353,3 +353,24 @@ func (c *Client) DeleteCharmRecipe(ctx context.Context, recipeSelfLink string) e
 func (c *Client) DeleteSnap(ctx context.Context, snapSelfLink string) error {
 	return c.Delete(ctx, snapSelfLink)
 }
+
+// FindRockRecipesByOwner returns all rock recipes owned by the given user.
+func (c *Client) FindRockRecipesByOwner(ctx context.Context, owner string) ([]RockRecipe, error) {
+	ownerLink := c.resolveURL("/~" + owner)
+	path := wsOpURL("/+rock-recipes", "findByOwner", url.Values{"owner": {ownerLink}})
+	return GetAllPages[RockRecipe](ctx, c, path)
+}
+
+// FindCharmRecipesByOwner returns all charm recipes owned by the given user.
+func (c *Client) FindCharmRecipesByOwner(ctx context.Context, owner string) ([]CharmRecipe, error) {
+	ownerLink := c.resolveURL("/~" + owner)
+	path := wsOpURL("/+charm-recipes", "findByOwner", url.Values{"owner": {ownerLink}})
+	return GetAllPages[CharmRecipe](ctx, c, path)
+}
+
+// FindSnapsByOwner returns all snaps owned by the given user.
+func (c *Client) FindSnapsByOwner(ctx context.Context, owner string) ([]Snap, error) {
+	ownerLink := c.resolveURL("/~" + owner)
+	path := wsOpURL("/+snaps", "findByOwner", url.Values{"owner": {ownerLink}})
+	return GetAllPages[Snap](ctx, c, path)
+}

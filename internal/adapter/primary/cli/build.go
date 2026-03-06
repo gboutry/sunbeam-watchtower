@@ -291,6 +291,38 @@ func prepareLocalList(cmd *cobra.Command, opts *Options, sha, prefix string, lis
 	return nil
 }
 
+// prepareLocalListByPrefix resolves owner and LP project, then sets
+// RecipePrefix so the service discovers recipes via ListRecipesByOwner.
+func prepareLocalListByPrefix(cmd *cobra.Command, opts *Options, prefix string, listOpts *client.BuildsListOptions) error {
+	ctx := cmd.Context()
+	app := opts.App
+
+	repoMgr, err := app.BuildRepoManager()
+	if err != nil {
+		return fmt.Errorf("init repo manager: %w", err)
+	}
+
+	// Resolve owner.
+	lpOwner := listOpts.Owner
+	if lpOwner == "" {
+		lpOwner, err = repoMgr.GetCurrentUser(ctx)
+		if err != nil {
+			return fmt.Errorf("get current LP user: %w", err)
+		}
+		listOpts.Owner = lpOwner
+	}
+
+	// Resolve LP project for local builds.
+	lpProject, err := repoMgr.GetOrCreateProject(ctx, lpOwner)
+	if err != nil {
+		return fmt.Errorf("get LP project: %w", err)
+	}
+	listOpts.LPProject = lpProject
+	listOpts.RecipePrefix = prefix
+
+	return nil
+}
+
 func newBuildListCmd(opts *Options) *cobra.Command {
 	var projects []string
 	var all bool
@@ -310,11 +342,16 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 			}
 
 			if source == "local" {
-				if sha == "" {
-					return fmt.Errorf("--sha is required with --source local")
-				}
-				if err := prepareLocalList(cmd, opts, sha, prefix, &listOpts); err != nil {
-					return err
+				if sha != "" {
+					// SHA given: compute exact temp recipe names.
+					if err := prepareLocalList(cmd, opts, sha, prefix, &listOpts); err != nil {
+						return err
+					}
+				} else {
+					// No SHA: use prefix-based discovery via ListRecipesByOwner.
+					if err := prepareLocalListByPrefix(cmd, opts, prefix, &listOpts); err != nil {
+						return err
+					}
 				}
 			}
 			if owner != "" {

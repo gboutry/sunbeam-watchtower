@@ -33,12 +33,13 @@ func (c *Client) BuildsTrigger(ctx context.Context, opts BuildsTriggerOptions) (
 
 // BuildsListOptions holds query parameters for listing builds.
 type BuildsListOptions struct {
-	Projects    []string
-	All         bool
-	State       string
-	Owner       string
-	LPProject   string
-	RecipeNames []string
+	Projects     []string
+	All          bool
+	State        string
+	Owner        string
+	LPProject    string
+	RecipeNames  []string
+	RecipePrefix string
 }
 
 // BuildsListResult is the response returned by BuildsList.
@@ -66,6 +67,9 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 	}
 	for _, v := range opts.RecipeNames {
 		q.Add("recipe", v)
+	}
+	if opts.RecipePrefix != "" {
+		q.Set("recipe_prefix", opts.RecipePrefix)
 	}
 
 	var result BuildsListResult

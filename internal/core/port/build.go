@@ -16,6 +16,7 @@ type RecipeBuilder interface {
 	GetRecipe(ctx context.Context, owner, project, name string) (*dto.Recipe, error)
 	CreateRecipe(ctx context.Context, opts dto.CreateRecipeOpts) (*dto.Recipe, error)
 	DeleteRecipe(ctx context.Context, recipeSelfLink string) error
+	ListRecipesByOwner(ctx context.Context, owner string) ([]*dto.Recipe, error)
 	RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error)
 	ListBuilds(ctx context.Context, recipe *dto.Recipe) ([]dto.Build, error)
 	RetryBuild(ctx context.Context, buildSelfLink string) error
