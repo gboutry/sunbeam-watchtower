@@ -77,6 +77,18 @@ func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) erro
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
+
+	// go-git doesn't handle HEAD in refspecs reliably — resolve it to
+	// the actual branch ref so the pack negotiation sends objects.
+	if localRef == "HEAD" {
+		head, err := repo.Head()
+		if err != nil {
+			return fmt.Errorf("resolve HEAD for %s: %w", path, err)
+		}
+		localRef = head.Name().String()
+		c.logger.Debug("resolved HEAD", "path", path, "ref", localRef)
+	}
+
 	r, err := repo.Remote(remote)
 	if err != nil {
 		return fmt.Errorf("get remote %s for %s: %w", remote, path, err)
