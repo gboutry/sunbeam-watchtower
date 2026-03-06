@@ -201,12 +201,15 @@ The build system supports two distinct modes: **local** (development/testing) an
 **remote** (official builds).
 
 ### Local mode (`--source local`)
-- Resolves the LP owner from the authenticated user via `repoManager.GetCurrentUser()`
-  when no explicit owner is configured.
-- Pushes local git HEAD to a temporary LP repo/branch.
-- All recipes share the same git ref.
-- Recipe names are rewritten to temp names via `Strategy.TempRecipeName`.
-- Build paths use the original artifact name (not the temp recipe name).
+- **All git + LP setup runs in the CLI adapter** (`internal/adapter/primary/cli/build.go`),
+  before any API call. The service and API never see filesystem paths.
+- The CLI resolves the LP owner from the authenticated user via `repoManager.GetCurrentUser()`.
+- Pushes local git HEAD to a temporary LP repo/branch (both `main` and `tmp-<sha>`).
+- Computes temp recipe names, build paths, and git ref links locally.
+- Calls the API with pre-resolved LP resource identifiers:
+  `RepoSelfLink`, `GitRefLinks`, `BuildPaths`, `LPProject`, `Owner`.
+- The service receives these and creates recipes / requests builds — no git operations.
+- The `port.GitClient` dependency has been removed from the build service.
 
 ### Remote mode (`--source remote`)
 - Uses the project's official LP git repo (code mirror) discovered via
@@ -222,10 +225,10 @@ The build system supports two distinct modes: **local** (development/testing) an
 - When `OfficialCodehosting` is false (legacy): expects recipes to already exist;
   no git repo resolution or recipe creation is performed.
 
-### Owner resolution (source-aware)
-1. `opts.Owner` takes precedence.
+### Owner resolution
+1. `opts.Owner` (CLI flag `--owner`) takes precedence.
 2. Falls back to `pb.Owner` from config.
-3. **Local mode only**: if still empty, resolves via `repoManager.GetCurrentUser()`.
+3. **Local mode only (CLI)**: if still empty, resolves via `repoManager.GetCurrentUser()`.
 4. Returns an error if owner is still empty.
 
 ### Configuration
@@ -256,7 +259,7 @@ For local-only builds the owner is resolved at runtime via the LP `Me()` API.
 - `service_test.go` — tests for `Trigger()`:
   - Remote mode: request-builds, all-succeeded, retry-failed, monitor-active, create-recipe,
     official-repo series expansion, failure without `OfficialCodehosting`, multiple recipes.
-  - Local mode: full pipeline (push + create + request), owner resolution via `GetCurrentUser`.
+  - Pre-resolved mode: full pipeline with pre-resolved LP resources, owner override.
   - `ProjectBuilder.RecipeProject()` fallback logic.
   - `List()`: active-only, all-builds, project filter, graceful degradation, sorting.
 
