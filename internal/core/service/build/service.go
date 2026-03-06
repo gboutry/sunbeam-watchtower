@@ -199,9 +199,14 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 			_ = s.gitClient.RemoveRemote(opts.LocalPath, remoteName)
 		}()
 
+		// Push HEAD to both main (so the repo isn't empty) and a tmp branch
+		// for recipe creation. LP requires a real branch for git_ref.
 		refBranch := "refs/heads/tmp-" + sha[:8]
+		if err := s.gitClient.Push(opts.LocalPath, remoteName, "HEAD", "refs/heads/main", true); err != nil {
+			return nil, fmt.Errorf("push main to LP: %w", err)
+		}
 		if err := s.gitClient.Push(opts.LocalPath, remoteName, "HEAD", refBranch, true); err != nil {
-			return nil, fmt.Errorf("push to LP: %w", err)
+			return nil, fmt.Errorf("push tmp branch to LP: %w", err)
 		}
 
 		timeout := 2 * time.Minute
