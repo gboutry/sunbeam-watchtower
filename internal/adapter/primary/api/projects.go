@@ -18,8 +18,8 @@ import (
 // ProjectsSyncInput holds the request body for syncing LP projects.
 type ProjectsSyncInput struct {
 	Body struct {
-		Projects []string `json:"projects,omitempty" doc:"Filter to these LP project names (empty = all)"`
-		DryRun   bool     `json:"dry_run,omitempty" doc:"Show what would change without updating"`
+		Projects []string `json:"projects,omitempty" required:"false" doc:"Filter to these LP project names (empty = all)"`
+		DryRun   bool     `json:"dry_run,omitempty" required:"false" doc:"Show what would change without updating"`
 	}
 }
 

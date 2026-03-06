@@ -104,9 +104,9 @@ type PackagesCacheStatusOutput struct {
 // PackagesCacheSyncInput holds the request body for the cache sync endpoint.
 type PackagesCacheSyncInput struct {
 	Body struct {
-		Distros   []string `json:"distros" doc:"Distros to sync (default: all configured)"`
-		Releases  []string `json:"releases" doc:"Releases to sync (default: all configured)"`
-		Backports []string `json:"backports" doc:"Backports to sync (default: all configured)"`
+		Distros   []string `json:"distros,omitempty" required:"false" doc:"Distros to sync (default: all configured)"`
+		Releases  []string `json:"releases,omitempty" required:"false" doc:"Releases to sync (default: all configured)"`
+		Backports []string `json:"backports,omitempty" required:"false" doc:"Backports to sync (default: all configured)"`
 	}
 }
 

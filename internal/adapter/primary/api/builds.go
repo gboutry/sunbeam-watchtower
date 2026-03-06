@@ -19,15 +19,15 @@ import (
 type BuildsTriggerInput struct {
 	Body struct {
 		Project      string            `json:"project" doc:"Project name"`
-		Artifacts    []string          `json:"artifacts,omitempty" doc:"Artifact names to build (empty = all configured)"`
-		Wait         bool              `json:"wait,omitempty" doc:"Wait for builds to complete"`
-		Timeout      string            `json:"timeout,omitempty" doc:"Max wait time as Go duration (e.g. 5h)"`
-		Owner        string            `json:"owner,omitempty" doc:"Override LP owner"`
-		Prefix       string            `json:"prefix,omitempty" doc:"Temp recipe name prefix"`
-		RepoSelfLink string            `json:"repo_self_link,omitempty" doc:"LP git repo self_link (pre-resolved)"`
-		GitRefLinks  map[string]string `json:"git_ref_links,omitempty" doc:"Recipe name → git ref self_link (pre-resolved)"`
-		BuildPaths   map[string]string `json:"build_paths,omitempty" doc:"Recipe name → build path (pre-resolved)"`
-		LPProject    string            `json:"lp_project,omitempty" doc:"Override LP project name"`
+		Artifacts    []string          `json:"artifacts,omitempty" required:"false" doc:"Artifact names to build (empty = all configured)"`
+		Wait         bool              `json:"wait,omitempty" required:"false" doc:"Wait for builds to complete"`
+		Timeout      string            `json:"timeout,omitempty" required:"false" doc:"Max wait time as Go duration (e.g. 5h)"`
+		Owner        string            `json:"owner,omitempty" required:"false" doc:"Override LP owner"`
+		Prefix       string            `json:"prefix,omitempty" required:"false" doc:"Temp recipe name prefix"`
+		RepoSelfLink string            `json:"repo_self_link,omitempty" required:"false" doc:"LP git repo self_link (pre-resolved)"`
+		GitRefLinks  map[string]string `json:"git_ref_links,omitempty" required:"false" doc:"Recipe name → git ref self_link (pre-resolved)"`
+		BuildPaths   map[string]string `json:"build_paths,omitempty" required:"false" doc:"Recipe name → build path (pre-resolved)"`
+		LPProject    string            `json:"lp_project,omitempty" required:"false" doc:"Override LP project name"`
 	}
 }
 
@@ -62,11 +62,11 @@ type BuildsListOutput struct {
 type BuildsDownloadInput struct {
 	Body struct {
 		Project      string   `json:"project" doc:"Project name"`
-		Artifacts    []string `json:"artifacts,omitempty" doc:"Artifact names to download (empty = all)"`
-		RecipePrefix string   `json:"recipe_prefix,omitempty" doc:"Filter recipes by name prefix"`
-		Owner        string   `json:"owner,omitempty" doc:"Override LP owner"`
-		LPProject    string   `json:"lp_project,omitempty" doc:"Override LP project"`
-		ArtifactsDir string   `json:"artifacts_dir,omitempty" doc:"Output directory (default from config)"`
+		Artifacts    []string `json:"artifacts,omitempty" required:"false" doc:"Artifact names to download (empty = all)"`
+		RecipePrefix string   `json:"recipe_prefix,omitempty" required:"false" doc:"Filter recipes by name prefix"`
+		Owner        string   `json:"owner,omitempty" required:"false" doc:"Override LP owner"`
+		LPProject    string   `json:"lp_project,omitempty" required:"false" doc:"Override LP project"`
+		ArtifactsDir string   `json:"artifacts_dir,omitempty" required:"false" doc:"Output directory (default from config)"`
 	}
 }
 

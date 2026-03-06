@@ -53,9 +53,9 @@ type BugGetOutput struct {
 // BugSyncInput holds the request body for triggering a bug sync.
 type BugSyncInput struct {
 	Body struct {
-		Projects []string `json:"projects,omitempty" doc:"Filter to these project names (empty = all)"`
-		DryRun   bool     `json:"dry_run" doc:"If true, show what would change without updating"`
-		Since    string   `json:"since,omitempty" doc:"Only consider bugs created/modified since (RFC 3339 timestamp)"`
+		Projects []string `json:"projects,omitempty" required:"false" doc:"Filter to these project names (empty = all)"`
+		DryRun   bool     `json:"dry_run,omitempty" required:"false" doc:"If true, show what would change without updating"`
+		Since    string   `json:"since,omitempty" required:"false" doc:"Only consider bugs created/modified since (RFC 3339 timestamp)"`
 	}
 }
 
