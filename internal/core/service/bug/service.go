@@ -24,6 +24,7 @@ type ListOptions struct {
 	Importance []string
 	Assignee   string
 	Tags       []string
+	Since      string // ISO 8601 date — filter tasks created/modified since this date
 }
 
 // ProjectResult holds bug tasks from one query, or an error.
@@ -119,6 +120,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 			Importance: opts.Importance,
 			Assignee:   opts.Assignee,
 			Tags:       opts.Tags,
+			ModifiedSince: opts.Since,
 		})
 
 		if err != nil {

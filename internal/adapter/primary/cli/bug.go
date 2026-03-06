@@ -44,18 +44,24 @@ func newBugListCmd(opts *Options) *cobra.Command {
 		importance []string
 		assignee   string
 		tags       []string
+		since      string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List bug tasks across bug trackers",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			resolvedSince, err := dto.ResolveSince(since)
+			if err != nil {
+				return err
+			}
 			result, err := opts.Client.BugsList(cmd.Context(), client.BugsListOptions{
 				Projects:   projects,
 				Status:     status,
 				Importance: importance,
 				Assignee:   assignee,
 				Tags:       tags,
+				Since:      resolvedSince,
 			})
 			if err != nil {
 				return err
@@ -72,6 +78,7 @@ func newBugListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&importance, "importance", nil, "filter by importance: Critical, High, Medium, Low, etc. (repeatable)")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "filter by assignee username")
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "filter by tag (repeatable)")
+	cmd.Flags().StringVar(&since, "since", "", "show only bugs created/modified since (e.g. 2d, 1w, 30m, 2025-01-01)")
 
 	return cmd
 }
@@ -80,7 +87,7 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 	var (
 		projects []string
 		dryRun   bool
-		days     int
+		since    string
 	)
 
 	cmd := &cobra.Command{
@@ -88,10 +95,14 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 		Short: "Update LP bug statuses from cached commits",
 		Long:  "Scans cached commits for LP bug references and updates bug task statuses to Fix Committed. Also assigns bugs to the appropriate LP series based on which branches contain the fix.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			resolvedSince, err := dto.ResolveSince(since)
+			if err != nil {
+				return err
+			}
 			result, err := opts.Client.BugsSync(cmd.Context(), client.BugsSyncOptions{
 				Projects: projects,
 				DryRun:   dryRun,
-				Days:     days,
+				Since:    resolvedSince,
 			})
 			if err != nil {
 				return err
@@ -109,7 +120,7 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would change without updating")
-	cmd.Flags().IntVar(&days, "days", 0, "only consider bugs created in the last N days")
+	cmd.Flags().StringVar(&since, "since", "", "only consider bugs created/modified since (e.g. 2d, 1w, 30m, 2025-01-01)")
 
 	return cmd
 }

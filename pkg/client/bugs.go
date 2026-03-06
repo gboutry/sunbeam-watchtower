@@ -18,6 +18,7 @@ type BugsListOptions struct {
 	Importance []string
 	Assignee   string
 	Tags       []string
+	Since      string // ISO 8601 date — return bugs created/modified since this date
 }
 
 // BugsListResult is the response returned by BugsList.
@@ -44,6 +45,9 @@ func (c *Client) BugsList(ctx context.Context, opts BugsListOptions) (*BugsListR
 	for _, v := range opts.Tags {
 		q.Add("tag", v)
 	}
+	if opts.Since != "" {
+		q.Set("since", opts.Since)
+	}
 
 	var result BugsListResult
 	err := c.get(ctx, "/api/v1/bugs", q, &result)
@@ -61,7 +65,7 @@ func (c *Client) BugsGet(ctx context.Context, id string) (*forge.Bug, error) {
 type BugsSyncOptions struct {
 	Projects []string `json:"projects,omitempty"`
 	DryRun   bool     `json:"dry_run"`
-	Days     int      `json:"days,omitempty"`
+	Since    string   `json:"since,omitempty"` // RFC 3339 timestamp
 }
 
 // BugsSyncResult is the response returned by BugsSync.

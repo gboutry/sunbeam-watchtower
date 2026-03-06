@@ -25,6 +25,7 @@ type BugsListInput struct {
 	Importance []string `query:"importance" doc:"Filter by importance"`
 	Assignee   string   `query:"assignee" doc:"Filter by assignee"`
 	Tags       []string `query:"tag" doc:"Filter by tag"`
+	Since      string   `query:"since" doc:"Return bugs created/modified since this date (ISO 8601)"`
 }
 
 // BugsListOutput is the response for listing bug tasks.
@@ -54,7 +55,7 @@ type BugSyncInput struct {
 	Body struct {
 		Projects []string `json:"projects,omitempty" doc:"Filter to these project names (empty = all)"`
 		DryRun   bool     `json:"dry_run" doc:"If true, show what would change without updating"`
-		Days     int      `json:"days,omitempty" doc:"Only consider bugs created in the last N days"`
+		Since    string   `json:"since,omitempty" doc:"Only consider bugs created/modified since (RFC 3339 timestamp)"`
 	}
 }
 
@@ -89,6 +90,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 			Importance: input.Importance,
 			Assignee:   input.Assignee,
 			Tags:       input.Tags,
+			Since:      input.Since,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to list bugs", err)
@@ -173,8 +175,11 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 			Projects: input.Body.Projects,
 			DryRun:   input.Body.DryRun,
 		}
-		if input.Body.Days > 0 {
-			since := time.Now().AddDate(0, 0, -input.Body.Days)
+		if input.Body.Since != "" {
+			since, pErr := time.Parse(time.RFC3339, input.Body.Since)
+			if pErr != nil {
+				return nil, huma.Error400BadRequest("invalid since value: expected RFC 3339 timestamp")
+			}
 			syncOpts.Since = &since
 		}
 
