@@ -35,3 +35,21 @@ LP's `git_ssh_url` has no user component, but push requires `<lp_username>@` in 
 ### Date/time parameters must be in UTC
 
 LP rejects date/time query parameters (e.g. `created_since`, `created_before`) that include a non-UTC timezone offset. Always convert to UTC before formatting: `t.UTC().Format(time.RFC3339)`.
+
+### `getRefByPath` returns refs without `self_link`
+
+LP's `getRefByPath` custom operation may return a `GitRef` object with an empty `self_link`. Construct it manually: `<repoSelfLink>/+ref/<refPath>`.
+
+### Recipe `git_ref` requires a real branch
+
+LP recipe creation rejects bare SHA refs. Always push to a named branch (e.g. `refs/heads/tmp-<sha8>`) and use that as the `git_ref`.
+
+## go-git
+
+### `HEAD` in push refspecs silently skips objects
+
+go-git does not reliably resolve `HEAD` in push refspecs. A push with `HEAD:refs/heads/<branch>` may report success (or `NoErrAlreadyUpToDate`) without transferring any objects. Always resolve `HEAD` to the concrete branch ref (e.g. `refs/heads/main`) before building the refspec.
+
+### `NoErrAlreadyUpToDate` is not an error
+
+go-git's `Push` returns `NoErrAlreadyUpToDate` when the remote already has the ref at the same commit. This is a no-op, not a failure — treat it as success.
