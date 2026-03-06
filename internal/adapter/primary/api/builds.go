@@ -38,9 +38,12 @@ type BuildsTriggerOutput struct {
 
 // BuildsListInput holds query parameters for listing builds.
 type BuildsListInput struct {
-	Projects []string `query:"project" doc:"Filter by project name"`
-	All      bool     `query:"all" doc:"Show all builds (not just active)"`
-	State    string   `query:"state" doc:"Filter by state"`
+	Projects  []string `query:"project" doc:"Filter by project name"`
+	All       bool     `query:"all" doc:"Show all builds (not just active)"`
+	State     string   `query:"state" doc:"Filter by state"`
+	Source    string   `query:"source" doc:"Build source (remote|local)"`
+	LocalPath string   `query:"local_path" doc:"Path to local git repo (local mode)"`
+	Prefix    string   `query:"prefix" doc:"Temp recipe name prefix (local mode)"`
 }
 
 // BuildsListOutput is the response for listing builds.
@@ -143,9 +146,12 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		}
 
 		builds, _, err := svc.List(ctx, build.ListOpts{
-			Projects: input.Projects,
-			All:      input.All,
-			State:    input.State,
+			Projects:  input.Projects,
+			All:       input.All,
+			State:     input.State,
+			Source:    input.Source,
+			LocalPath: input.LocalPath,
+			Prefix:    input.Prefix,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list builds: %v", err))

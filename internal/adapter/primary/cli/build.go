@@ -87,16 +87,19 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 func newBuildListCmd(opts *Options) *cobra.Command {
 	var projects []string
 	var all bool
-	var state string
+	var state, source, prefix, localPath string
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List builds across projects",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			builds, err := opts.Client.BuildsList(cmd.Context(), client.BuildsListOptions{
-				Projects: projects,
-				All:      all,
-				State:    state,
+				Projects:  projects,
+				All:       all,
+				State:     state,
+				Source:    source,
+				LocalPath: localPath,
+				Prefix:    prefix,
 			})
 			if err != nil {
 				return err
@@ -109,6 +112,9 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name")
 	cmd.Flags().BoolVar(&all, "all", false, "show all builds (not just active)")
 	cmd.Flags().StringVar(&state, "state", "", "filter by state")
+	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
+	cmd.Flags().StringVar(&localPath, "local-path", ".", "path to local git repo (local mode)")
+	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
 
 	return cmd
 }

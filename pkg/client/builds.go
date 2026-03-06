@@ -31,9 +31,12 @@ func (c *Client) BuildsTrigger(ctx context.Context, opts BuildsTriggerOptions) (
 
 // BuildsListOptions holds query parameters for listing builds.
 type BuildsListOptions struct {
-	Projects []string
-	All      bool
-	State    string
+	Projects  []string
+	All       bool
+	State     string
+	Source    string
+	LocalPath string
+	Prefix    string
 }
 
 // BuildsListResult is the response returned by BuildsList.
@@ -52,6 +55,15 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 	}
 	if opts.State != "" {
 		q.Set("state", opts.State)
+	}
+	if opts.Source != "" {
+		q.Set("source", opts.Source)
+	}
+	if opts.LocalPath != "" {
+		q.Set("local_path", opts.LocalPath)
+	}
+	if opts.Prefix != "" {
+		q.Set("prefix", opts.Prefix)
 	}
 
 	var result BuildsListResult

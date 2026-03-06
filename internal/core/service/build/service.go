@@ -64,9 +64,12 @@ type RecipeResult = dto.BuildRecipeResult
 
 // ListOpts holds options for listing builds.
 type ListOpts struct {
-	Projects []string
-	All      bool   // show all builds, not just active
-	State    string // filter by state
+	Projects  []string
+	All       bool   // show all builds, not just active
+	State     string // filter by state
+	Source    string // "local" or "remote"
+	LocalPath string // path to local git repo (local mode)
+	Prefix    string // temp recipe name prefix (local mode)
 }
 
 // ProjectResult holds builds from one project, or an error.
@@ -464,6 +467,31 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 		projFilter[p] = true
 	}
 
+	// For local mode, resolve owner and SHA once.
+	var localOwner, localSHA string
+	if opts.Source == "local" {
+		if s.repoManager == nil {
+			return nil, nil, fmt.Errorf("local mode requires a RepoManager")
+		}
+		if s.gitClient == nil {
+			return nil, nil, fmt.Errorf("local mode requires a GitClient")
+		}
+		if opts.LocalPath == "" {
+			return nil, nil, fmt.Errorf("local mode requires LocalPath")
+		}
+		me, err := s.repoManager.GetCurrentUser(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolving current LP user: %w", err)
+		}
+		localOwner = me
+
+		sha, err := s.gitClient.HeadSHA(opts.LocalPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get HEAD SHA: %w", err)
+		}
+		localSHA = sha
+	}
+
 	var results []ProjectResult
 	var all []dto.Build
 
@@ -475,8 +503,24 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 		result := ProjectResult{ProjectName: name}
 		var projBuilds []dto.Build
 
-		for _, recipeName := range pb.Recipes {
-			recipe, err := pb.Builder.GetRecipe(ctx, pb.Owner, pb.RecipeProject(), recipeName)
+		owner := pb.Owner
+		recipeNames := pb.Recipes
+
+		if opts.Source == "local" {
+			owner = localOwner
+			prefix := opts.Prefix
+			if prefix == "" {
+				prefix = "tmp-build"
+			}
+			tempNames := make([]string, len(recipeNames))
+			for i, rn := range recipeNames {
+				tempNames[i] = pb.Strategy.TempRecipeName(rn, localSHA, prefix)
+			}
+			recipeNames = tempNames
+		}
+
+		for _, recipeName := range recipeNames {
+			recipe, err := pb.Builder.GetRecipe(ctx, owner, pb.RecipeProject(), recipeName)
 			if err != nil {
 				s.logger.Warn("error getting recipe", "project", name, "recipe", recipeName, "error", err)
 				continue
