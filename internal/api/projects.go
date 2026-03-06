@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
 )
 
@@ -24,7 +25,7 @@ type ProjectsSyncInput struct {
 // ProjectsSyncOutput is the response for a project sync operation.
 type ProjectsSyncOutput struct {
 	Body struct {
-		Actions []projectsvc.SyncAction `json:"actions" doc:"Actions taken or planned"`
+		Actions []dto.ProjectSyncAction `json:"actions" doc:"Actions taken or planned"`
 		Errors  []string                `json:"errors,omitempty" doc:"Non-fatal error messages"`
 	}
 }

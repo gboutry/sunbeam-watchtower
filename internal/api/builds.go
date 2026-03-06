@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
 )
@@ -30,7 +31,7 @@ type BuildsTriggerInput struct {
 
 // BuildsTriggerOutput is the response for triggering builds.
 type BuildsTriggerOutput struct {
-	Body build.TriggerResult
+	Body dto.BuildTriggerResult
 }
 
 // --- List builds ---

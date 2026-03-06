@@ -13,6 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	pkg "github.com/gboutry/sunbeam-watchtower/internal/service/package"
@@ -36,7 +37,7 @@ type PackagesDiffInput struct {
 
 // PackagesDiffOutput is the response for the diff endpoint.
 type PackagesDiffOutput struct {
-	Body []pkg.DiffResult `doc:"List of package diff results"`
+	Body []dto.PackageDiffResult `doc:"List of package diff results"`
 }
 
 // PackagesShowInput holds parameters for the show endpoint.
@@ -52,7 +53,7 @@ type PackagesShowInput struct {
 
 // PackagesShowOutput is the response for the show endpoint.
 type PackagesShowOutput struct {
-	Body *pkg.DiffResult `doc:"Package version information across sources"`
+	Body *dto.PackageDiffResult `doc:"Package version information across sources"`
 }
 
 // PackagesListInput holds parameters for the list endpoint.
@@ -93,7 +94,7 @@ type PackagesDscInput struct {
 
 // PackagesDscOutput is the response for the dsc endpoint.
 type PackagesDscOutput struct {
-	Body []pkg.DscResult `doc:"DSC URL lookup results"`
+	Body []dto.PackageDscResult `doc:"DSC URL lookup results"`
 }
 
 // PackagesCacheStatusOutput is the response for the cache status endpoint.
@@ -237,7 +238,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		// --only-in: keep only packages present in the named source.
 		if input.OnlyIn != "" {
-			var filtered []pkg.DiffResult
+			var filtered []dto.PackageDiffResult
 			for _, r := range results {
 				if len(r.Versions[input.OnlyIn]) > 0 {
 					filtered = append(filtered, r)
@@ -276,7 +277,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 		}
 
 		if input.UpstreamRelease != "" {
-			results := []pkg.DiffResult{*result}
+			results := []dto.PackageDiffResult{*result}
 			_ = annotateUpstreamResults(ctx, application, results, input.UpstreamRelease)
 			result = &results[0]
 		}
@@ -364,7 +365,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 			}
 			queryOpts := port.QueryOpts{Suites: srcSuites}
 
-			srcResults, qErr := svc.ReverseDepends(ctx, input.Name, []pkg.ProjectSource{src}, queryOpts)
+			srcResults, qErr := svc.ReverseDepends(ctx, input.Name, []dto.PackageSource{src}, queryOpts)
 			if qErr != nil {
 				return nil, huma.Error500InternalServerError("rdepends failed", qErr)
 			}
@@ -475,7 +476,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 // --- Helpers -----------------------------------------------------------------
 
 // annotateUpstreamResults populates the Upstream field on each DiffResult.
-func annotateUpstreamResults(ctx context.Context, application *app.App, results []pkg.DiffResult, release string) error {
+func annotateUpstreamResults(ctx context.Context, application *app.App, results []dto.PackageDiffResult, release string) error {
 	provider, err := application.BuildUpstreamProvider()
 	if err != nil {
 		return err
@@ -524,8 +525,8 @@ func annotateUpstreamResults(ctx context.Context, application *app.App, results 
 }
 
 // filterBehindUpstreamResults keeps only results where distro version < upstream.
-func filterBehindUpstreamResults(results []pkg.DiffResult, sources []pkg.ProjectSource) []pkg.DiffResult {
-	var filtered []pkg.DiffResult
+func filterBehindUpstreamResults(results []dto.PackageDiffResult, sources []dto.PackageSource) []dto.PackageDiffResult {
+	var filtered []dto.PackageDiffResult
 	for _, r := range results {
 		if r.Upstream == "" {
 			continue

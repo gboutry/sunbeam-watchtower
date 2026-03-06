@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/appclient"
-	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +45,7 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 				fmt.Fprintf(opts.ErrOut, "error: %s\n", e)
 			}
 
-			syncResult := &projectsvc.SyncResult{
+			syncResult := &dto.ProjectSyncResult{
 				Actions: result.Actions,
 			}
 			return renderProjectSyncResult(opts.Out, opts.Output, syncResult, dryRun)

@@ -18,7 +18,7 @@ import (
 // schemaNamer is a custom schema namer that checks for a SchemaName() method
 // on the type before falling back to huma's DefaultSchemaNamer. This avoids
 // "duplicate name" panics when different packages define types with the same
-// short Go name (e.g. bugsync.SyncAction vs project.SyncAction).
+// short Go name (e.g. dto.BugSyncActionType vs dto.ProjectSyncActionType).
 func schemaNamer(t reflect.Type, hint string) string {
 	t = derefType(t)
 	v := reflect.New(t)

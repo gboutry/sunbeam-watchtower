@@ -11,15 +11,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
 
 // ProjectSource associates a name (e.g. "ubuntu", "uca") with its source entries.
-type ProjectSource struct {
-	Name    string
-	Entries []port.SourceEntry
-}
+type ProjectSource = dto.PackageSource
 
 // Service orchestrates package-related operations using a DistroCache.
 type Service struct {
@@ -75,11 +73,7 @@ type PackageVersionPair struct {
 }
 
 // DscResult holds .dsc URL lookup results for a package/version pair.
-type DscResult struct {
-	Package string   `json:"package" yaml:"package"`
-	Version string   `json:"version" yaml:"version"`
-	URLs    []string `json:"urls" yaml:"urls"`
-}
+type DscResult = dto.PackageDscResult
 
 // FindDsc searches raw Sources files for .dsc URLs matching the given package/version pairs.
 func (s *Service) FindDsc(ctx context.Context, pairs []PackageVersionPair, sources []ProjectSource) ([]DscResult, error) {

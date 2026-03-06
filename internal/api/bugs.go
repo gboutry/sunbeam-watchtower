@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/bug"
@@ -60,9 +61,9 @@ type BugSyncInput struct {
 // BugSyncOutput is the response for a bug sync operation.
 type BugSyncOutput struct {
 	Body struct {
-		Actions []bugsync.SyncAction `json:"actions" doc:"Actions taken or planned"`
-		Skipped int                  `json:"skipped" doc:"Number of tasks skipped"`
-		Errors  []string             `json:"errors,omitempty" doc:"Non-fatal error messages"`
+		Actions []dto.BugSyncAction `json:"actions" doc:"Actions taken or planned"`
+		Skipped int                 `json:"skipped" doc:"Number of tasks skipped"`
+		Errors  []string            `json:"errors,omitempty" doc:"Non-fatal error messages"`
 	}
 }
 

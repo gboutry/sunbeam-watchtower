@@ -22,13 +22,13 @@ import (
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/launchpad"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/openstack"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/internal/pkg/launchpad/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/bug"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/commit"
-	pkg "github.com/gboutry/sunbeam-watchtower/internal/service/package"
 	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/review"
 )
@@ -518,9 +518,9 @@ func (a *App) BuildCommitSources() (map[string]commit.ProjectSource, error) {
 // Backport filter semantics:
 //   - empty/nil or ["none"]: skip all backports (default)
 //   - ["gazpacho", "flamingo"]: include only those backports
-func (a *App) BuildPackageSources(distros, releases, suites, backports []string) []pkg.ProjectSource {
+func (a *App) BuildPackageSources(distros, releases, suites, backports []string) []dto.PackageSource {
 	cfg := a.Config.Packages
-	var sources []pkg.ProjectSource
+	var sources []dto.PackageSource
 
 	// Build backport filter.
 	// nil → include all backports (used by cache sync)
@@ -642,7 +642,7 @@ func (a *App) BuildPackageSources(distros, releases, suites, backports []string)
 						}
 					}
 				}
-				sources = append(sources, pkg.ProjectSource{
+				sources = append(sources, dto.PackageSource{
 					Name:    qualifiedName,
 					Entries: bpEntries,
 				})
@@ -650,7 +650,7 @@ func (a *App) BuildPackageSources(distros, releases, suites, backports []string)
 		}
 
 		if len(entries) > 0 {
-			sources = append(sources, pkg.ProjectSource{
+			sources = append(sources, dto.PackageSource{
 				Name:    name,
 				Entries: entries,
 			})

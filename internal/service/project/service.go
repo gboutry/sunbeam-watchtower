@@ -9,39 +9,25 @@ import (
 	"io"
 	"log/slog"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
 
 // ActionType describes the kind of sync action.
-type ActionType string
-
-// SchemaName returns a unique name for Huma OpenAPI schema registration.
-func (ActionType) SchemaName() string { return "ProjectSyncActionType" }
+type ActionType = dto.ProjectSyncActionType
 
 const (
-	ActionCreateSeries      ActionType = "create_series"
-	ActionSetDevFocus       ActionType = "set_dev_focus"
-	ActionDevFocusUnchanged ActionType = "dev_focus_unchanged"
+	ActionCreateSeries      ActionType = dto.ProjectSyncActionCreateSeries
+	ActionSetDevFocus       ActionType = dto.ProjectSyncActionSetDevFocus
+	ActionDevFocusUnchanged ActionType = dto.ProjectSyncActionDevFocusUnchanged
 )
 
 // SyncAction represents a single action taken (or planned) during sync.
-type SyncAction struct {
-	Project    string     `json:"project" yaml:"project"`
-	Series     string     `json:"series" yaml:"series"`
-	ActionType ActionType `json:"action_type" yaml:"action_type"`
-	OldValue   string     `json:"old_value,omitempty" yaml:"old_value,omitempty"`
-	NewValue   string     `json:"new_value,omitempty" yaml:"new_value,omitempty"`
-}
-
-// SchemaName returns a unique name for Huma OpenAPI schema registration.
-func (SyncAction) SchemaName() string { return "ProjectSyncAction" }
+type SyncAction = dto.ProjectSyncAction
 
 // SyncResult holds the outcome of a sync operation.
-type SyncResult struct {
-	Actions []SyncAction `json:"actions" yaml:"actions"`
-	Errors  []error      `json:"-" yaml:"-"`
-}
+type SyncResult = dto.ProjectSyncResult
 
 // SyncOptions controls the sync behavior.
 type SyncOptions struct {

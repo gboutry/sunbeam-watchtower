@@ -2,7 +2,7 @@
 
 A unified CLI dashboard for tracking packages, code, reviews, bugs, builds, and Launchpad project metadata across GitHub, Launchpad, and Gerrit forges.
 
-The CLI runs on top of a local HTTP API server. You can also run that server explicitly and consume its OpenAPI description at `/openapi.json` or the interactive docs UI at `/docs`.
+The CLI runs on top of a local HTTP API server. Shared DTO contracts live in `internal/dto/v1`, so the CLI, HTTP client, API, and future TUI/MCP consumers can reuse the same result models without depending on service packages. You can also run that server explicitly and consume its OpenAPI description at `/openapi.json` or the interactive docs UI at `/docs`.
 
 ## Installation
 

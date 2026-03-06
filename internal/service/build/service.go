@@ -16,19 +16,20 @@ import (
 	"strings"
 	"time"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
 
 // RecipeAction is the action determined for a recipe after assessment.
-type RecipeAction int
+type RecipeAction = dto.BuildRecipeAction
 
 const (
-	ActionCreateRecipe  RecipeAction = iota // recipe doesn't exist yet
-	ActionRequestBuilds                     // recipe exists but no builds
-	ActionRetryFailed                       // some builds failed
-	ActionMonitor                           // builds are active/pending
-	ActionDownload                          // all builds succeeded
-	ActionNoop                              // nothing to do
+	ActionCreateRecipe  RecipeAction = dto.BuildActionCreateRecipe
+	ActionRequestBuilds RecipeAction = dto.BuildActionRequestBuilds
+	ActionRetryFailed   RecipeAction = dto.BuildActionRetryFailed
+	ActionMonitor       RecipeAction = dto.BuildActionMonitor
+	ActionDownload      RecipeAction = dto.BuildActionDownload
+	ActionNoop          RecipeAction = dto.BuildActionNoop
 )
 
 // RecipeStatus holds the assessed state of a single recipe.
@@ -56,19 +57,10 @@ type TriggerOpts struct {
 }
 
 // TriggerResult holds the result of a trigger operation.
-type TriggerResult struct {
-	Project       string         `json:"project" yaml:"project"`
-	RecipeResults []RecipeResult `json:"recipe_results" yaml:"recipe_results"`
-}
+type TriggerResult = dto.BuildTriggerResult
 
 // RecipeResult holds the result of a single recipe action.
-type RecipeResult struct {
-	Name         string             `json:"name" yaml:"name"`
-	Action       RecipeAction       `json:"action" yaml:"action"`
-	BuildRequest *port.BuildRequest `json:"build_request,omitempty" yaml:"build_request,omitempty"`
-	Builds       []port.Build       `json:"builds,omitempty" yaml:"builds,omitempty"`
-	Error        error              `json:"-" yaml:"-"`
-}
+type RecipeResult = dto.BuildRecipeResult
 
 // ListOpts holds options for listing builds.
 type ListOpts struct {

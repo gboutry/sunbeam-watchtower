@@ -7,9 +7,9 @@ import (
 	"context"
 	"net/url"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
-	pkg "github.com/gboutry/sunbeam-watchtower/internal/service/package"
 )
 
 // PackagesDiffOptions holds query parameters for the packages diff endpoint.
@@ -27,7 +27,7 @@ type PackagesDiffOptions struct {
 }
 
 // PackagesDiff compares package versions across distros for the given package set.
-func (c *Client) PackagesDiff(ctx context.Context, opts PackagesDiffOptions) ([]pkg.DiffResult, error) {
+func (c *Client) PackagesDiff(ctx context.Context, opts PackagesDiffOptions) ([]dto.PackageDiffResult, error) {
 	q := url.Values{}
 	for _, v := range opts.Distros {
 		q.Add("distro", v)
@@ -57,7 +57,7 @@ func (c *Client) PackagesDiff(ctx context.Context, opts PackagesDiffOptions) ([]
 		q.Set("constraints", opts.Constraints)
 	}
 
-	var result []pkg.DiffResult
+	var result []dto.PackageDiffResult
 	err := c.get(ctx, "/api/v1/packages/diff/"+url.PathEscape(opts.Set), q, &result)
 	return result, err
 }
@@ -73,7 +73,7 @@ type PackagesShowOptions struct {
 }
 
 // PackagesShow returns version information for a single package across distros.
-func (c *Client) PackagesShow(ctx context.Context, name string, opts PackagesShowOptions) (*pkg.DiffResult, error) {
+func (c *Client) PackagesShow(ctx context.Context, name string, opts PackagesShowOptions) (*dto.PackageDiffResult, error) {
 	q := url.Values{}
 	for _, v := range opts.Distros {
 		q.Add("distro", v)
@@ -94,7 +94,7 @@ func (c *Client) PackagesShow(ctx context.Context, name string, opts PackagesSho
 		q.Set("upstream_release", opts.UpstreamRelease)
 	}
 
-	var result pkg.DiffResult
+	var result dto.PackageDiffResult
 	err := c.get(ctx, "/api/v1/packages/show/"+url.PathEscape(name), q, &result)
 	return &result, err
 }
@@ -171,7 +171,7 @@ type PackagesDscOptions struct {
 
 // PackagesDsc looks up .dsc file URLs for the given source package/version pairs.
 // Each entry in Packages should be in "name=version" format.
-func (c *Client) PackagesDsc(ctx context.Context, opts PackagesDscOptions) ([]pkg.DscResult, error) {
+func (c *Client) PackagesDsc(ctx context.Context, opts PackagesDscOptions) ([]dto.PackageDscResult, error) {
 	q := url.Values{}
 	for _, v := range opts.Packages {
 		q.Add("packages", v)
@@ -186,7 +186,7 @@ func (c *Client) PackagesDsc(ctx context.Context, opts PackagesDscOptions) ([]pk
 		q.Add("backport", v)
 	}
 
-	var result []pkg.DscResult
+	var result []dto.PackageDscResult
 	err := c.get(ctx, "/api/v1/packages/dsc", q, &result)
 	return result, err
 }

@@ -6,7 +6,7 @@ package appclient
 import (
 	"context"
 
-	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 )
 
 // ProjectsSyncOptions holds the request body for syncing LP projects.
@@ -17,7 +17,7 @@ type ProjectsSyncOptions struct {
 
 // ProjectsSyncResult is the response returned by ProjectsSync.
 type ProjectsSyncResult struct {
-	Actions []projectsvc.SyncAction `json:"actions"`
+	Actions []dto.ProjectSyncAction `json:"actions"`
 	Errors  []string                `json:"errors,omitempty"`
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
@@ -21,11 +22,7 @@ type DiffOpts struct {
 }
 
 // DiffResult holds one package's versions across all queried sources.
-type DiffResult struct {
-	Package  string                            `json:"package" yaml:"package"`
-	Versions map[string][]distro.SourcePackage `json:"versions" yaml:"versions"` // source name → versions
-	Upstream string                            `json:"upstream,omitempty" yaml:"upstream,omitempty"`
-}
+type DiffResult = dto.PackageDiffResult
 
 // Diff compares package versions across multiple sources.
 func (s *Service) Diff(ctx context.Context, opts DiffOpts) ([]DiffResult, error) {

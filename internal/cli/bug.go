@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/appclient"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/bugsync"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -99,8 +99,7 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 			for _, e := range result.Errors {
 				fmt.Fprintf(opts.ErrOut, "warning: %s\n", e)
 			}
-			// Convert to bugsync.SyncResult for the renderer.
-			syncResult := &bugsync.SyncResult{
+			syncResult := &dto.BugSyncResult{
 				Actions: result.Actions,
 				Skipped: result.Skipped,
 			}

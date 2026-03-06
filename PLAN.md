@@ -2,11 +2,12 @@
 
 ## Architecture
 
-Hexagonal architecture: CLI → HTTP client → API server → services → adapters/ports.
+Hexagonal architecture: CLI → HTTP client → API server → services → adapters/ports, with shared cross-surface DTOs in `internal/dto/v1`.
 
 - **CLI** (`internal/cli/`): Thin Cobra wrappers. Parse flags, call `appclient`, render output. No business logic.
 - **API** (`internal/api/`): Huma v2 + chi HTTP handlers. All business logic accessed through service layer.
 - **App Client** (`internal/appclient/`): Typed HTTP client for CLI→server communication.
+- **DTOs** (`internal/dto/v1`): Shared application contracts reused by API, appclient, CLI rendering, and future TUI/MCP consumers.
 - **App** (`internal/app/`): Application wiring. Holds config, builds services, shared lifecycle.
 - **Services** (`internal/service/`): Domain logic (packages, bugs, bugsync, builds, commits, reviews, projects).
 - **Adapters** (`internal/adapter/`): External system integrations (git, launchpad, distrocache, gitcache).
@@ -39,6 +40,9 @@ internal/
 │   ├── projects.go             ProjectsSync
 │   ├── cache.go                CacheSyncGit, CacheSyncUpstream, CacheDelete, CacheStatus
 │   └── config.go               ConfigShow
+│
+├── dto/                        Shared app-facing DTO contracts
+│   └── v1/                     Reusable result/action models for builds, bugs, packages, projects
 │
 ├── app/                        Application wiring
 │   └── app.go                  App struct, service construction, BuildPackageSources
@@ -156,7 +160,8 @@ All built on top of the HTTP API:
   - commit source metadata no longer depends on `internal/config` types
   - `depguard` now enforces key `internal/api`, `internal/service`, and `internal/pkg` import boundaries in CI/lint
 - `arch-go` is now wired with `arch-go.yml` and pre-commit to enforce whole-module dependency boundaries across `cmd`, `api`, `app`, `appclient`, `cli`, `config`, `port`, `pkg`, `adapter`, and `service`.
-- `cli` and `appclient` still intentionally reuse some `service/*` result types; if those DTOs are extracted into a dedicated reusable package later, the `arch-go` rules can be tightened further.
+- Shared reusable DTOs now live in `internal/dto/v1`, so `cli` and `appclient` no longer depend on `service/*` just to share result models.
+- `depguard` and `arch-go` now enforce that `internal/cli` and `internal/appclient` do not import `internal/service/*`, and that `internal/dto` stays independent from concrete layers.
 - The next refactor step should extend the same factory pattern across the remaining API domains for consistency.
 - MCP/TUI readiness gaps:
   - auth is still CLI-only

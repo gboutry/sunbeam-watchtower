@@ -27,11 +27,24 @@ dependenciesRules:
         - "**.internal.adapter.**"
         - "**.internal.app"
         - "**.internal.cli"
+        - "**.internal.service.**"
 
   - package: "**.internal.cli"
     shouldNotDependsOn:
       internal:
         - "**.internal.adapter.**"
+        - "**.internal.service.**"
+
+  - package: "**.internal.dto.**"
+    shouldNotDependsOn:
+      internal:
+        - "**.internal.adapter.**"
+        - "**.internal.api"
+        - "**.internal.app"
+        - "**.internal.appclient"
+        - "**.internal.cli"
+        - "**.internal.config"
+        - "**.internal.service.**"
 
   - package: "**.internal.config"
     shouldNotDependsOn:

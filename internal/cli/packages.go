@@ -11,9 +11,9 @@ import (
 	"text/tabwriter"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/appclient"
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
-	pkg "github.com/gboutry/sunbeam-watchtower/internal/service/package"
 	"github.com/spf13/cobra"
 )
 
@@ -113,7 +113,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 			sources := opts.App.BuildPackageSources(distros, releases, nil, backports)
 			hasUpstream := upstreamRelease != ""
 
-			return renderDiffResults(opts.Out, opts.Output, []pkg.DiffResult{*result}, sources, merge, hasUpstream)
+			return renderDiffResults(opts.Out, opts.Output, []dto.PackageDiffResult{*result}, sources, merge, hasUpstream)
 		},
 	}
 
@@ -161,7 +161,7 @@ func newPackagesListCmd(opts *Options) *cobra.Command {
 }
 
 // renderDiffResults writes diff results in the requested format.
-func renderDiffResults(w io.Writer, format string, results []pkg.DiffResult, sources []pkg.ProjectSource, merge bool, hasUpstream bool) error {
+func renderDiffResults(w io.Writer, format string, results []dto.PackageDiffResult, sources []dto.PackageSource, merge bool, hasUpstream bool) error {
 	switch format {
 	case "json":
 		return renderJSON(w, results)
@@ -176,7 +176,7 @@ func renderDiffResults(w io.Writer, format string, results []pkg.DiffResult, sou
 }
 
 // renderDiffTable renders a table with dynamic columns based on queried sources.
-func renderDiffTable(w io.Writer, results []pkg.DiffResult, sources []pkg.ProjectSource, hasUpstream bool) error {
+func renderDiffTable(w io.Writer, results []dto.PackageDiffResult, sources []dto.PackageSource, hasUpstream bool) error {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No results found.")
 		return nil
@@ -271,7 +271,7 @@ func suiteMarker(suite string) string {
 
 // renderMergedDiffTable renders a table with one column per source, showing the
 // highest version with origin markers indicating which suites carry it.
-func renderMergedDiffTable(w io.Writer, results []pkg.DiffResult, sources []pkg.ProjectSource, hasUpstream bool) error {
+func renderMergedDiffTable(w io.Writer, results []dto.PackageDiffResult, sources []dto.PackageSource, hasUpstream bool) error {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No results found.")
 		return nil
@@ -431,7 +431,7 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 }
 
 // renderDscResults writes dsc lookup results in the requested format.
-func renderDscResults(w io.Writer, format string, results []pkg.DscResult) error {
+func renderDscResults(w io.Writer, format string, results []dto.PackageDscResult) error {
 	switch format {
 	case "json":
 		return renderJSON(w, results)
@@ -442,7 +442,7 @@ func renderDscResults(w io.Writer, format string, results []pkg.DscResult) error
 	}
 }
 
-func renderDscTable(w io.Writer, results []pkg.DscResult) error {
+func renderDscTable(w io.Writer, results []dto.PackageDscResult) error {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No results.")
 		return nil

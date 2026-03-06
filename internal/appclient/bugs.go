@@ -7,8 +7,8 @@ import (
 	"context"
 	"net/url"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/bugsync"
 )
 
 // BugsListOptions holds query parameters for listing bug tasks.
@@ -66,9 +66,9 @@ type BugsSyncOptions struct {
 
 // BugsSyncResult is the response returned by BugsSync.
 type BugsSyncResult struct {
-	Actions []bugsync.SyncAction `json:"actions"`
-	Skipped int                  `json:"skipped"`
-	Errors  []string             `json:"errors,omitempty"`
+	Actions []dto.BugSyncAction `json:"actions"`
+	Skipped int                 `json:"skipped"`
+	Errors  []string            `json:"errors,omitempty"`
 }
 
 // BugsSync triggers a bug status sync from commits.

@@ -12,45 +12,26 @@ import (
 	"strings"
 	"time"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/commit"
 )
 
 // ActionType describes the kind of sync action.
-type ActionType string
-
-// SchemaName returns a unique name for Huma OpenAPI schema registration.
-func (ActionType) SchemaName() string { return "BugSyncActionType" }
+type ActionType = dto.BugSyncActionType
 
 const (
-	ActionStatusUpdate     ActionType = "status_update"
-	ActionSeriesAssignment ActionType = "series_assignment"
-	ActionAddProjectTask   ActionType = "add_project_task"
+	ActionStatusUpdate     ActionType = dto.BugSyncActionStatusUpdate
+	ActionSeriesAssignment ActionType = dto.BugSyncActionSeriesAssignment
+	ActionAddProjectTask   ActionType = dto.BugSyncActionAddProjectTask
 )
 
 // SyncAction represents a single action taken (or planned) during sync.
-type SyncAction struct {
-	BugID      string     `json:"bug_id" yaml:"bug_id"`
-	TaskTitle  string     `json:"task_title" yaml:"task_title"`
-	OldStatus  string     `json:"old_status,omitempty" yaml:"old_status,omitempty"`
-	NewStatus  string     `json:"new_status,omitempty" yaml:"new_status,omitempty"`
-	SelfLink   string     `json:"self_link,omitempty" yaml:"self_link,omitempty"`
-	URL        string     `json:"url,omitempty" yaml:"url,omitempty"`
-	Series     string     `json:"series,omitempty" yaml:"series,omitempty"`
-	Project    string     `json:"project,omitempty" yaml:"project,omitempty"`
-	ActionType ActionType `json:"action_type" yaml:"action_type"`
-}
-
-// SchemaName returns a unique name for Huma OpenAPI schema registration.
-func (SyncAction) SchemaName() string { return "BugSyncAction" }
+type SyncAction = dto.BugSyncAction
 
 // SyncResult holds the outcome of a sync operation.
-type SyncResult struct {
-	Actions []SyncAction `json:"actions" yaml:"actions"`
-	Skipped int          `json:"skipped" yaml:"skipped"`
-	Errors  []error      `json:"-" yaml:"-"`
-}
+type SyncResult = dto.BugSyncResult
 
 // SyncOptions controls the sync behavior.
 type SyncOptions struct {

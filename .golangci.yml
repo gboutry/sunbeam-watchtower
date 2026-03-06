@@ -49,6 +49,47 @@ linters:
           deny:
             - pkg: github.com/gboutry/sunbeam-watchtower/internal/adapter
               desc: internal/api must go through internal/app or ports, not adapters directly
+        appclient-boundaries:
+          files:
+            - "**/internal/appclient/**/*.go"
+          list-mode: lax
+          deny:
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/adapter
+              desc: internal/appclient must not depend on adapters
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/app
+              desc: internal/appclient must not depend on app wiring
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/cli
+              desc: internal/appclient must not depend on the CLI layer
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/service
+              desc: internal/appclient must use shared DTOs and HTTP contracts, not service packages
+        cli-boundaries:
+          files:
+            - "**/internal/cli/**/*.go"
+          list-mode: lax
+          deny:
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/adapter
+              desc: internal/cli must not depend on adapters
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/service
+              desc: internal/cli must use appclient and shared DTOs, not service packages
+        dto-boundaries:
+          files:
+            - "**/internal/dto/**/*.go"
+          list-mode: lax
+          deny:
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/adapter
+              desc: internal/dto must stay independent from adapters
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/api
+              desc: internal/dto must stay independent from API handlers
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/app
+              desc: internal/dto must stay independent from app wiring
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/appclient
+              desc: internal/dto must stay independent from clients
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/cli
+              desc: internal/dto must stay independent from CLI code
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/config
+              desc: internal/dto must stay independent from config
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/service
+              desc: internal/dto must stay independent from service implementations
         service-boundaries:
           files:
             - "**/internal/service/**/*.go"

@@ -7,10 +7,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/bugsync"
-	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
 	"gopkg.in/yaml.v3"
 )
 
@@ -337,7 +336,7 @@ func renderCommitTable(w io.Writer, commits []forge.Commit) error {
 }
 
 // renderBugSyncResult writes bug sync results in the requested format.
-func renderBugSyncResult(w io.Writer, format string, result *bugsync.SyncResult, dryRun bool) error {
+func renderBugSyncResult(w io.Writer, format string, result *dto.BugSyncResult, dryRun bool) error {
 	switch format {
 	case "json":
 		return renderJSON(w, result)
@@ -348,7 +347,7 @@ func renderBugSyncResult(w io.Writer, format string, result *bugsync.SyncResult,
 	}
 }
 
-func renderBugSyncTable(w io.Writer, result *bugsync.SyncResult, dryRun bool) error {
+func renderBugSyncTable(w io.Writer, result *dto.BugSyncResult, dryRun bool) error {
 	if len(result.Actions) == 0 {
 		fmt.Fprintln(w, "No bugs to sync.")
 		return nil
@@ -359,11 +358,11 @@ func renderBugSyncTable(w io.Writer, result *bugsync.SyncResult, dryRun bool) er
 	}
 	for _, a := range result.Actions {
 		switch a.ActionType {
-		case bugsync.ActionStatusUpdate:
+		case dto.BugSyncActionStatusUpdate:
 			fmt.Fprintf(w, "%supdate: Bug #%s task %q %s → %s\n", prefix, a.BugID, a.TaskTitle, a.OldStatus, a.NewStatus)
-		case bugsync.ActionSeriesAssignment:
+		case dto.BugSyncActionSeriesAssignment:
 			fmt.Fprintf(w, "%sassign: Bug #%s to series %q on project %q\n", prefix, a.BugID, a.Series, a.Project)
-		case bugsync.ActionAddProjectTask:
+		case dto.BugSyncActionAddProjectTask:
 			fmt.Fprintf(w, "%sadd: Bug #%s task on project %q\n", prefix, a.BugID, a.Project)
 		}
 	}
@@ -371,7 +370,7 @@ func renderBugSyncTable(w io.Writer, result *bugsync.SyncResult, dryRun bool) er
 }
 
 // renderProjectSyncResult writes project sync results in the requested format.
-func renderProjectSyncResult(w io.Writer, format string, result *projectsvc.SyncResult, dryRun bool) error {
+func renderProjectSyncResult(w io.Writer, format string, result *dto.ProjectSyncResult, dryRun bool) error {
 	switch format {
 	case "json":
 		return renderJSON(w, result)
@@ -382,7 +381,7 @@ func renderProjectSyncResult(w io.Writer, format string, result *projectsvc.Sync
 	}
 }
 
-func renderProjectSyncTable(w io.Writer, result *projectsvc.SyncResult, dryRun bool) error {
+func renderProjectSyncTable(w io.Writer, result *dto.ProjectSyncResult, dryRun bool) error {
 	if len(result.Actions) == 0 {
 		fmt.Fprintln(w, "No changes needed.")
 		return nil
@@ -393,11 +392,11 @@ func renderProjectSyncTable(w io.Writer, result *projectsvc.SyncResult, dryRun b
 	}
 	for _, a := range result.Actions {
 		switch a.ActionType {
-		case projectsvc.ActionCreateSeries:
+		case dto.ProjectSyncActionCreateSeries:
 			fmt.Fprintf(w, "%screate: series %q on project %q\n", prefix, a.Series, a.Project)
-		case projectsvc.ActionSetDevFocus:
+		case dto.ProjectSyncActionSetDevFocus:
 			fmt.Fprintf(w, "%sset: development focus to %q on project %q\n", prefix, a.Series, a.Project)
-		case projectsvc.ActionDevFocusUnchanged:
+		case dto.ProjectSyncActionDevFocusUnchanged:
 			fmt.Fprintf(w, "unchanged: development focus already %q on project %q\n", a.Series, a.Project)
 		}
 	}

@@ -7,8 +7,8 @@ import (
 	"context"
 	"net/url"
 
+	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
 )
 
 // BuildsTriggerOptions holds the request body for triggering builds.
@@ -24,8 +24,8 @@ type BuildsTriggerOptions struct {
 }
 
 // BuildsTrigger triggers builds for a project.
-func (c *Client) BuildsTrigger(ctx context.Context, opts BuildsTriggerOptions) (*build.TriggerResult, error) {
-	var result build.TriggerResult
+func (c *Client) BuildsTrigger(ctx context.Context, opts BuildsTriggerOptions) (*dto.BuildTriggerResult, error) {
+	var result dto.BuildTriggerResult
 	err := c.post(ctx, "/api/v1/builds/trigger", opts, &result)
 	return &result, err
 }
