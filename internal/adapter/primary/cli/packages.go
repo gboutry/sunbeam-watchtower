@@ -91,7 +91,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 	var upstreamRelease string
 
 	cmd := &cobra.Command{
-		Use:   "show <package>",
+		Use:   "show-version <package>",
 		Short: "Show all versions of a package across distros",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

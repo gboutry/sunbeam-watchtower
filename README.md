@@ -168,7 +168,7 @@ Compare package versions and inspect package metadata across configured distro s
 watchtower packages diff released
 
 # Show all versions of a package
-watchtower packages show nova
+watchtower packages show-version nova
 
 # List packages in a configured distro release
 watchtower packages list --distro ubuntu --release noble
