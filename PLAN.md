@@ -350,4 +350,6 @@ These are still the main gaps before TUI and MCP work:
 
 - auth is still CLI-driven rather than application-surface driven
 - long-running operations do not yet expose reusable async/progress/event primitives
-- `internal/app` is still the shared composition root; TUI/MCP will likely want a dedicated application facade on top of the core services
+- `internal/app` should remain the composition root (wiring config, caches, clients, and services), not become the runtime API for every frontend
+- TUI/MCP will likely want a dedicated application facade/use-case layer on top of the core services, exposing frontend-friendly workflows rather than raw service-by-service access
+- that facade would be the right place for cross-cutting concerns that frontends need but core services should not own directly: auth/session state, progress/events, async orchestration, cancellation, and view-oriented aggregation
