@@ -238,59 +238,6 @@ func pushToLP(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, shortSHA 
 	return nil
 }
 
-// prepareLocalList resolves owner and LP project, computes temp recipe names
-// from the given SHA, and populates listOpts.
-func prepareLocalList(cmd *cobra.Command, opts *Options, sha, prefix string, listOpts *client.BuildsListOptions) error {
-	ctx := cmd.Context()
-	app := opts.App
-
-	repoMgr, err := app.BuildRepoManager()
-	if err != nil {
-		return fmt.Errorf("init repo manager: %w", err)
-	}
-	builders, err := app.BuildRecipeBuilders()
-	if err != nil {
-		return fmt.Errorf("init recipe builders: %w", err)
-	}
-
-	// Resolve owner.
-	lpOwner := listOpts.Owner
-	if lpOwner == "" {
-		lpOwner, err = repoMgr.GetCurrentUser(ctx)
-		if err != nil {
-			return fmt.Errorf("get current LP user: %w", err)
-		}
-		listOpts.Owner = lpOwner
-	}
-
-	// Resolve LP project for local builds.
-	lpProject, err := repoMgr.GetOrCreateProject(ctx, lpOwner)
-	if err != nil {
-		return fmt.Errorf("get LP project: %w", err)
-	}
-	listOpts.LPProject = lpProject
-
-	// Compute temp recipe names from matching configured projects.
-	filterProjects := make(map[string]bool, len(listOpts.Projects))
-	for _, p := range listOpts.Projects {
-		filterProjects[p] = true
-	}
-
-	var recipeNames []string
-	for name, pb := range builders {
-		if len(filterProjects) > 0 && !filterProjects[name] {
-			continue
-		}
-		for _, recipeName := range pb.Recipes {
-			tempName := pb.Strategy.TempRecipeName(recipeName, sha, prefix)
-			recipeNames = append(recipeNames, tempName)
-		}
-	}
-	listOpts.RecipeNames = recipeNames
-
-	return nil
-}
-
 // prepareLocalListByPrefix resolves owner and LP project, then sets
 // RecipePrefix so the service discovers recipes via ListRecipesByOwner.
 func prepareLocalListByPrefix(cmd *cobra.Command, opts *Options, prefix string, listOpts *client.BuildsListOptions) error {
@@ -347,16 +294,14 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 				if !cmd.Flags().Changed("all") {
 					listOpts.All = true
 				}
+				// When a SHA is given, narrow the prefix to match only
+				// that commit (e.g. "tmp-build-9e1ed720-").
+				listPrefix := prefix
 				if sha != "" {
-					// SHA given: compute exact temp recipe names.
-					if err := prepareLocalList(cmd, opts, sha, prefix, &listOpts); err != nil {
-						return err
-					}
-				} else {
-					// No SHA: use prefix-based discovery via ListRecipesByOwner.
-					if err := prepareLocalListByPrefix(cmd, opts, prefix, &listOpts); err != nil {
-						return err
-					}
+					listPrefix = prefix + sha + "-"
+				}
+				if err := prepareLocalListByPrefix(cmd, opts, listPrefix, &listOpts); err != nil {
+					return err
 				}
 			}
 			if owner != "" {
