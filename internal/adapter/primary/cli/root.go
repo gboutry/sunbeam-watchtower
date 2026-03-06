@@ -92,6 +92,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 			} else if cmd.Name() != "serve" {
 				// Start embedded server for local CLI use.
 				srv := api.NewServer(opts.Logger, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
+				api.RegisterAuthAPI(srv.API(), opts.App)
 				api.RegisterPackagesAPI(srv.API(), opts.App)
 				api.RegisterBugsAPI(srv.API(), opts.App)
 				api.RegisterReviewsAPI(srv.API(), opts.App)

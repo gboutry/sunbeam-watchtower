@@ -81,6 +81,10 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - `GET /openapi.json` — OpenAPI 3.1 spec
 - `GET /docs` — interactive docs UI
 - `GET /api/v1/health` — health check
+- `GET /api/v1/auth/status`
+- `POST /api/v1/auth/launchpad/begin`
+- `POST /api/v1/auth/launchpad/finalize`
+- `POST /api/v1/auth/launchpad/logout`
 - `GET /api/v1/packages/*` / `POST /api/v1/packages/cache/sync`
   - `GET /api/v1/packages/detail/{name}` — full APT metadata for a package
   - `GET /api/v1/packages/excuses` / `GET /api/v1/packages/excuses/{name}` — normalized migration excuses from Ubuntu/Debian trackers
@@ -101,6 +105,9 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - introduced public config DTOs under `pkg/dto/v1`, so `pkg/client` no longer leaks `internal/config`
 - removed the remaining core-service boundary leak by making bug sync consume `port.CommitSource` instead of commit-service types
 - preserved existing command and API behavior while tightening architecture linting
+- moved Launchpad auth behind core ports and an `internal/core/service/auth` application service
+- added Launchpad auth API/client flows with server-side pending auth state, opaque flow IDs, and no token secrets in API DTOs
+- made CLI `auth login|status|logout` a thin adapter over the application/API auth surface instead of directly owning OAuth + credential persistence
 
 ## Validation
 
@@ -348,7 +355,7 @@ The prefix-based discovery is implemented via:
 
 These are still the main gaps before TUI and MCP work:
 
-- auth is still CLI-driven rather than application-surface driven
+- Launchpad auth now has an application/API surface, but it is still Launchpad-only; future work should extend the same model to GitHub/Gerrit when authenticated workflows are needed
 - long-running operations do not yet expose reusable async/progress/event primitives
 - `internal/app` should remain the composition root (wiring config, caches, clients, and services), not become the runtime API for every frontend
 - TUI/MCP will likely want a dedicated application facade/use-case layer on top of the core services, exposing frontend-friendly workflows rather than raw service-by-service access

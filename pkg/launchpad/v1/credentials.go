@@ -49,7 +49,7 @@ func LoadCredentials() (*Credentials, error) {
 	if path == "" {
 		return nil, nil
 	}
-	return loadCredentialsFile(path)
+	return LoadCredentialsFile(path)
 }
 
 // SaveCredentials persists credentials to the cache file.
@@ -58,6 +58,11 @@ func SaveCredentials(creds *Credentials) error {
 	if path == "" {
 		return fmt.Errorf("cannot determine credentials path")
 	}
+	return SaveCredentialsFile(path, creds)
+}
+
+// SaveCredentialsFile persists credentials to the given cache file path.
+func SaveCredentialsFile(path string, creds *Credentials) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("creating config dir: %w", err)
@@ -73,7 +78,8 @@ func SaveCredentials(creds *Credentials) error {
 	return nil
 }
 
-func loadCredentialsFile(path string) (*Credentials, error) {
+// LoadCredentialsFile loads credentials from the given cache file path.
+func LoadCredentialsFile(path string) (*Credentials, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

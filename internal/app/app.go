@@ -17,7 +17,9 @@ import (
 	"github.com/andygrunwald/go-gerrit"
 	"github.com/google/go-github/v68/github"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/authflowstore"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/bugcache"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/credentials"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/distrocache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/excusescache"
 	adaptergit "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/git"
@@ -26,6 +28,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/openstack"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
+	authsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/auth"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bug"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/commit"
@@ -55,6 +58,12 @@ type App struct {
 	bugCacheOnce sync.Once
 	bugCache     *bugcache.Cache
 	bugCacheErr  error
+
+	lpCredsOnce  sync.Once
+	lpCredsStore port.LaunchpadCredentialStore
+
+	lpFlowOnce  sync.Once
+	lpFlowStore port.LaunchpadPendingAuthFlowStore
 
 	excusesOnce  sync.Once
 	excusesCache *excusescache.Cache
@@ -223,24 +232,49 @@ func configuredExcusesSources(cfg *config.Config) []dto.ExcusesSource {
 	return sources
 }
 
-// NewLaunchpadClient creates an LP client with credentials from env/file cache.
+// LaunchpadCredentialStore returns the shared Launchpad credential store.
+func (a *App) LaunchpadCredentialStore() port.LaunchpadCredentialStore {
+	a.lpCredsOnce.Do(func() {
+		a.lpCredsStore = credentials.NewLaunchpadStore("")
+	})
+	return a.lpCredsStore
+}
+
+// LaunchpadPendingAuthFlowStore returns the shared pending Launchpad auth flow store.
+func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore {
+	a.lpFlowOnce.Do(func() {
+		a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
+	})
+	return a.lpFlowStore
+}
+
+// AuthService creates the shared auth service.
+func (a *App) AuthService() (*authsvc.Service, error) {
+	return authsvc.NewService(
+		a.LaunchpadCredentialStore(),
+		a.LaunchpadPendingAuthFlowStore(),
+		lpadapter.NewAuthenticator(lp.ConsumerKey(), a.Logger),
+		a.Logger,
+	), nil
+}
+
+// NewLaunchpadClient creates an LP client with credentials from the credential store.
 // Returns nil if no credentials are available.
-func NewLaunchpadClient(lpCfg config.LaunchpadConfig, logger *slog.Logger) *lp.Client {
-	_ = lpCfg
-	creds, err := lp.LoadCredentials()
+func NewLaunchpadClient(store port.LaunchpadCredentialStore, logger *slog.Logger) *lp.Client {
+	record, err := store.Load(context.Background())
 	if err != nil {
 		logger.Warn("failed to load LP credentials", "error", err)
 		return nil
 	}
-	if creds == nil {
+	if record == nil || record.Credentials == nil {
 		return nil
 	}
-	return lp.NewClient(creds, logger)
+	return lp.NewClient(record.Credentials, logger)
 }
 
 // NewLaunchpadForge creates a LaunchpadForge client, or nil if no auth is available.
-func NewLaunchpadForge(lpCfg config.LaunchpadConfig, logger *slog.Logger) *forge.LaunchpadForge {
-	client := NewLaunchpadClient(lpCfg, logger)
+func NewLaunchpadForge(store port.LaunchpadCredentialStore, logger *slog.Logger) *forge.LaunchpadForge {
+	client := NewLaunchpadClient(store, logger)
 	if client == nil {
 		return nil
 	}
@@ -361,7 +395,7 @@ func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
 
 		case "launchpad":
 			if lpClient == nil {
-				lpClient = NewLaunchpadForge(cfg.Launchpad, a.Logger)
+				lpClient = NewLaunchpadForge(a.LaunchpadCredentialStore(), a.Logger)
 			}
 			if lpClient == nil {
 				a.Logger.Warn("skipping Launchpad project (no auth configured)", "project", proj.Name)
@@ -404,7 +438,7 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 			switch b.Forge {
 			case "launchpad":
 				if lpBugTracker == nil {
-					lpClient := NewLaunchpadClient(cfg.Launchpad, a.Logger)
+					lpClient := NewLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger)
 					if lpClient == nil {
 						a.Logger.Warn("skipping Launchpad bug tracker (no auth configured)", "project", proj.Name)
 						continue
@@ -450,7 +484,7 @@ func (a *App) BuildRecipeBuilders() (map[string]build.ProjectBuilder, error) {
 		}
 
 		if lpClient == nil {
-			lpClient = NewLaunchpadClient(cfg.Launchpad, a.Logger)
+			lpClient = NewLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger)
 			if lpClient == nil {
 				a.Logger.Warn("skipping build projects (no LP auth configured)")
 				return result, nil
@@ -530,7 +564,7 @@ func (a *App) BuildRepoManager() (port.RepoManager, error) {
 		return nil, fmt.Errorf("no configuration loaded")
 	}
 
-	lpClient := NewLaunchpadClient(a.Config.Launchpad, a.Logger)
+	lpClient := NewLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger)
 	if lpClient == nil {
 		return nil, nil
 	}
@@ -585,7 +619,7 @@ func (a *App) ProjectService() (*projectsvc.Service, error) {
 		return projectsvc.NewService(nil, projectConfigs, a.Logger), nil
 	}
 
-	lpClient := NewLaunchpadClient(a.Config.Launchpad, a.Logger)
+	lpClient := NewLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger)
 	if lpClient == nil {
 		return nil, ErrLaunchpadAuthRequired
 	}

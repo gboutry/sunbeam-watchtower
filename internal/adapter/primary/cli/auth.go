@@ -1,9 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 
-	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +14,7 @@ func newAuthCmd(opts *Options) *cobra.Command {
 	}
 	cmd.AddCommand(newAuthLoginCmd(opts))
 	cmd.AddCommand(newAuthStatusCmd(opts))
+	cmd.AddCommand(newAuthLogoutCmd(opts))
 	return cmd
 }
 
@@ -22,32 +23,37 @@ func newAuthLoginCmd(opts *Options) *cobra.Command {
 		Use:   "login",
 		Short: "Authenticate with Launchpad (interactive browser flow)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			consumerKey := lp.ConsumerKey()
-
 			fmt.Fprintln(opts.Out, "Starting Launchpad OAuth flow...")
-			rt, err := lp.ObtainRequestToken(consumerKey)
+			result, err := opts.Client.AuthLaunchpadBegin(cmd.Context())
 			if err != nil {
-				return fmt.Errorf("requesting token: %w", err)
+				return err
 			}
 
-			authURL := rt.AuthorizeURL()
-			fmt.Fprintf(opts.Out, "\nOpen this URL in your browser to authorize:\n\n  %s\n\n", authURL)
+			fmt.Fprintf(opts.Out, "\nOpen this URL in your browser to authorize:\n\n  %s\n\n", result.AuthorizeURL)
 			fmt.Fprint(opts.Out, "Press Enter after authorizing in the browser...")
+			if _, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n'); err != nil {
+				return fmt.Errorf("waiting for authorization confirmation: %w", err)
+			}
 
-			// Wait for user confirmation
-			var input string
-			_, _ = fmt.Scanln(&input)
-
-			creds, err := lp.ExchangeAccessToken(consumerKey, rt)
+			finalized, err := opts.Client.AuthLaunchpadFinalize(cmd.Context(), result.FlowID)
 			if err != nil {
-				return fmt.Errorf("exchanging token: %w", err)
+				return err
 			}
 
-			if err := lp.SaveCredentials(creds); err != nil {
-				return fmt.Errorf("saving credentials: %w", err)
+			if finalized.Launchpad.Authenticated {
+				fmt.Fprintf(
+					opts.Out,
+					"Authenticated as: %s (%s)\n",
+					finalized.Launchpad.DisplayName,
+					finalized.Launchpad.Username,
+				)
 			}
-
-			fmt.Fprintf(opts.Out, "Authenticated! Credentials saved to %s\n", lp.CredentialsPath())
+			if finalized.Launchpad.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "Credentials saved to %s\n", finalized.Launchpad.CredentialsPath)
+			}
+			if finalized.Launchpad.Error != "" {
+				fmt.Fprintf(opts.Out, "Credentials saved, but verification failed: %s\n", finalized.Launchpad.Error)
+			}
 			return nil
 		},
 	}
@@ -58,24 +64,46 @@ func newAuthStatusCmd(opts *Options) *cobra.Command {
 		Use:   "status",
 		Short: "Show authentication status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			creds, err := lp.LoadCredentials()
+			status, err := opts.Client.AuthStatus(cmd.Context())
 			if err != nil {
-				return fmt.Errorf("loading credentials: %w", err)
+				return err
 			}
-			if creds == nil {
+			if !status.Launchpad.Authenticated {
+				if status.Launchpad.Error != "" {
+					fmt.Fprintf(opts.Out, "Credentials found but invalid: %s\n", status.Launchpad.Error)
+					return nil
+				}
 				fmt.Fprintln(opts.Out, "Not authenticated. Run 'watchtower auth login' to authenticate.")
 				return nil
 			}
 
-			// Verify by calling /~ (current user)
-			client := lp.NewClient(creds, opts.Logger)
-			me, err := client.Me(cmd.Context())
+			fmt.Fprintf(opts.Out, "Authenticated as: %s (%s)\n", status.Launchpad.DisplayName, status.Launchpad.Username)
+			if status.Launchpad.Source != "" {
+				fmt.Fprintf(opts.Out, "Source: %s\n", status.Launchpad.Source)
+			}
+			return nil
+		},
+	}
+}
+
+func newAuthLogoutCmd(opts *Options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "logout",
+		Short: "Clear persisted Launchpad credentials",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := opts.Client.AuthLaunchpadLogout(cmd.Context())
 			if err != nil {
-				fmt.Fprintf(opts.Out, "Credentials found but invalid: %v\n", err)
+				return err
+			}
+			if !result.Cleared {
+				fmt.Fprintln(opts.Out, "No persisted Launchpad credentials were found.")
 				return nil
 			}
-
-			fmt.Fprintf(opts.Out, "Authenticated as: %s (%s)\n", me.DisplayName, me.Name)
+			if result.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "Removed Launchpad credentials from %s\n", result.CredentialsPath)
+				return nil
+			}
+			fmt.Fprintln(opts.Out, "Removed persisted Launchpad credentials.")
 			return nil
 		},
 	}

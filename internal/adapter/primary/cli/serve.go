@@ -32,6 +32,7 @@ func newServeCmd(opts *Options) *cobra.Command {
 			}
 
 			srv := api.NewServer(opts.Logger, serverOpts)
+			api.RegisterAuthAPI(srv.API(), opts.App)
 			api.RegisterPackagesAPI(srv.API(), opts.App)
 			api.RegisterBugsAPI(srv.API(), opts.App)
 			api.RegisterCacheAPI(srv.API(), opts.App)
