@@ -38,9 +38,9 @@ type ListOptions struct {
 
 // ProjectResult holds commits from one project, or an error.
 type ProjectResult struct {
-	ProjectName string
-	Commits     []forge.Commit
-	Err         error
+	ProjectName string         `json:"project_name" yaml:"project_name"`
+	Commits     []forge.Commit `json:"commits" yaml:"commits"`
+	Err         error          `json:"-" yaml:"-"`
 }
 
 // Service aggregates commits across multiple forges.

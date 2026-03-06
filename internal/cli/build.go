@@ -3,9 +3,8 @@ package cli
 import (
 	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/git"
+	"github.com/gboutry/sunbeam-watchtower/internal/appclient"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
 	"github.com/spf13/cobra"
 )
 
@@ -36,30 +35,16 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			projectName := args[0]
 			recipeNames := args[1:]
 
-			builders, err := buildRecipeBuilders(opts)
-			if err != nil {
-				return err
-			}
-
-			repoMgr, err := buildRepoManager(opts)
-			if err != nil {
-				return err
-			}
-
-			gitClient := git.NewClient(opts.Logger)
-
-			svc := build.NewService(builders, repoMgr, gitClient, opts.Logger)
-
-			triggerOpts := build.TriggerOpts{
+			result, err := opts.Client.BuildsTrigger(cmd.Context(), appclient.BuildsTriggerOptions{
+				Project:   projectName,
+				Recipes:   recipeNames,
 				Source:    source,
 				Wait:      wait,
-				Timeout:   timeout,
+				Timeout:   timeout.String(),
 				Owner:     owner,
 				Prefix:    prefix,
 				LocalPath: localPath,
-			}
-
-			result, err := svc.Trigger(cmd.Context(), projectName, recipeNames, triggerOpts)
+			})
 			if err != nil {
 				return err
 			}
@@ -103,20 +88,11 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List builds across projects",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			builders, err := buildRecipeBuilders(opts)
-			if err != nil {
-				return err
-			}
-
-			svc := build.NewService(builders, nil, nil, opts.Logger)
-
-			listOpts := build.ListOpts{
+			builds, err := opts.Client.BuildsList(cmd.Context(), appclient.BuildsListOptions{
 				Projects: projects,
 				All:      all,
 				State:    state,
-			}
-
-			builds, _, err := svc.List(cmd.Context(), listOpts)
+			})
 			if err != nil {
 				return err
 			}
@@ -140,21 +116,14 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 		Short: "Download build artifacts",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			builders, err := buildRecipeBuilders(opts)
-			if err != nil {
-				return err
-			}
-
-			svc := build.NewService(builders, nil, nil, opts.Logger)
-
 			projectName := args[0]
 			recipeNames := args[1:]
 
-			if artifactsDir == "" {
-				artifactsDir = opts.Config.Build.ArtifactsDir
-			}
-
-			return svc.Download(cmd.Context(), projectName, recipeNames, artifactsDir)
+			return opts.Client.BuildsDownload(cmd.Context(), appclient.BuildsDownloadOptions{
+				Project:      projectName,
+				Recipes:      recipeNames,
+				ArtifactsDir: artifactsDir,
+			})
 		},
 	}
 
@@ -171,23 +140,12 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 		Use:   "cleanup",
 		Short: "Delete temporary build recipes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			builders, err := buildRecipeBuilders(opts)
-			if err != nil {
-				return err
-			}
-
-			svc := build.NewService(builders, nil, nil, opts.Logger)
-
-			cleanupOpts := build.CleanupOpts{
-				Owner:  owner,
-				Prefix: prefix,
-				DryRun: dryRun,
-			}
-			if project != "" {
-				cleanupOpts.Projects = []string{project}
-			}
-
-			deleted, err := svc.Cleanup(cmd.Context(), cleanupOpts)
+			deleted, err := opts.Client.BuildsCleanup(cmd.Context(), appclient.BuildsCleanupOptions{
+				Project: project,
+				Owner:   owner,
+				Prefix:  prefix,
+				DryRun:  dryRun,
+			})
 			if err != nil {
 				return err
 			}

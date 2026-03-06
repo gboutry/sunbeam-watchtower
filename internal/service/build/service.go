@@ -57,17 +57,17 @@ type TriggerOpts struct {
 
 // TriggerResult holds the result of a trigger operation.
 type TriggerResult struct {
-	Project       string
-	RecipeResults []RecipeResult
+	Project       string         `json:"project" yaml:"project"`
+	RecipeResults []RecipeResult `json:"recipe_results" yaml:"recipe_results"`
 }
 
 // RecipeResult holds the result of a single recipe action.
 type RecipeResult struct {
-	Name         string
-	Action       RecipeAction
-	BuildRequest *port.BuildRequest
-	Builds       []port.Build
-	Error        error
+	Name         string            `json:"name" yaml:"name"`
+	Action       RecipeAction      `json:"action" yaml:"action"`
+	BuildRequest *port.BuildRequest `json:"build_request,omitempty" yaml:"build_request,omitempty"`
+	Builds       []port.Build      `json:"builds,omitempty" yaml:"builds,omitempty"`
+	Error        error             `json:"-" yaml:"-"`
 }
 
 // ListOpts holds options for listing builds.

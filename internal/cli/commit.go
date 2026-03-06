@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/service/commit"
+	"github.com/gboutry/sunbeam-watchtower/internal/appclient"
 	"github.com/spf13/cobra"
 )
 
@@ -38,41 +38,24 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 				"author", author,
 				"include_mrs", includeMRs,
 			)
-			sources, err := buildCommitSources(opts)
-			if err != nil {
-				return err
-			}
 
-			svc := commit.NewService(sources, opts.Logger)
-
-			listOpts := commit.ListOptions{
+			result, err := opts.Client.CommitsList(cmd.Context(), appclient.CommitsListOptions{
 				Projects:   projects,
+				Forges:     forges,
 				Branch:     branch,
 				Author:     author,
 				IncludeMRs: includeMRs,
-			}
-
-			for _, f := range forges {
-				ft, err := parseForgeType(f)
-				if err != nil {
-					return err
-				}
-				listOpts.Forges = append(listOpts.Forges, ft)
-			}
-
-			commits, results, err := svc.List(cmd.Context(), listOpts)
+			})
 			if err != nil {
 				return err
 			}
 
-			for _, r := range results {
-				if r.Err != nil {
-					fmt.Fprintf(opts.ErrOut, "warning: %v\n", r.Err)
-				}
+			for _, w := range result.Warnings {
+				fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
 			}
 
-			opts.Logger.Debug("commit log complete", "total_commits", len(commits))
-			return renderCommits(opts.Out, opts.Output, commits)
+			opts.Logger.Debug("commit log complete", "total_commits", len(result.Commits))
+			return renderCommits(opts.Out, opts.Output, result.Commits)
 		},
 	}
 
@@ -103,40 +86,22 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--bug-id is required")
 			}
 
-			sources, err := buildCommitSources(opts)
-			if err != nil {
-				return err
-			}
-
-			svc := commit.NewService(sources, opts.Logger)
-
-			listOpts := commit.ListOptions{
-				Projects:   projects,
-				Branch:     branch,
+			result, err := opts.Client.CommitsTrack(cmd.Context(), appclient.CommitsTrackOptions{
 				BugID:      bugID,
+				Projects:   projects,
+				Forges:     forges,
+				Branch:     branch,
 				IncludeMRs: includeMRs,
-			}
-
-			for _, f := range forges {
-				ft, err := parseForgeType(f)
-				if err != nil {
-					return err
-				}
-				listOpts.Forges = append(listOpts.Forges, ft)
-			}
-
-			commits, results, err := svc.List(cmd.Context(), listOpts)
+			})
 			if err != nil {
 				return err
 			}
 
-			for _, r := range results {
-				if r.Err != nil {
-					fmt.Fprintf(opts.ErrOut, "warning: %v\n", r.Err)
-				}
+			for _, w := range result.Warnings {
+				fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
 			}
 
-			return renderCommits(opts.Out, opts.Output, commits)
+			return renderCommits(opts.Out, opts.Output, result.Commits)
 		},
 	}
 

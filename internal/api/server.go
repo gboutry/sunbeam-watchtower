@@ -7,11 +7,34 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"reflect"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
 )
+
+// schemaNamer is a custom schema namer that checks for a SchemaName() method
+// on the type before falling back to huma's DefaultSchemaNamer. This avoids
+// "duplicate name" panics when different packages define types with the same
+// short Go name (e.g. bugsync.SyncAction vs project.SyncAction).
+func schemaNamer(t reflect.Type, hint string) string {
+	t = derefType(t)
+	v := reflect.New(t)
+	if namer, ok := v.Interface().(interface{ SchemaName() string }); ok {
+		if name := namer.SchemaName(); name != "" {
+			return name
+		}
+	}
+	return huma.DefaultSchemaNamer(t, hint)
+}
+
+func derefType(t reflect.Type) reflect.Type {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t
+}
 
 const Version = "0.1.0"
 
@@ -37,7 +60,9 @@ type Server struct {
 // NewServer creates a new Server with a chi router and huma API.
 func NewServer(logger *slog.Logger, opts ServerOptions) *Server {
 	router := chi.NewMux()
-	api := humachi.New(router, huma.DefaultConfig("Sunbeam Watchtower API", Version))
+	cfg := huma.DefaultConfig("Sunbeam Watchtower API", Version)
+	cfg.Components.Schemas = huma.NewMapRegistry("#/components/schemas/", schemaNamer)
+	api := humachi.New(router, cfg)
 
 	s := &Server{
 		router: router,

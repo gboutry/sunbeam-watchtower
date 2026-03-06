@@ -34,6 +34,12 @@ func newServeCmd(opts *Options) *cobra.Command {
 			srv := api.NewServer(opts.Logger, serverOpts)
 			api.RegisterPackagesAPI(srv.API(), opts.App)
 			api.RegisterBugsAPI(srv.API(), opts.App)
+			api.RegisterCacheAPI(srv.API(), opts.App)
+			api.RegisterConfigAPI(srv.API(), opts.App)
+			api.RegisterReviewsAPI(srv.API(), opts.App)
+			api.RegisterCommitsAPI(srv.API(), opts.App)
+			api.RegisterBuildsAPI(srv.API(), opts.App)
+			api.RegisterProjectsAPI(srv.API(), opts.App)
 
 			if err := srv.Start(); err != nil {
 				return fmt.Errorf("starting server: %w", err)

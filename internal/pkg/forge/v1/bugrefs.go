@@ -16,8 +16,8 @@ const (
 
 // BugRef is a typed bug reference extracted from a commit message.
 type BugRef struct {
-	ID   string
-	Type BugRefType
+	ID   string     `json:"id" yaml:"id"`
+	Type BugRefType `json:"type" yaml:"type"`
 }
 
 // bugRefPattern pairs a regex with its reference type.

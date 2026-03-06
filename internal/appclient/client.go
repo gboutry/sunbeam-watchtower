@@ -98,6 +98,22 @@ func (c *Client) post(ctx context.Context, path string, body interface{}, result
 	return c.do(req, result)
 }
 
+// delete performs a DELETE request and JSON-decodes the response into result.
+func (c *Client) delete(ctx context.Context, path string, query url.Values, result interface{}) error {
+	u := c.baseURL + path
+	if len(query) > 0 {
+		u += "?" + query.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	return c.do(req, result)
+}
+
 // do executes the request, checks for errors, and optionally decodes the response.
 func (c *Client) do(req *http.Request, result interface{}) error {
 	resp, err := c.http.Do(req)

@@ -113,48 +113,48 @@ func (s CheckState) String() string {
 
 // Check represents a CI/CD check result on a merge request.
 type Check struct {
-	Name  string
-	State CheckState
-	URL   string
+	Name  string     `json:"name" yaml:"name"`
+	State CheckState `json:"state" yaml:"state"`
+	URL   string     `json:"url" yaml:"url"`
 }
 
 // MergeRequest unifies GitHub PRs, Launchpad merge proposals, and Gerrit changes.
 type MergeRequest struct {
-	Forge        ForgeType
-	Repo         string // canonical repo identifier from config
-	ID           string // "#123" for GH, MP self_link for LP, change number for Gerrit
-	Title        string
-	Description  string
-	Author       string
-	SourceBranch string
-	TargetBranch string
-	State        MergeState
-	ReviewState  ReviewState
-	Checks       []Check
-	URL          string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	Forge        ForgeType    `json:"forge" yaml:"forge"`
+	Repo         string       `json:"repo" yaml:"repo"`
+	ID           string       `json:"id" yaml:"id"`
+	Title        string       `json:"title" yaml:"title"`
+	Description  string       `json:"description,omitempty" yaml:"description,omitempty"`
+	Author       string       `json:"author" yaml:"author"`
+	SourceBranch string       `json:"source_branch" yaml:"source_branch"`
+	TargetBranch string       `json:"target_branch" yaml:"target_branch"`
+	State        MergeState   `json:"state" yaml:"state"`
+	ReviewState  ReviewState  `json:"review_state" yaml:"review_state"`
+	Checks       []Check      `json:"checks,omitempty" yaml:"checks,omitempty"`
+	URL          string       `json:"url" yaml:"url"`
+	CreatedAt    time.Time    `json:"created_at" yaml:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at" yaml:"updated_at"`
 }
 
 // CommitMergeRequest annotates a commit with its associated merge request info.
 // Nil for commits on the main branch.
 type CommitMergeRequest struct {
-	ID    string     // "#123" for GitHub, change number for Gerrit, etc.
-	State MergeState // Open, Merged, Closed, Abandoned, WIP
-	URL   string     // web link to the merge request
+	ID    string     `json:"id" yaml:"id"`
+	State MergeState `json:"state" yaml:"state"`
+	URL   string     `json:"url" yaml:"url"`
 }
 
 // Commit is a forge-agnostic commit.
 type Commit struct {
-	Forge        ForgeType
-	Repo         string
-	SHA          string
-	Message      string
-	Author       string
-	Date         time.Time
-	URL          string
-	BugRefs      []BugRef              // extracted LP bug references with type
-	MergeRequest *CommitMergeRequest  // non-nil if commit comes from a merge request ref
+	Forge        ForgeType            `json:"forge" yaml:"forge"`
+	Repo         string               `json:"repo" yaml:"repo"`
+	SHA          string               `json:"sha" yaml:"sha"`
+	Message      string               `json:"message" yaml:"message"`
+	Author       string               `json:"author" yaml:"author"`
+	Date         time.Time            `json:"date" yaml:"date"`
+	URL          string               `json:"url" yaml:"url"`
+	BugRefs      []BugRef             `json:"bug_refs,omitempty" yaml:"bug_refs,omitempty"`
+	MergeRequest *CommitMergeRequest  `json:"merge_request,omitempty" yaml:"merge_request,omitempty"`
 }
 
 // ListMergeRequestsOpts holds options for listing merge requests.

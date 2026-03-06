@@ -21,16 +21,22 @@ func newConfigShowCmd(opts *Options) *cobra.Command {
 		Use:   "show",
 		Short: "Display the current configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.Config == nil {
-				return fmt.Errorf("no configuration loaded")
+			cfg, err := opts.Client.ConfigShow(cmd.Context())
+			if err != nil {
+				return err
 			}
 
 			switch opts.Output {
 			case "json":
-				return renderJSON(opts.Out, opts.Config)
+				return renderJSON(opts.Out, cfg)
 			default:
-				return renderYAML(opts.Out, opts.Config)
+				return renderYAML(opts.Out, cfg)
 			}
 		},
 	}
+}
+
+// renderConfigError returns a formatted error for missing configuration.
+func renderConfigError() error {
+	return fmt.Errorf("no configuration loaded")
 }

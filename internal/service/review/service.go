@@ -27,9 +27,9 @@ type ListOptions struct {
 
 // ProjectResult holds merge requests from one project, or an error.
 type ProjectResult struct {
-	ProjectName   string
-	MergeRequests []forge.MergeRequest
-	Err           error
+	ProjectName   string               `json:"project_name" yaml:"project_name"`
+	MergeRequests []forge.MergeRequest `json:"merge_requests" yaml:"merge_requests"`
+	Err           error                `json:"-" yaml:"-"`
 }
 
 // Service aggregates reviews across multiple forges.

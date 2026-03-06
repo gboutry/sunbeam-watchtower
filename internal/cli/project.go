@@ -6,7 +6,7 @@ package cli
 import (
 	"fmt"
 
-	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/launchpad"
+	"github.com/gboutry/sunbeam-watchtower/internal/appclient"
 	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
 	"github.com/spf13/cobra"
 )
@@ -33,53 +33,7 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Logger.Debug("project sync command started", "dry_run", dryRun)
 
-			cfg := opts.Config
-			if cfg == nil {
-				return fmt.Errorf("no configuration loaded")
-			}
-
-			// Collect unique LP project names from bug tracker entries,
-			// resolving per-project series/dev-focus overrides.
-			projectConfigs := make(map[string]projectsvc.ProjectSyncConfig)
-			for _, proj := range cfg.Projects {
-				for _, b := range proj.Bugs {
-					if b.Forge != "launchpad" {
-						continue
-					}
-					if _, ok := projectConfigs[b.Project]; ok {
-						continue
-					}
-					psc := projectsvc.ProjectSyncConfig{
-						Series:           cfg.Launchpad.Series,
-						DevelopmentFocus: cfg.Launchpad.DevelopmentFocus,
-					}
-					if len(proj.Series) > 0 {
-						psc.Series = proj.Series
-					}
-					if proj.DevelopmentFocus != "" {
-						psc.DevelopmentFocus = proj.DevelopmentFocus
-					}
-					projectConfigs[b.Project] = psc
-				}
-			}
-
-			if len(projectConfigs) == 0 {
-				return renderProjectSyncResult(opts.Out, opts.Output, &projectsvc.SyncResult{}, dryRun)
-			}
-
-			lpClient := newLaunchpadClient(cfg.Launchpad, opts)
-			if lpClient == nil {
-				return fmt.Errorf("Launchpad authentication required (run: watchtower auth login)")
-			}
-
-			manager := lpadapter.NewProjectManager(lpClient)
-			svc := projectsvc.NewService(
-				manager,
-				projectConfigs,
-				opts.Logger,
-			)
-
-			result, err := svc.Sync(cmd.Context(), projectsvc.SyncOptions{
+			result, err := opts.Client.ProjectsSync(cmd.Context(), appclient.ProjectsSyncOptions{
 				Projects: projects,
 				DryRun:   dryRun,
 			})
@@ -88,10 +42,13 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 			}
 
 			for _, e := range result.Errors {
-				fmt.Fprintf(opts.ErrOut, "error: %v\n", e)
+				fmt.Fprintf(opts.ErrOut, "error: %s\n", e)
 			}
 
-			return renderProjectSyncResult(opts.Out, opts.Output, result, dryRun)
+			syncResult := &projectsvc.SyncResult{
+				Actions: result.Actions,
+			}
+			return renderProjectSyncResult(opts.Out, opts.Output, syncResult, dryRun)
 		},
 	}
 

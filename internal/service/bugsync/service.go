@@ -20,6 +20,9 @@ import (
 // ActionType describes the kind of sync action.
 type ActionType string
 
+// SchemaName returns a unique name for Huma OpenAPI schema registration.
+func (ActionType) SchemaName() string { return "BugSyncActionType" }
+
 const (
 	ActionStatusUpdate      ActionType = "status_update"
 	ActionSeriesAssignment  ActionType = "series_assignment"
@@ -38,6 +41,9 @@ type SyncAction struct {
 	Project    string     `json:"project,omitempty" yaml:"project,omitempty"`
 	ActionType ActionType `json:"action_type" yaml:"action_type"`
 }
+
+// SchemaName returns a unique name for Huma OpenAPI schema registration.
+func (SyncAction) SchemaName() string { return "BugSyncAction" }
 
 // SyncResult holds the outcome of a sync operation.
 type SyncResult struct {

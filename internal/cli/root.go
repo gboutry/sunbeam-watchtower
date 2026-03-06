@@ -94,6 +94,12 @@ func NewRootCmd(opts *Options) *cobra.Command {
 				srv := api.NewServer(opts.Logger, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
 				api.RegisterPackagesAPI(srv.API(), opts.App)
 				api.RegisterBugsAPI(srv.API(), opts.App)
+				api.RegisterReviewsAPI(srv.API(), opts.App)
+				api.RegisterCommitsAPI(srv.API(), opts.App)
+				api.RegisterBuildsAPI(srv.API(), opts.App)
+				api.RegisterProjectsAPI(srv.API(), opts.App)
+				api.RegisterCacheAPI(srv.API(), opts.App)
+				api.RegisterConfigAPI(srv.API(), opts.App)
 				if err := srv.Start(); err != nil {
 					return err
 				}

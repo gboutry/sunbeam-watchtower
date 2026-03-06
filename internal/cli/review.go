@@ -2,10 +2,8 @@ package cli
 
 import (
 	"fmt"
-	"strings"
 
-	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/review"
+	"github.com/gboutry/sunbeam-watchtower/internal/appclient"
 	"github.com/spf13/cobra"
 )
 
@@ -33,14 +31,7 @@ func newReviewShowCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--project is required for review show")
 			}
 
-			clients, err := buildForgeClients(opts)
-			if err != nil {
-				return err
-			}
-
-			svc := review.NewService(clients, opts.Logger)
-
-			mr, err := svc.Get(cmd.Context(), project, args[0])
+			mr, err := opts.Client.ReviewsGet(cmd.Context(), project, args[0])
 			if err != nil {
 				return err
 			}
@@ -72,47 +63,22 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 				"state", state,
 				"author", author,
 			)
-			clients, err := buildForgeClients(opts)
-			if err != nil {
-				return err
-			}
 
-			svc := review.NewService(clients, opts.Logger)
-
-			listOpts := review.ListOptions{
+			result, err := opts.Client.ReviewsList(cmd.Context(), appclient.ReviewsListOptions{
 				Projects: projects,
+				Forges:   forges,
+				State:    state,
 				Author:   author,
-			}
-
-			if state != "" {
-				s, err := parseMergeState(state)
-				if err != nil {
-					return err
-				}
-				listOpts.State = s
-			}
-
-			for _, f := range forges {
-				ft, err := parseForgeType(f)
-				if err != nil {
-					return err
-				}
-				listOpts.Forges = append(listOpts.Forges, ft)
-			}
-
-			mrs, results, err := svc.List(cmd.Context(), listOpts)
+			})
 			if err != nil {
 				return err
 			}
 
-			// Report per-repo errors.
-			for _, r := range results {
-				if r.Err != nil {
-					fmt.Fprintf(opts.ErrOut, "warning: %v\n", r.Err)
-				}
+			for _, w := range result.Warnings {
+				fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
 			}
 
-			return renderMergeRequests(opts.Out, opts.Output, mrs)
+			return renderMergeRequests(opts.Out, opts.Output, result.MergeRequests)
 		},
 	}
 
@@ -122,34 +88,4 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&author, "author", "", "filter by author")
 
 	return cmd
-}
-
-func parseMergeState(s string) (forge.MergeState, error) {
-	switch strings.ToLower(s) {
-	case "open":
-		return forge.MergeStateOpen, nil
-	case "merged":
-		return forge.MergeStateMerged, nil
-	case "closed":
-		return forge.MergeStateClosed, nil
-	case "wip":
-		return forge.MergeStateWIP, nil
-	case "abandoned":
-		return forge.MergeStateAbandoned, nil
-	default:
-		return 0, fmt.Errorf("invalid state %q (valid: open, merged, closed, wip, abandoned)", s)
-	}
-}
-
-func parseForgeType(s string) (forge.ForgeType, error) {
-	switch strings.ToLower(s) {
-	case "github":
-		return forge.ForgeGitHub, nil
-	case "launchpad":
-		return forge.ForgeLaunchpad, nil
-	case "gerrit":
-		return forge.ForgeGerrit, nil
-	default:
-		return 0, fmt.Errorf("invalid forge %q (valid: github, launchpad, gerrit)", s)
-	}
 }

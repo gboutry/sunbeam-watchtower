@@ -113,43 +113,43 @@ func (s BuildState) IsFailure() bool {
 
 // Recipe represents a buildable recipe on LP (unified across rock/charm/snap).
 type Recipe struct {
-	Name         string
-	ArtifactType ArtifactType
-	Owner        string
-	Project      string
-	SelfLink     string
-	WebLink      string
-	GitPath      string
-	BuildPath    string
-	AutoBuild    bool
-	CreatedAt    time.Time
+	Name         string       `json:"name" yaml:"name"`
+	ArtifactType ArtifactType `json:"artifact_type" yaml:"artifact_type"`
+	Owner        string       `json:"owner" yaml:"owner"`
+	Project      string       `json:"project" yaml:"project"`
+	SelfLink     string       `json:"self_link" yaml:"self_link"`
+	WebLink      string       `json:"web_link" yaml:"web_link"`
+	GitPath      string       `json:"git_path" yaml:"git_path"`
+	BuildPath    string       `json:"build_path" yaml:"build_path"`
+	AutoBuild    bool         `json:"auto_build" yaml:"auto_build"`
+	CreatedAt    time.Time    `json:"created_at" yaml:"created_at"`
 }
 
 // Build represents a single build of a recipe (unified).
 type Build struct {
-	Recipe       string // recipe name
-	Project      string // watchtower project name (set by service layer)
-	ArtifactType ArtifactType
-	Title        string
-	State        BuildState
-	Arch         string
-	BuildLogURL  string
-	WebLink      string
-	SelfLink     string
-	CanRetry     bool
-	CanCancel    bool
-	CreatedAt    time.Time
-	StartedAt    time.Time
-	BuiltAt      time.Time
+	Recipe       string       `json:"recipe" yaml:"recipe"`
+	Project      string       `json:"project" yaml:"project"`
+	ArtifactType ArtifactType `json:"artifact_type" yaml:"artifact_type"`
+	Title        string       `json:"title" yaml:"title"`
+	State        BuildState   `json:"state" yaml:"state"`
+	Arch         string       `json:"arch" yaml:"arch"`
+	BuildLogURL  string       `json:"build_log_url,omitempty" yaml:"build_log_url,omitempty"`
+	WebLink      string       `json:"web_link" yaml:"web_link"`
+	SelfLink     string       `json:"self_link" yaml:"self_link"`
+	CanRetry     bool         `json:"can_retry" yaml:"can_retry"`
+	CanCancel    bool         `json:"can_cancel" yaml:"can_cancel"`
+	CreatedAt    time.Time    `json:"created_at" yaml:"created_at"`
+	StartedAt    time.Time    `json:"started_at" yaml:"started_at"`
+	BuiltAt      time.Time    `json:"built_at" yaml:"built_at"`
 }
 
 // BuildRequest represents the result of requesting builds.
 type BuildRequest struct {
-	SelfLink             string
-	WebLink              string
-	Status               string
-	ErrorMessage         string
-	BuildsCollectionLink string
+	SelfLink             string `json:"self_link" yaml:"self_link"`
+	WebLink              string `json:"web_link" yaml:"web_link"`
+	Status               string `json:"status" yaml:"status"`
+	ErrorMessage         string `json:"error_message,omitempty" yaml:"error_message,omitempty"`
+	BuildsCollectionLink string `json:"builds_collection_link,omitempty" yaml:"builds_collection_link,omitempty"`
 }
 
 // CreateRecipeOpts holds parameters for creating a new recipe.
