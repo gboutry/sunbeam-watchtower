@@ -231,13 +231,17 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		if err != nil {
 			s.logger.Warn("wait for builds completed with error", "error", err)
 		}
-		// Update results with final build states.
+		// Replace results with final build states from the wait loop.
 		for i := range result.RecipeResults {
 			rr := &result.RecipeResults[i]
+			var recipeBuilds []dto.Build
 			for _, b := range builds {
 				if b.Recipe == rr.Name {
-					rr.Builds = append(rr.Builds, b)
+					recipeBuilds = append(recipeBuilds, b)
 				}
+			}
+			if len(recipeBuilds) > 0 {
+				rr.Builds = recipeBuilds
 			}
 		}
 	}
