@@ -3,7 +3,6 @@ launchpad:
   use_keyring: true
   series:
     - "2024.1"
-    - "2024.2"
     - "2025.1"
   development_focus: "2025.1"
 github:
