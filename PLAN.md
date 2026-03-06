@@ -156,12 +156,35 @@ Auth needs to be reworked to fit the new architecture:
 
 or should we keep it CLI-only for simplicity? We can revisit if API-based auth becomes a requirement.
 
+## Developer Tooling
+
+### Pre-commit Hooks (`.pre-commit-config.yaml`)
+- `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-merge-conflict`, `check-added-large-files`
+- `golangci-lint` (v2, with `--fix`)
+- `go build`, `go test`, `go mod tidy`
+
+### Linting (`.golangci.yml`, v2 format)
+- Standard linters + bodyclose, copyloopvar, durationcheck, errname, errorlint, fatcontext, gosec, misspell, nilerr, prealloc, predeclared, unconvert, wastedassign
+- Formatters: gofmt + goimports
+- Test files excluded from errcheck, gosec, prealloc, errorlint
+- Gosec false positives suppressed (G101, G107, G112, G204, G301, G304, G306, G402, G404, G704)
+
 ## Completed Work
 
 ### HTTP Server Refactor
 - **Phase 1** ✅ — Server skeleton + packages + bugs domains
 - **Phase 2** ✅ — Reviews, commits, builds, projects, cache, config domains
 - `factory.go` deleted — all wiring via `app.App` → API handlers
+
+### Code Quality
+- Pre-commit hooks + golangci-lint v2 configuration
+- Dead code cleanup (5 unused functions removed)
+- Lint fixes: errcheck, nilerr, ineffassign, gofmt
+
+### Unit Tests
+- `internal/api/server_test.go` — 11 tests (server lifecycle, endpoints, parsers)
+- `internal/app/app_test.go` — 7 tests (pure functions)
+- `internal/appclient/client_test.go` — 11 tests (HTTP client)
 
 ### Earlier Features
 - Config restructure, backport suite expansion, parent release inference
