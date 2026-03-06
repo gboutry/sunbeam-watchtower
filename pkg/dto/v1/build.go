@@ -189,5 +189,6 @@ type BuildRecipeResult struct {
 	Recipe       *Recipe           `json:"-" yaml:"-"`
 	BuildRequest *BuildRequest     `json:"build_request,omitempty" yaml:"build_request,omitempty"`
 	Builds       []Build           `json:"builds,omitempty" yaml:"builds,omitempty"`
+	ErrorMessage string            `json:"error,omitempty" yaml:"error,omitempty"`
 	Error        error             `json:"-" yaml:"-"`
 }

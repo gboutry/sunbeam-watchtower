@@ -354,16 +354,23 @@ func (s *Service) assessRecipe(ctx context.Context, pb ProjectBuilder, recipeNam
 func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status RecipeStatus, opts TriggerOpts, repoSelfLink, gitRefLink, buildPath string) RecipeResult {
 	result := RecipeResult{Name: status.Name, Action: status.Action, Recipe: status.Recipe}
 
+	setErr := func(err error) {
+		result.Error = err
+		result.ErrorMessage = err.Error()
+		s.logger.Error("recipe action failed", "recipe", status.Name, "action", status.Action, "error", err)
+	}
+
 	switch status.Action {
 	case ActionCreateRecipe:
 		if repoSelfLink == "" || gitRefLink == "" {
-			result.Error = fmt.Errorf("recipe %q not found (create requires git repo info; use local mode or enable official_codehosting)", status.Name)
+			setErr(fmt.Errorf("recipe %q not found (create requires git repo info; use local mode or enable official_codehosting)", status.Name))
 			return result
 		}
 		bp := buildPath
 		if bp == "" {
 			bp = pb.Strategy.BuildPath(status.Name)
 		}
+		s.logger.Info("creating recipe", "recipe", status.Name, "owner", pb.Owner, "project", pb.RecipeProject(), "buildPath", bp)
 		recipe, err := pb.Builder.CreateRecipe(ctx, dto.CreateRecipeOpts{
 			Name:        status.Name,
 			Owner:       pb.Owner,
@@ -373,21 +380,21 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 			BuildPath:   bp,
 		})
 		if err != nil {
-			result.Error = fmt.Errorf("create recipe %q: %w", status.Name, err)
+			setErr(fmt.Errorf("create recipe %q: %w", status.Name, err))
 			return result
 		}
 		result.Recipe = recipe
 		br, err := pb.Builder.RequestBuilds(ctx, recipe, buildOpts(opts))
 		result.BuildRequest = br
 		if err != nil {
-			result.Error = fmt.Errorf("request builds for %q: %w", status.Name, err)
+			setErr(fmt.Errorf("request builds for %q: %w", status.Name, err))
 		}
 
 	case ActionRequestBuilds:
 		br, err := pb.Builder.RequestBuilds(ctx, status.Recipe, buildOpts(opts))
 		result.BuildRequest = br
 		if err != nil {
-			result.Error = fmt.Errorf("request builds for %q: %w", status.Name, err)
+			setErr(fmt.Errorf("request builds for %q: %w", status.Name, err))
 		}
 
 	case ActionRetryFailed:

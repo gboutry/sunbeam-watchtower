@@ -60,8 +60,8 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				if r.BuildRequest != nil {
 					requests = append(requests, *r.BuildRequest)
 				}
-				if r.Error != nil {
-					errs = append(errs, fmt.Errorf("recipe %s: %w", r.Name, r.Error))
+				if r.ErrorMessage != "" {
+					errs = append(errs, fmt.Errorf("recipe %s: %s", r.Name, r.ErrorMessage))
 				}
 			}
 
