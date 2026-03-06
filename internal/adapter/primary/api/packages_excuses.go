@@ -17,7 +17,7 @@ import (
 
 // PackagesExcusesListInput holds parameters for the excuses list endpoint.
 type PackagesExcusesListInput struct {
-	Trackers    []string `query:"tracker" required:"false" doc:"Excuses tracker(s) to query (default: ubuntu)"`
+	Trackers    []string `query:"tracker" required:"false" doc:"Excuses tracker(s) to query (default: configured default tracker)"`
 	Name        string   `query:"name" required:"false" doc:"Case-insensitive regex to filter source package names"`
 	Component   string   `query:"component" required:"false" doc:"Archive component filter"`
 	Team        string   `query:"team" required:"false" doc:"Owning team filter"`
@@ -39,7 +39,7 @@ type PackagesExcusesListOutput struct {
 // PackagesExcusesShowInput holds parameters for the excuses show endpoint.
 type PackagesExcusesShowInput struct {
 	Name    string `path:"name" doc:"Source package name" example:"nova"`
-	Tracker string `query:"tracker" required:"false" doc:"Excuses tracker to query (default: ubuntu)"`
+	Tracker string `query:"tracker" required:"false" doc:"Excuses tracker to query (default: configured default tracker)"`
 	Version string `query:"version" required:"false" doc:"Exact Debian version string"`
 }
 
@@ -56,11 +56,15 @@ func registerPackagesExcusesAPI(api huma.API, application *app.App) {
 		Summary:     "List package migration excuses",
 		Tags:        []string{"packages"},
 	}, func(ctx context.Context, input *PackagesExcusesListInput) (*PackagesExcusesListOutput, error) {
+		sources := application.ExcusesSources()
 		trackers := input.Trackers
 		if len(trackers) == 0 {
-			trackers = []string{dto.ExcusesTrackerUbuntu}
+			if len(sources) == 0 {
+				return nil, huma.Error400BadRequest("no excuses trackers configured")
+			}
+			trackers = []string{application.DefaultExcusesTracker()}
 		}
-		if err := dto.ValidateExcusesTrackers(trackers); err != nil {
+		if err := dto.ValidateExcusesTrackers(sources, trackers); err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 
@@ -96,11 +100,15 @@ func registerPackagesExcusesAPI(api huma.API, application *app.App) {
 		Summary:     "Show one package migration excuse",
 		Tags:        []string{"packages"},
 	}, func(ctx context.Context, input *PackagesExcusesShowInput) (*PackagesExcusesShowOutput, error) {
+		sources := application.ExcusesSources()
 		tracker := input.Tracker
 		if tracker == "" {
-			tracker = dto.ExcusesTrackerUbuntu
+			if len(sources) == 0 {
+				return nil, huma.Error400BadRequest("no excuses trackers configured")
+			}
+			tracker = application.DefaultExcusesTracker()
 		}
-		if err := dto.ValidateExcusesTrackers([]string{tracker}); err != nil {
+		if err := dto.ValidateExcusesTrackers(sources, []string{tracker}); err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 

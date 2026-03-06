@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -150,9 +151,76 @@ func (a *App) ExcusesCache() (*excusescache.Cache, error) {
 			a.excusesErr = err
 			return
 		}
-		a.excusesCache, a.excusesErr = excusescache.NewCache(filepath.Join(cacheDir, "excuses"), a.Logger)
+		a.excusesCache, a.excusesErr = excusescache.NewCache(filepath.Join(cacheDir, "excuses"), a.ExcusesSources(), a.Logger)
 	})
 	return a.excusesCache, a.excusesErr
+}
+
+// ExcusesSources returns the configured excuses trackers, with built-in Ubuntu/Debian
+// defaults synthesized for legacy configs during migration.
+func (a *App) ExcusesSources() []dto.ExcusesSource {
+	if a == nil || a.Config == nil {
+		return dto.KnownExcusesSources()
+	}
+	return configuredExcusesSources(a.Config)
+}
+
+// DefaultExcusesTracker returns the preferred default tracker for list/show commands.
+func (a *App) DefaultExcusesTracker() string {
+	sources := a.ExcusesSources()
+	if _, ok := dto.ExcusesSourceByTracker(sources, dto.ExcusesTrackerUbuntu); ok {
+		return dto.ExcusesTrackerUbuntu
+	}
+	if len(sources) == 0 {
+		return dto.ExcusesTrackerUbuntu
+	}
+	return sources[0].Tracker
+}
+
+func configuredExcusesSources(cfg *config.Config) []dto.ExcusesSource {
+	if cfg == nil || len(cfg.Packages.Distros) == 0 {
+		return dto.KnownExcusesSources()
+	}
+
+	distroNames := make([]string, 0, len(cfg.Packages.Distros))
+	for name := range cfg.Packages.Distros {
+		distroNames = append(distroNames, name)
+	}
+	sort.Strings(distroNames)
+
+	sources := make([]dto.ExcusesSource, 0, len(distroNames))
+	seen := make(map[string]bool, len(distroNames))
+	for _, distroName := range distroNames {
+		distroCfg := cfg.Packages.Distros[distroName]
+		if distroCfg.Excuses == nil {
+			continue
+		}
+		provider := distroCfg.Excuses.Provider
+		if provider == "" {
+			provider = distroName
+		}
+		sources = append(sources, dto.ExcusesSource{
+			Tracker:  distroName,
+			Provider: provider,
+			URL:      distroCfg.Excuses.URL,
+			TeamURL:  distroCfg.Excuses.TeamURL,
+		})
+		seen[distroName] = true
+	}
+
+	for _, source := range dto.KnownExcusesSources() {
+		if seen[source.Tracker] {
+			continue
+		}
+		if _, ok := cfg.Packages.Distros[source.Tracker]; ok {
+			sources = append(sources, source)
+		}
+	}
+
+	sort.Slice(sources, func(i, j int) bool {
+		return sources[i].Tracker < sources[j].Tracker
+	})
+	return sources
 }
 
 // NewLaunchpadClient creates an LP client with credentials from env/file cache.

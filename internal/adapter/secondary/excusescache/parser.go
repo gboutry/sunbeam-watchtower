@@ -26,7 +26,11 @@ func parseExcusesYAML(data []byte, source dto.ExcusesSource) ([]dto.PackageExcus
 	for _, entry := range doc.Sources {
 		var excuse dto.PackageExcuse
 		var err error
-		switch source.Tracker {
+		provider := source.Provider
+		if provider == "" {
+			provider = source.Tracker
+		}
+		switch provider {
 		case dto.ExcusesTrackerUbuntu:
 			excuse, err = parseUbuntuExcuse(entry)
 		case dto.ExcusesTrackerDebian:

@@ -97,12 +97,20 @@ type DistroConfig struct {
 	Mirror     string                   `mapstructure:"mirror" yaml:"mirror"`
 	Components []string                 `mapstructure:"components" yaml:"components"`
 	Releases   map[string]ReleaseConfig `mapstructure:"releases" yaml:"releases"`
+	Excuses    *ExcusesConfig           `mapstructure:"excuses" yaml:"excuses,omitempty"`
 }
 
 // BackportConfig defines a backport source group (e.g. UCA, OSBPO).
 type BackportConfig struct {
 	ParentRelease string               `mapstructure:"parent_release" yaml:"parent_release,omitempty"`
 	Sources       []DistroSourceConfig `mapstructure:"sources" yaml:"sources"`
+}
+
+// ExcusesConfig configures the proposed-migration excuses feed for a distro.
+type ExcusesConfig struct {
+	Provider string `mapstructure:"provider" yaml:"provider,omitempty"`
+	URL      string `mapstructure:"url" yaml:"url"`
+	TeamURL  string `mapstructure:"team_url" yaml:"team_url,omitempty"`
 }
 
 // ExpandSuiteType expands a suite type name to its full APT suite name for a given release.
@@ -265,6 +273,14 @@ func (c *Config) Validate() error {
 		}
 		if c.Packages.Upstream.Provider == "openstack" && c.Packages.Upstream.ReleasesRepo == "" {
 			return fmt.Errorf("packages.upstream: releases_repo is required for openstack provider")
+		}
+	}
+	for distroName, distro := range c.Packages.Distros {
+		if distro.Excuses == nil {
+			continue
+		}
+		if distro.Excuses.URL == "" {
+			return fmt.Errorf("packages.distros.%s.excuses: url is required", distroName)
 		}
 	}
 	return nil

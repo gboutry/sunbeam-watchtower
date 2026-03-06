@@ -5,6 +5,7 @@ package excusescache
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -30,6 +31,7 @@ const metaBucket = "meta"
 // Cache implements port.ExcusesCache using bbolt for normalized records and raw files on disk.
 type Cache struct {
 	baseDir string
+	sources []dto.ExcusesSource
 	db      *bbolt.DB
 	client  *http.Client
 	logger  *slog.Logger
@@ -41,7 +43,7 @@ type trackerMeta struct {
 }
 
 // NewCache creates a new excuses cache rooted at baseDir.
-func NewCache(baseDir string, logger *slog.Logger) (*Cache, error) {
+func NewCache(baseDir string, sources []dto.ExcusesSource, logger *slog.Logger) (*Cache, error) {
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating excuses cache dir: %w", err)
 	}
@@ -55,6 +57,7 @@ func NewCache(baseDir string, logger *slog.Logger) (*Cache, error) {
 	}
 	return &Cache{
 		baseDir: baseDir,
+		sources: append([]dto.ExcusesSource(nil), sources...),
 		db:      db,
 		client:  &http.Client{Timeout: 2 * time.Minute},
 		logger:  logger,
@@ -98,7 +101,7 @@ func (c *Cache) Update(ctx context.Context, source dto.ExcusesSource) error {
 		return err
 	}
 
-	decoded, err := decodeRaw(source, rawData)
+	decoded, err := decodeRaw(rawData)
 	if err != nil {
 		return err
 	}
@@ -108,9 +111,9 @@ func (c *Cache) Update(ctx context.Context, source dto.ExcusesSource) error {
 	}
 	if source.TeamURL != "" {
 		teamSource := dto.ExcusesSource{
-			Tracker:     source.Tracker,
-			URL:         source.TeamURL,
-			Compression: source.TeamCompression,
+			Tracker:  source.Tracker,
+			Provider: source.Provider,
+			URL:      source.TeamURL,
 		}
 		c.logger.Info("downloading excuses team mapping", "tracker", source.Tracker, "url", teamSource.URL)
 		teamRaw, err := c.download(ctx, teamSource.URL)
@@ -120,7 +123,7 @@ func (c *Cache) Update(ctx context.Context, source dto.ExcusesSource) error {
 		if err := c.storeRaw(teamSource, teamRaw); err != nil {
 			return err
 		}
-		teamDecoded, err := decodeRaw(teamSource, teamRaw)
+		teamDecoded, err := decodeRaw(teamRaw)
 		if err != nil {
 			return err
 		}
@@ -197,7 +200,7 @@ func (c *Cache) List(_ context.Context, opts dto.ExcuseQueryOpts) ([]dto.Package
 
 	trackers := opts.Trackers
 	if len(trackers) == 0 {
-		for _, source := range dto.KnownExcusesSources() {
+		for _, source := range c.sources {
 			trackers = append(trackers, source.Tracker)
 		}
 	}
@@ -258,9 +261,8 @@ func (c *Cache) List(_ context.Context, opts dto.ExcuseQueryOpts) ([]dto.Package
 func (c *Cache) Get(_ context.Context, tracker, name, version string) (*dto.PackageExcuse, error) {
 	trackers := []string{tracker}
 	if tracker == "" {
-		sources := dto.KnownExcusesSources()
-		trackers = make([]string, 0, len(sources))
-		for _, source := range sources {
+		trackers = make([]string, 0, len(c.sources))
+		for _, source := range c.sources {
 			trackers = append(trackers, source.Tracker)
 		}
 	}
@@ -320,7 +322,7 @@ func (c *Cache) Status() ([]dto.ExcusesCacheStatus, error) {
 	var statuses []dto.ExcusesCacheStatus
 	err := c.db.View(func(tx *bbolt.Tx) error {
 		meta := tx.Bucket([]byte(metaBucket))
-		for _, source := range dto.KnownExcusesSources() {
+		for _, source := range c.sources {
 			status := dto.ExcusesCacheStatus{
 				Tracker:  source.Tracker,
 				URL:      source.URL,
@@ -394,11 +396,11 @@ func matchesQuery(excuse dto.PackageExcuse, opts dto.ExcuseQueryOpts, nameRe *re
 	return true
 }
 
-func decodeRaw(source dto.ExcusesSource, data []byte) ([]byte, error) {
-	switch source.Compression {
-	case "", dto.ExcusesCompressionNone:
+func decodeRaw(data []byte) ([]byte, error) {
+	switch detectCompression(data) {
+	case "":
 		return data, nil
-	case dto.ExcusesCompressionXZ:
+	case "xz":
 		reader, err := xz.NewReader(bytes.NewReader(data))
 		if err != nil {
 			return nil, fmt.Errorf("decompressing xz excuses: %w", err)
@@ -408,9 +410,30 @@ func decodeRaw(source dto.ExcusesSource, data []byte) ([]byte, error) {
 			return nil, fmt.Errorf("reading decompressed excuses: %w", err)
 		}
 		return decoded, nil
+	case "gzip":
+		reader, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("decompressing gzip excuses: %w", err)
+		}
+		defer reader.Close()
+		decoded, err := io.ReadAll(reader)
+		if err != nil {
+			return nil, fmt.Errorf("reading decompressed gzip excuses: %w", err)
+		}
+		return decoded, nil
 	default:
-		return nil, fmt.Errorf("unsupported excuses compression %q", source.Compression)
+		return nil, fmt.Errorf("unsupported excuses compression")
 	}
+}
+
+func detectCompression(data []byte) string {
+	if len(data) >= 6 && bytes.Equal(data[:6], []byte{0xfd, '7', 'z', 'X', 'Z', 0x00}) {
+		return "xz"
+	}
+	if len(data) >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+		return "gzip"
+	}
+	return ""
 }
 
 func (c *Cache) storeRaw(source dto.ExcusesSource, data []byte) error {

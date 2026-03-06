@@ -15,43 +15,34 @@ const (
 	ExcusesTrackerDebian = "debian"
 )
 
-const (
-	// ExcusesCompressionNone means the source is stored uncompressed.
-	ExcusesCompressionNone = "none"
-	// ExcusesCompressionXZ means the source is xz-compressed.
-	ExcusesCompressionXZ = "xz"
-)
-
-// ExcusesSource identifies one upstream excuses feed and how it is encoded.
+// ExcusesSource identifies one upstream excuses feed and the provider-specific
+// behavior needed to normalize it.
 type ExcusesSource struct {
-	Tracker         string `json:"tracker" yaml:"tracker"`
-	URL             string `json:"url" yaml:"url"`
-	Compression     string `json:"compression" yaml:"compression"`
-	TeamURL         string `json:"team_url,omitempty" yaml:"team_url,omitempty"`
-	TeamCompression string `json:"team_compression,omitempty" yaml:"team_compression,omitempty"`
+	Tracker  string `json:"tracker" yaml:"tracker"`
+	Provider string `json:"provider,omitempty" yaml:"provider,omitempty"`
+	URL      string `json:"url" yaml:"url"`
+	TeamURL  string `json:"team_url,omitempty" yaml:"team_url,omitempty"`
 }
 
 // KnownExcusesSources returns the built-in excuses feeds supported by Watchtower.
 func KnownExcusesSources() []ExcusesSource {
 	return []ExcusesSource{
 		{
-			Tracker:         ExcusesTrackerUbuntu,
-			URL:             "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses.yaml.xz",
-			Compression:     ExcusesCompressionXZ,
-			TeamURL:         "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml",
-			TeamCompression: ExcusesCompressionNone,
+			Tracker:  ExcusesTrackerUbuntu,
+			Provider: ExcusesTrackerUbuntu,
+			URL:      "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses.yaml.xz",
+			TeamURL:  "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml",
 		},
 		{
-			Tracker:     ExcusesTrackerDebian,
-			URL:         "https://release.debian.org/britney/excuses.yaml",
-			Compression: ExcusesCompressionNone,
+			Tracker:  ExcusesTrackerDebian,
+			Provider: ExcusesTrackerDebian,
+			URL:      "https://release.debian.org/britney/excuses.yaml",
 		},
 	}
 }
 
-// KnownExcusesTrackers returns the supported built-in tracker names.
-func KnownExcusesTrackers() []string {
-	sources := KnownExcusesSources()
+// ExcusesTrackers returns the tracker names present in the given sources.
+func ExcusesTrackers(sources []ExcusesSource) []string {
 	trackers := make([]string, 0, len(sources))
 	for _, source := range sources {
 		trackers = append(trackers, source.Tracker)
@@ -59,9 +50,14 @@ func KnownExcusesTrackers() []string {
 	return trackers
 }
 
-// ExcusesSourceByTracker looks up a built-in excuses feed by tracker name.
-func ExcusesSourceByTracker(tracker string) (ExcusesSource, bool) {
-	for _, source := range KnownExcusesSources() {
+// KnownExcusesTrackers returns the supported built-in tracker names.
+func KnownExcusesTrackers() []string {
+	return ExcusesTrackers(KnownExcusesSources())
+}
+
+// ExcusesSourceByTracker looks up an excuses feed by tracker name.
+func ExcusesSourceByTracker(sources []ExcusesSource, tracker string) (ExcusesSource, bool) {
+	for _, source := range sources {
 		if source.Tracker == tracker {
 			return source, true
 		}
@@ -69,26 +65,26 @@ func ExcusesSourceByTracker(tracker string) (ExcusesSource, bool) {
 	return ExcusesSource{}, false
 }
 
-// FilterExcusesSources returns the built-in excuses feeds matching the requested trackers.
-// If trackers is empty, all built-in feeds are returned.
-func FilterExcusesSources(trackers []string) []ExcusesSource {
+// FilterExcusesSources returns the excuses feeds matching the requested trackers.
+// If trackers is empty, all given feeds are returned.
+func FilterExcusesSources(sources []ExcusesSource, trackers []string) []ExcusesSource {
 	if len(trackers) == 0 {
-		return KnownExcusesSources()
+		return append([]ExcusesSource(nil), sources...)
 	}
 
 	var filtered []ExcusesSource
 	for _, tracker := range trackers {
-		if source, ok := ExcusesSourceByTracker(tracker); ok {
+		if source, ok := ExcusesSourceByTracker(sources, tracker); ok {
 			filtered = append(filtered, source)
 		}
 	}
 	return filtered
 }
 
-// ValidateExcusesTrackers validates that all requested trackers are built-in trackers.
-func ValidateExcusesTrackers(trackers []string) error {
+// ValidateExcusesTrackers validates that all requested trackers exist in the given sources.
+func ValidateExcusesTrackers(sources []ExcusesSource, trackers []string) error {
 	known := map[string]bool{}
-	for _, tracker := range KnownExcusesTrackers() {
+	for _, tracker := range ExcusesTrackers(sources) {
 		known[tracker] = true
 	}
 	for _, tracker := range trackers {

@@ -130,7 +130,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to update (packages-index only, default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to sync (packages-index only, default: all configured)")
 	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to sync (packages-index only, default: all)")
-	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to sync (excuses only, default: all built-in trackers)")
+	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to sync (excuses only, default: all configured trackers)")
 
 	return cmd
 }
@@ -200,7 +200,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&project, "project", "", "clear only this project (git only)")
-	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to clear (excuses only, default: all built-in trackers)")
+	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to clear (excuses only, default: all configured trackers)")
 	return cmd
 }
 

@@ -70,10 +70,17 @@ type ReleaseConfig struct {
 	Backports map[string]BackportConfig `json:"backports,omitempty" yaml:"backports,omitempty"`
 }
 
+type ExcusesConfig struct {
+	Provider string `json:"provider,omitempty" yaml:"provider,omitempty"`
+	URL      string `json:"url" yaml:"url"`
+	TeamURL  string `json:"team_url,omitempty" yaml:"team_url,omitempty"`
+}
+
 type DistroConfig struct {
 	Mirror     string                   `json:"mirror" yaml:"mirror"`
 	Components []string                 `json:"components" yaml:"components"`
 	Releases   map[string]ReleaseConfig `json:"releases" yaml:"releases"`
+	Excuses    *ExcusesConfig           `json:"excuses,omitempty" yaml:"excuses,omitempty"`
 }
 
 type BackportConfig struct {

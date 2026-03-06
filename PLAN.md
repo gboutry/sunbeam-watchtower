@@ -154,6 +154,10 @@ records are indexed in bbolt for fast list/show queries. For Ubuntu, cache sync 
 fetches the companion `update_excuses_by_team.yaml` feed so `packages excuses list
 --team ...` and `packages excuses show ...` can surface ownership information.
 
+Excuses sources are now intended to live under each distro config (`packages.distros.*.excuses`),
+with `provider`, `url`, and optional `team_url`. Compression is auto-detected from the
+downloaded payload instead of being configured explicitly.
+
 ## Bug cache architecture
 
 The bug cache uses a **decorator pattern**: `CachedBugTracker` wraps the live `BugTracker`

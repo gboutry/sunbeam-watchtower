@@ -81,7 +81,7 @@ type CacheSyncBugsOutput struct {
 // CacheSyncExcusesInput is the request body for POST /api/v1/cache/sync/excuses.
 type CacheSyncExcusesInput struct {
 	Body struct {
-		Trackers []string `json:"trackers,omitempty" required:"false" doc:"Excuses trackers to sync (default: all built-in trackers)"`
+		Trackers []string `json:"trackers,omitempty" required:"false" doc:"Excuses trackers to sync (default: all configured trackers)"`
 	}
 }
 
@@ -274,10 +274,11 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		Tags:        []string{"cache"},
 	}, func(ctx context.Context, input *CacheSyncExcusesInput) (*CacheSyncExcusesOutput, error) {
 		trackers := input.Body.Trackers
-		if err := dto.ValidateExcusesTrackers(trackers); err != nil {
+		sources := application.ExcusesSources()
+		if err := dto.ValidateExcusesTrackers(sources, trackers); err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
-		sources := dto.FilterExcusesSources(trackers)
+		sources = dto.FilterExcusesSources(sources, trackers)
 		if len(sources) == 0 {
 			return nil, huma.Error400BadRequest("no excuses trackers selected")
 		}
@@ -401,7 +402,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing excuses cache: %v", err))
 				}
 			} else {
-				if err := dto.ValidateExcusesTrackers(input.Trackers); err != nil {
+				if err := dto.ValidateExcusesTrackers(application.ExcusesSources(), input.Trackers); err != nil {
 					return nil, huma.Error400BadRequest(err.Error())
 				}
 				for _, tracker := range input.Trackers {

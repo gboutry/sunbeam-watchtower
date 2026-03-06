@@ -33,9 +33,6 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List package migration excuses",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := dto.ValidateExcusesTrackers(trackers); err != nil {
-				return err
-			}
 			results, err := opts.Client.PackagesExcusesList(cmd.Context(), client.PackagesExcusesListOptions{
 				Trackers:    trackers,
 				Name:        name,
@@ -57,7 +54,7 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringSliceVar(&trackers, "tracker", []string{dto.ExcusesTrackerUbuntu}, "excuses trackers to query")
+	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to query (default: configured default tracker)")
 	cmd.Flags().StringVar(&name, "name", "", "case-insensitive regex to filter source package names")
 	cmd.Flags().StringVar(&component, "component", "", "archive component to filter on")
 	cmd.Flags().StringVar(&team, "team", "", "team to filter on")
@@ -80,9 +77,6 @@ func newPackagesExcusesShowCmd(opts *Options) *cobra.Command {
 		Short: "Show a detailed package migration excuse",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := dto.ValidateExcusesTrackers([]string{tracker}); err != nil {
-				return err
-			}
 			result, err := opts.Client.PackagesExcusesShow(cmd.Context(), args[0], client.PackagesExcusesShowOptions{
 				Tracker: tracker,
 				Version: version,
@@ -94,7 +88,7 @@ func newPackagesExcusesShowCmd(opts *Options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&tracker, "tracker", dto.ExcusesTrackerUbuntu, "excuses tracker to query")
+	cmd.Flags().StringVar(&tracker, "tracker", "", "excuses tracker to query (default: configured default tracker)")
 	cmd.Flags().StringVar(&version, "version", "", "exact Debian version string")
 	return cmd
 }

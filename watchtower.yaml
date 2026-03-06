@@ -124,6 +124,10 @@ packages:
     ubuntu:
       mirror: http://archive.ubuntu.com/ubuntu
       components: [main, universe]
+      excuses:
+        provider: ubuntu
+        url: https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses.yaml.xz
+        team_url: https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml
       releases:
         focal:
           suites: [release, updates, proposed]
@@ -188,6 +192,9 @@ packages:
     debian:
       mirror: http://ftp.debian.org/debian
       components: [main]
+      excuses:
+        provider: debian
+        url: https://release.debian.org/britney/excuses.yaml
       releases:
         trixie:
           suites: [release, backports]

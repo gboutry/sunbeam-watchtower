@@ -46,6 +46,18 @@ build:
   default_prefix: sunbeam
   timeout_minutes: 45
   artifacts_dir: /tmp/artifacts
+packages:
+  distros:
+    ubuntu:
+      mirror: http://archive.ubuntu.com/ubuntu
+      components: [main, universe]
+      excuses:
+        provider: ubuntu
+        url: https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses.yaml.xz
+        team_url: https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml
+      releases:
+        noble:
+          suites: [release, updates, proposed]
 `
 	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
 		t.Fatal(err)
@@ -108,6 +120,12 @@ build:
 	if cfg.Build.ArtifactsDir != "/tmp/artifacts" {
 		t.Errorf("Build.ArtifactsDir = %q, want %q", cfg.Build.ArtifactsDir, "/tmp/artifacts")
 	}
+	if cfg.Packages.Distros["ubuntu"].Excuses == nil {
+		t.Fatal("Packages.Distros[ubuntu].Excuses = nil, want populated config")
+	}
+	if got := cfg.Packages.Distros["ubuntu"].Excuses.TeamURL; got != "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml" {
+		t.Fatalf("Packages.Distros[ubuntu].Excuses.TeamURL = %q", got)
+	}
 }
 
 func TestLoad_Defaults(t *testing.T) {
@@ -145,6 +163,13 @@ func TestLoad_InvalidYAML(t *testing.T) {
 
 func TestValidate_ValidConfig(t *testing.T) {
 	cfg := &Config{
+		Packages: PackagesConfig{
+			Distros: map[string]DistroConfig{
+				"ubuntu": {
+					Excuses: &ExcusesConfig{URL: "https://example.invalid/ubuntu-excuses.yaml.xz"},
+				},
+			},
+		},
 		Projects: []ProjectConfig{
 			{
 				Name: "p1",
@@ -165,6 +190,21 @@ func TestValidate_ValidConfig(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() error: %v", err)
+	}
+}
+
+func TestValidate_ExcusesMissingURL(t *testing.T) {
+	cfg := &Config{
+		Packages: PackagesConfig{
+			Distros: map[string]DistroConfig{
+				"ubuntu": {
+					Excuses: &ExcusesConfig{},
+				},
+			},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should error for distro excuses missing url")
 	}
 }
 
