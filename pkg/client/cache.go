@@ -40,6 +40,23 @@ func (c *Client) CacheSyncUpstream(ctx context.Context) (*CacheSyncUpstreamResul
 	return &result, err
 }
 
+// CacheSyncBugsOptions holds the request body for syncing bug caches.
+type CacheSyncBugsOptions struct {
+	Project string `json:"project"`
+}
+
+// CacheSyncBugsResult is the response returned by CacheSyncBugs.
+type CacheSyncBugsResult struct {
+	Synced int `json:"synced"`
+}
+
+// CacheSyncBugs syncs bug caches for configured projects.
+func (c *Client) CacheSyncBugs(ctx context.Context, opts CacheSyncBugsOptions) (*CacheSyncBugsResult, error) {
+	var result CacheSyncBugsResult
+	err := c.post(ctx, "/api/v1/cache/sync/bugs", opts, &result)
+	return &result, err
+}
+
 // CacheDelete clears a specific cache type.
 func (c *Client) CacheDelete(ctx context.Context, cacheType string, project string) error {
 	q := url.Values{}
@@ -70,6 +87,11 @@ type CacheStatusResult struct {
 		Directory string       `json:"directory"`
 		Repos     []CacheEntry `json:"repos"`
 	} `json:"upstream"`
+	Bugs struct {
+		Directory string               `json:"directory"`
+		Entries   []dto.BugCacheStatus `json:"entries"`
+		Error     string               `json:"error,omitempty"`
+	} `json:"bugs"`
 }
 
 // CacheStatus returns the full cache status (git + packages + upstream).

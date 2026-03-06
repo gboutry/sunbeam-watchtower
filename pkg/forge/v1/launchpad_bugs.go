@@ -70,6 +70,7 @@ func (l *LaunchpadBugTracker) ListBugTasks(ctx context.Context, project string, 
 		Importance:     opts.Importance,
 		Tags:           opts.Tags,
 		CreatedSince:   opts.CreatedSince,
+		ModifiedSince:  opts.ModifiedSince,
 		OmitDuplicates: true,
 	}
 	if opts.Assignee != "" {

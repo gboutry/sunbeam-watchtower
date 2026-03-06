@@ -55,11 +55,12 @@ type Project struct {
 
 // ListBugTasksOpts holds options for listing bug tasks.
 type ListBugTasksOpts struct {
-	Status       []string
-	Importance   []string
-	Assignee     string
-	Tags         []string
-	CreatedSince string // ISO 8601 date string for filtering by creation date
+	Status        []string
+	Importance    []string
+	Assignee      string
+	Tags          []string
+	CreatedSince  string // ISO 8601 date string for filtering by creation date
+	ModifiedSince string // ISO 8601 date string for filtering by last modification date
 }
 
 // BugTracker is the interface for querying and updating bug trackers.

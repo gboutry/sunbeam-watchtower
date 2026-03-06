@@ -35,6 +35,7 @@ internal/
 │   │   ├── api/
 │   │   └── cli/
 │   └── secondary/
+│       ├── bugcache/
 │       ├── distrocache/
 │       ├── git/
 │       ├── gitcache/
@@ -86,7 +87,9 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - `GET /api/v1/commits*`
 - `POST /api/v1/builds/*` / `GET /api/v1/builds`
 - `POST /api/v1/projects/sync`
-- `POST /api/v1/cache/*` / `DELETE /api/v1/cache/{type}` / `GET /api/v1/cache/status`
+- `POST /api/v1/cache/sync/git` / `POST /api/v1/cache/sync/upstream` / `POST /api/v1/cache/sync/bugs`
+- `DELETE /api/v1/cache/{type}` (git, packages-index, upstream-repos, bugs)
+- `GET /api/v1/cache/status`
 - `GET /api/v1/config`
 
 ## Recent refactor outcomes
@@ -112,6 +115,35 @@ The refactor is currently validated by all of the following:
 - `CONTRIBUTING.md` — synced with hexagonal layout, dependency rules, and architecture guidelines
 - `AGENTS.md` — Launchpad API quirks for AI agent consumers
 - `arch-go.yml` + `.golangci.yml` — machine-enforced boundaries (zero manual review burden)
+
+## CLI cache types
+
+The CLI `cache sync|clear|status` subcommands support the following cache types:
+
+- `git` — local git repo mirrors
+- `packages-index` — APT package sources
+- `upstream-repos` — upstream OpenStack repos
+- `bugs` — bug/task caches from forges (Launchpad, etc.)
+
+All four types are wired through `internal/adapter/primary/cli/cache.go` and rendered
+via `internal/adapter/primary/cli/output.go`.
+
+## Bug cache architecture
+
+The bug cache uses a **decorator pattern**: `CachedBugTracker` wraps the live `BugTracker`
+port and a `BugCache` port. On miss, the decorator falls through to the live tracker and
+back-fills the cache; on hit, it serves directly from the local bbolt store.
+
+- **Port**: `internal/core/port/bugcache.go` — defines the `BugCache` interface
+- **Adapter**: `internal/adapter/secondary/bugcache/` — bbolt-backed implementation
+- **Decorator**: `internal/adapter/secondary/bugcache/tracker.go` — `CachedBugTracker`
+
+## Test coverage
+
+### Bug cache (`internal/adapter/secondary/bugcache/`)
+
+- `cache_test.go` — tests for the bbolt storage layer (`Cache`): store/get bugs, store/list tasks, filtering, last-sync round-trip, remove, remove-all, status, and cache-dir.
+- `tracker_test.go` — tests for the `CachedBugTracker` decorator: cache-miss fallback, post-sync cache hits, write-through status updates, type delegation, and pass-through for GetProjectSeries/GetProject.
 
 ## Remaining follow-ups
 

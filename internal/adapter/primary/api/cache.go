@@ -63,6 +63,20 @@ type CacheDeleteOutput struct {
 	}
 }
 
+// CacheSyncBugsInput is the request body for POST /api/v1/cache/sync/bugs.
+type CacheSyncBugsInput struct {
+	Body struct {
+		Project string `json:"project" doc:"Sync only this project (empty = all configured)"`
+	}
+}
+
+// CacheSyncBugsOutput is the response for POST /api/v1/cache/sync/bugs.
+type CacheSyncBugsOutput struct {
+	Body struct {
+		Synced int `json:"synced" doc:"Number of bug tasks synced"`
+	}
+}
+
 // CacheStatusOutput is the response for GET /api/v1/cache/status.
 type CacheStatusOutput struct {
 	Body struct {
@@ -79,6 +93,11 @@ type CacheStatusOutput struct {
 			Directory string       `json:"directory"`
 			Repos     []CacheEntry `json:"repos"`
 		} `json:"upstream"`
+		Bugs struct {
+			Directory string               `json:"directory"`
+			Entries   []dto.BugCacheStatus `json:"entries"`
+			Error     string               `json:"error,omitempty"`
+		} `json:"bugs"`
 	}
 }
 
@@ -209,6 +228,23 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		return out, nil
 	})
 
+	// POST /api/v1/cache/sync/bugs
+	huma.Register(api, huma.Operation{
+		OperationID: "cache-sync-bugs",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/cache/sync/bugs",
+		Summary:     "Sync bug caches for configured projects",
+		Tags:        []string{"cache"},
+	}, func(ctx context.Context, input *CacheSyncBugsInput) (*CacheSyncBugsOutput, error) {
+		synced, err := application.SyncBugCache(ctx, input.Body.Project)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("bug cache sync failed", err)
+		}
+		out := &CacheSyncBugsOutput{}
+		out.Body.Synced = synced
+		return out, nil
+	})
+
 	// DELETE /api/v1/cache/{type}
 	huma.Register(api, huma.Operation{
 		OperationID: "cache-delete",
@@ -216,7 +252,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		Path:        "/api/v1/cache/{type}",
 		Summary:     "Clear a specific cache type",
 		Tags:        []string{"cache"},
-	}, func(_ context.Context, input *CacheDeleteInput) (*CacheDeleteOutput, error) {
+	}, func(ctx context.Context, input *CacheDeleteInput) (*CacheDeleteOutput, error) {
 		switch input.Type {
 		case "git":
 			cache, err := application.GitCache()
@@ -270,9 +306,44 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				return nil, huma.Error500InternalServerError("removing upstream cache", err)
 			}
 
+		case "bugs":
+			cache, err := application.BugCache()
+			if err != nil {
+				return nil, huma.Error500InternalServerError("failed to open bug cache", err)
+			}
+			if input.Project == "" {
+				if err := cache.RemoveAll(ctx); err != nil {
+					return nil, huma.Error500InternalServerError("clearing bug cache", err)
+				}
+			} else {
+				cfg := application.Config
+				if cfg == nil {
+					return nil, huma.Error500InternalServerError("no configuration loaded")
+				}
+				found := false
+				for _, proj := range cfg.Projects {
+					for _, b := range proj.Bugs {
+						if b.Project == input.Project {
+							found = true
+							forgeType := app.ForgeTypeFromConfig(b.Forge)
+							if err := cache.Remove(ctx, forgeType, b.Project); err != nil {
+								return nil, huma.Error500InternalServerError("removing bug cache", err)
+							}
+							break
+						}
+					}
+					if found {
+						break
+					}
+				}
+				if !found {
+					return nil, huma.Error404NotFound(fmt.Sprintf("bug project %q not found in config", input.Project))
+				}
+			}
+
 		default:
 			return nil, huma.Error400BadRequest(
-				fmt.Sprintf("unknown cache type %q (valid: git, packages-index, upstream-repos)", input.Type))
+				fmt.Sprintf("unknown cache type %q (valid: git, packages-index, upstream-repos, bugs)", input.Type))
 		}
 
 		out := &CacheDeleteOutput{}
@@ -287,7 +358,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		Path:        "/api/v1/cache/status",
 		Summary:     "Full cache status (git + packages + upstream)",
 		Tags:        []string{"cache"},
-	}, func(_ context.Context, _ *struct{}) (*CacheStatusOutput, error) {
+	}, func(ctx context.Context, _ *struct{}) (*CacheStatusOutput, error) {
 		out := &CacheStatusOutput{}
 
 		// Git repos status.
@@ -343,6 +414,20 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 					size, _ := dirSize(filepath.Join(upDir, e.Name()))
 					out.Body.Upstream.Repos = append(out.Body.Upstream.Repos, CacheEntry{Name: e.Name(), Size: formatSize(size)})
 				}
+			}
+		}
+
+		// Bug cache status.
+		bugCache, err := application.BugCache()
+		if err != nil {
+			out.Body.Bugs.Error = err.Error()
+		} else {
+			out.Body.Bugs.Directory = bugCache.CacheDir()
+			bugStatuses, bErr := bugCache.Status(ctx)
+			if bErr != nil {
+				out.Body.Bugs.Error = bErr.Error()
+			} else {
+				out.Body.Bugs.Entries = bugStatuses
 			}
 		}
 

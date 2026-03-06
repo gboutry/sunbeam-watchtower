@@ -436,6 +436,11 @@ type cacheFullStatus struct {
 		Directory string       `json:"directory" yaml:"directory"`
 		Repos     []cacheEntry `json:"repos" yaml:"repos"`
 	} `json:"upstream" yaml:"upstream"`
+	Bugs struct {
+		Directory string               `json:"directory" yaml:"directory"`
+		Entries   []dto.BugCacheStatus `json:"entries" yaml:"entries"`
+		Error     string               `json:"error,omitempty" yaml:"error,omitempty"`
+	} `json:"bugs" yaml:"bugs"`
 }
 
 func renderCacheFullStatus(w io.Writer, format string, status *cacheFullStatus) error {
@@ -479,6 +484,22 @@ func renderCacheFullStatusTable(w io.Writer, status *cacheFullStatus) error {
 		fmt.Fprintf(w, "directory: %s\n", status.Upstream.Directory)
 		for _, r := range status.Upstream.Repos {
 			fmt.Fprintf(w, "  %s  (%s)\n", r.Name, r.Size)
+		}
+	}
+
+	fmt.Fprintln(w, "\n=== Bugs ===")
+	if status.Bugs.Error != "" {
+		fmt.Fprintf(w, "  (unavailable: %s)\n", status.Bugs.Error)
+	} else if len(status.Bugs.Entries) == 0 {
+		fmt.Fprintln(w, "  (none)")
+	} else {
+		fmt.Fprintf(w, "directory: %s\n", status.Bugs.Directory)
+		for _, e := range status.Bugs.Entries {
+			syncStr := "never"
+			if !e.LastSync.IsZero() {
+				syncStr = e.LastSync.Format("2006-01-02 15:04:05")
+			}
+			fmt.Fprintf(w, "  %s/%s: %d bugs, %d tasks (synced: %s)\n", e.ForgeType, e.Project, e.BugCount, e.TaskCount, syncStr)
 		}
 	}
 

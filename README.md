@@ -235,7 +235,7 @@ watchtower project sync --project snap-openstack --project sunbeam-charms
 
 ### `watchtower cache`
 
-Manage local caches used by commit tracking, package lookups, and upstream repository inspection.
+Manage local caches used by commit tracking, package lookups, upstream repository inspection, and bug tracking.
 
 ```bash
 # Sync all cache types
@@ -250,6 +250,9 @@ watchtower cache sync packages-index --distro ubuntu --release noble
 # Sync only configured upstream repos
 watchtower cache sync upstream-repos
 
+# Sync only bug/task caches
+watchtower cache sync bugs
+
 # Sync a specific project's git cache
 watchtower cache sync git --project snap-openstack
 
@@ -263,7 +266,7 @@ watchtower cache clear
 watchtower cache clear git --project snap-openstack
 ```
 
-Valid cache types are `git`, `packages-index`, and `upstream-repos`.
+Valid cache types are `git`, `packages-index`, `upstream-repos`, and `bugs`.
 
 Git cache data is stored at `$XDG_CACHE_HOME/sunbeam-watchtower/repos/` (defaults to `~/.cache/sunbeam-watchtower/repos/`). Repos are bare git clones organized by host:
 

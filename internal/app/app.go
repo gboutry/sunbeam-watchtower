@@ -16,6 +16,7 @@ import (
 	"github.com/andygrunwald/go-gerrit"
 	"github.com/google/go-github/v68/github"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/bugcache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/distrocache"
 	adaptergit "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/git"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/gitcache"
@@ -48,6 +49,10 @@ type App struct {
 	gitOnce  sync.Once
 	gitCache *gitcache.Cache
 	gitErr   error
+
+	bugCacheOnce sync.Once
+	bugCache     *bugcache.Cache
+	bugCacheErr  error
 }
 
 // NewApp creates a new App instance.
@@ -57,10 +62,18 @@ func NewApp(cfg *config.Config, logger *slog.Logger) *App {
 
 // Close releases resources held by the App (e.g. distro cache).
 func (a *App) Close() error {
+	var errs []error
 	if a.distroCache != nil {
-		return a.distroCache.Close()
+		if err := a.distroCache.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+	if a.bugCache != nil {
+		if err := a.bugCache.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // ResolveCacheDir returns the cache directory for sunbeam-watchtower.
@@ -104,6 +117,19 @@ func (a *App) GitCache() (*gitcache.Cache, error) {
 		a.gitCache = gitcache.NewCache(reposDir, a.Logger)
 	})
 	return a.gitCache, a.gitErr
+}
+
+// BugCache returns a lazy-initialized bug cache singleton.
+func (a *App) BugCache() (*bugcache.Cache, error) {
+	a.bugCacheOnce.Do(func() {
+		cacheDir, err := ResolveCacheDir()
+		if err != nil {
+			a.bugCacheErr = err
+			return
+		}
+		a.bugCache, a.bugCacheErr = bugcache.NewCache(filepath.Join(cacheDir, "bugs"), a.Logger)
+	})
+	return a.bugCache, a.bugCacheErr
 }
 
 // NewLaunchpadClient creates an LP client with credentials from env/file cache.
@@ -277,6 +303,11 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 
 	var lpBugTracker *forge.LaunchpadBugTracker
 
+	cache, cacheErr := a.BugCache()
+	if cacheErr != nil {
+		a.Logger.Warn("bug cache unavailable, using live trackers only", "error", cacheErr)
+	}
+
 	for _, proj := range cfg.Projects {
 		for _, b := range proj.Bugs {
 			switch b.Forge {
@@ -292,8 +323,12 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 
 				key := "launchpad:" + b.Project
 				if _, ok := trackers[key]; !ok {
+					var tracker port.BugTracker = lpBugTracker
+					if cache != nil {
+						tracker = bugcache.NewCachedBugTracker(lpBugTracker, cache, b.Project, a.Logger)
+					}
 					trackers[key] = bug.ProjectBugTracker{
-						Tracker:   lpBugTracker,
+						Tracker:   tracker,
 						ProjectID: b.Project,
 					}
 				}
@@ -504,6 +539,33 @@ func (a *App) BuildCommitSources() (map[string]port.CommitSource, error) {
 	}
 
 	return result, nil
+}
+
+// SyncBugCache syncs the bug cache for configured projects.
+// If project is empty, all configured projects are synced.
+func (a *App) SyncBugCache(ctx context.Context, project string) (int, error) {
+	trackers, _, err := a.BuildBugTrackers()
+	if err != nil {
+		return 0, err
+	}
+
+	total := 0
+	for _, pbt := range trackers {
+		if project != "" && pbt.ProjectID != project {
+			continue
+		}
+		ct, ok := pbt.Tracker.(*bugcache.CachedBugTracker)
+		if !ok {
+			continue
+		}
+		synced, sErr := ct.Sync(ctx)
+		if sErr != nil {
+			return total, fmt.Errorf("syncing %s: %w", pbt.ProjectID, sErr)
+		}
+		total += synced
+	}
+
+	return total, nil
 }
 
 // BuildPackageSources resolves distro, release, suite, and backport filters against config

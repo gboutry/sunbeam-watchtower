@@ -13,9 +13,10 @@ const (
 	cacheTypeGit           = "git"
 	cacheTypePackagesIndex = "packages-index"
 	cacheTypeUpstreamRepos = "upstream-repos"
+	cacheTypeBugs          = "bugs"
 )
 
-var allCacheTypes = []string{cacheTypeGit, cacheTypePackagesIndex, cacheTypeUpstreamRepos}
+var allCacheTypes = []string{cacheTypeGit, cacheTypePackagesIndex, cacheTypeUpstreamRepos, cacheTypeBugs}
 
 func validateCacheTypes(args []string) error {
 	for _, arg := range args {
@@ -97,6 +98,17 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 				fmt.Fprintf(progressOut, "upstream repos sync: %s\n", result.Status)
 			}
 
+			if wantCacheType(args, cacheTypeBugs) {
+				fmt.Fprintln(progressOut, "syncing bug caches...")
+				result, err := opts.Client.CacheSyncBugs(cmd.Context(), client.CacheSyncBugsOptions{
+					Project: project,
+				})
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(progressOut, "bug cache sync done (%d tasks synced).\n", result.Synced)
+			}
+
 			return nil
 		},
 	}
@@ -152,6 +164,14 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 				fmt.Fprintln(progressOut, "upstream repos cache cleared.")
 			}
 
+			if wantCacheType(args, cacheTypeBugs) {
+				fmt.Fprintln(progressOut, "clearing bug cache...")
+				if err := opts.Client.CacheDelete(cmd.Context(), "bugs", project); err != nil {
+					return err
+				}
+				fmt.Fprintln(progressOut, "bug cache cleared.")
+			}
+
 			return nil
 		},
 	}
@@ -184,6 +204,10 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 			for _, r := range result.Upstream.Repos {
 				status.Upstream.Repos = append(status.Upstream.Repos, cacheEntry{Name: r.Name, Size: r.Size})
 			}
+
+			status.Bugs.Entries = append(status.Bugs.Entries, result.Bugs.Entries...)
+			status.Bugs.Directory = result.Bugs.Directory
+			status.Bugs.Error = result.Bugs.Error
 
 			return renderCacheFullStatus(opts.Out, opts.Output, &status)
 		},

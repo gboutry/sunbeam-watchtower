@@ -37,6 +37,15 @@ type QueryOpts struct {
 	Components []string `json:"components,omitempty" yaml:"components,omitempty"`
 }
 
+// BugCacheStatus reports per-project bug cache statistics.
+type BugCacheStatus struct {
+	ForgeType string    `json:"forge_type" yaml:"forge_type"`
+	Project   string    `json:"project" yaml:"project"`
+	BugCount  int       `json:"bug_count" yaml:"bug_count"`
+	TaskCount int       `json:"task_count" yaml:"task_count"`
+	LastSync  time.Time `json:"last_sync" yaml:"last_sync"`
+}
+
 // CacheStatus reports metadata about a cached source group.
 type CacheStatus struct {
 	Name        string    `json:"name" yaml:"name"`

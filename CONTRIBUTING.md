@@ -29,6 +29,7 @@ internal/
 │   │   ├── api/                   HTTP server, handlers, API-specific DTOs
 │   │   └── cli/                   Cobra commands, output rendering
 │   └── secondary/                 Driven adapters (output → implements ports)
+│       ├── bugcache/              Bug/task cache (bbolt-backed, decorator pattern)
 │       ├── distrocache/           Distro package index cache
 │       ├── git/                   go-git backed GitClient
 │       ├── gitcache/              Local bare-clone cache for commit history
@@ -37,7 +38,7 @@ internal/
 ├── app/                           Composition root (wires adapters + services)
 ├── config/                        Config structs, loading, validation
 └── core/
-    ├── port/                      Interface definitions only
+    ├── port/                      Interface definitions only (incl. bugcache.go)
     └── service/                   Domain logic and use cases
         ├── bug/                   Bug aggregation across trackers
         ├── bugsync/               Cross-references bugs ↔ commits
