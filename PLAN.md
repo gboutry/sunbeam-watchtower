@@ -124,6 +124,20 @@ The refactor is currently validated by all of the following:
 - `arch-go --color no`
 - `pre-commit run --all-files`
 
+## Deferred contract-test plan
+
+We are **not** adopting broad go-vcr coverage now.
+
+If we later add cassette-backed contract tests, keep them deliberately small and easy to refresh:
+
+- scope them to a handful of high-value `pkg/launchpad/v1` or `pkg/forge/v1` client methods whose real payloads are hard to model with `httptest`
+- prefer read-only or safely repeatable endpoints first; avoid OAuth handshakes and destructive write flows
+- store cassettes under package-local `testdata/vcr/`
+- default tests to replay mode in normal `go test` / CI runs
+- enable re-recording only behind an explicit env var such as `WATCHTOWER_RECORD=1`
+- when implemented, add a single helper script (for example `hack/rerecord-contract-tests.sh`) so cassette refresh is one command rather than a manual sequence
+- redact or normalize auth headers, OAuth parameters, cookies, timestamps, and request IDs before saving cassettes so diffs stay reviewable
+
 ## Contributor readiness
 
 - `README.md` — up-to-date with current architecture and commands
