@@ -238,13 +238,12 @@ func pushToLP(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, shortSHA 
 	return nil
 }
 
-// prepareLocalList resolves owner + SHA locally, computes temp recipe names,
-// and populates listOpts to query those specific recipes.
-func prepareLocalList(cmd *cobra.Command, opts *Options, localPath, prefix string, listOpts *client.BuildsListOptions) error {
+// prepareLocalList resolves owner and LP project, computes temp recipe names
+// from the given SHA, and populates listOpts.
+func prepareLocalList(cmd *cobra.Command, opts *Options, sha, prefix string, listOpts *client.BuildsListOptions) error {
 	ctx := cmd.Context()
 	app := opts.App
 
-	gitClient := app.GitClient()
 	repoMgr, err := app.BuildRepoManager()
 	if err != nil {
 		return fmt.Errorf("init repo manager: %w", err)
@@ -271,12 +270,6 @@ func prepareLocalList(cmd *cobra.Command, opts *Options, localPath, prefix strin
 	}
 	listOpts.LPProject = lpProject
 
-	// Resolve HEAD SHA.
-	sha, err := gitClient.HeadSHA(localPath)
-	if err != nil {
-		return fmt.Errorf("resolve HEAD SHA: %w", err)
-	}
-
 	// Compute temp recipe names from matching configured projects.
 	filterProjects := make(map[string]bool, len(listOpts.Projects))
 	for _, p := range listOpts.Projects {
@@ -301,7 +294,7 @@ func prepareLocalList(cmd *cobra.Command, opts *Options, localPath, prefix strin
 func newBuildListCmd(opts *Options) *cobra.Command {
 	var projects []string
 	var all bool
-	var state, source, localPath, prefix, owner string
+	var state, source, sha, prefix, owner string
 
 	cmd := &cobra.Command{
 		Use:   "list [projects...]",
@@ -317,7 +310,10 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 			}
 
 			if source == "local" {
-				if err := prepareLocalList(cmd, opts, localPath, prefix, &listOpts); err != nil {
+				if sha == "" {
+					return fmt.Errorf("--sha is required with --source local")
+				}
+				if err := prepareLocalList(cmd, opts, sha, prefix, &listOpts); err != nil {
 					return err
 				}
 			}
@@ -338,7 +334,7 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "show all builds (not just active)")
 	cmd.Flags().StringVar(&state, "state", "", "filter by state")
 	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
-	cmd.Flags().StringVar(&localPath, "local-path", ".", "path to local git repo (local mode)")
+	cmd.Flags().StringVar(&sha, "sha", "", "git commit SHA for local build lookup")
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
 
