@@ -1,139 +1,155 @@
-# HTTP Server Refactor Plan
+# Sunbeam Watchtower — Plan
 
-## Phase 1: Complete ✅
-Server skeleton + packages + bugs domains migrated.
+## Architecture
 
-## Phase 2: Complete ✅
-All remaining domains migrated to HTTP API: reviews, commits, builds, projects, cache, config.
-- `factory.go` deleted — all wiring via `app.App` → API handlers
-- Custom Huma `schemaNamer` resolves cross-package type name collisions
-- Only `auth` remains CLI-only (interactive OAuth flow)
+Hexagonal architecture: CLI → HTTP client → API server → services → adapters/ports.
 
-## New Package Layout
+- **CLI** (`internal/cli/`): Thin Cobra wrappers. Parse flags, call `appclient`, render output. No business logic.
+- **API** (`internal/api/`): Huma v2 + chi HTTP handlers. All business logic accessed through service layer.
+- **App Client** (`internal/appclient/`): Typed HTTP client for CLI→server communication.
+- **App** (`internal/app/`): Application wiring. Holds config, builds services, shared lifecycle.
+- **Services** (`internal/service/`): Domain logic (packages, bugs, bugsync, builds, commits, reviews, projects).
+- **Adapters** (`internal/adapter/`): External system integrations (git, launchpad, distrocache, gitcache).
+- **Ports** (`internal/port/`): Interface definitions for adapters.
+
+Only `auth` remains CLI-only (interactive OAuth flow).
+
+## Package Layout
+
 ```
 internal/
-├── api/                        ← NEW: HTTP API server
-│   ├── server.go               ← Huma app setup, chi router, listener config
-│   ├── middleware.go            ← Logging, error mapping, request ID
-│   ├── packages.go             ← /api/v1/packages/* handlers
-│   ├── bugs.go                 ← /api/v1/bugs/* handlers
-│   └── types.go                ← Shared request/response types (OpenAPI-tagged)
+├── api/                        HTTP API server (Huma v2 + chi)
+│   ├── server.go               Server setup, custom schemaNamer, listener config
+│   ├── packages.go             /api/v1/packages/* (diff, show, list, dsc, rdepends, cache)
+│   ├── bugs.go                 /api/v1/bugs/* (list, get, sync)
+│   ├── reviews.go              /api/v1/reviews/* (list, get)
+│   ├── commits.go              /api/v1/commits/* (list, track)
+│   ├── builds.go               /api/v1/builds/* (trigger, list, download, cleanup)
+│   ├── projects.go             /api/v1/projects/sync
+│   ├── cache.go                /api/v1/cache/* (sync git/upstream, delete, status)
+│   └── config.go               /api/v1/config
 │
-├── appclient/                  ← NEW: HTTP client for CLI→server
-│   ├── client.go               ← HTTP client (unix socket or TCP), JSON codec
-│   ├── packages.go             ← Typed methods: Diff(), Show(), List(), Rdepends(), Dsc()
-│   └── bugs.go                 ← Typed methods: List(), Get(), Sync()
+├── appclient/                  Typed HTTP client (CLI→server)
+│   ├── client.go               Base client (unix socket or TCP), get/post/delete helpers
+│   ├── packages.go             PackagesDiff, PackagesShow, PackagesList, ...
+│   ├── bugs.go                 BugsList, BugsGet, BugsSync
+│   ├── reviews.go              ReviewsList, ReviewsGet
+│   ├── commits.go              CommitsList, CommitsTrack
+│   ├── builds.go               BuildsTrigger, BuildsList, BuildsDownload, BuildsCleanup
+│   ├── projects.go             ProjectsSync
+│   ├── cache.go                CacheSyncGit, CacheSyncUpstream, CacheDelete, CacheStatus
+│   └── config.go               ConfigShow
 │
-├── app/                        ← NEW: Application wiring (extracted from cli/factory.go)
-│   └── app.go                  ← App struct: holds config, builds services, shared lifecycle
+├── app/                        Application wiring
+│   └── app.go                  App struct, service construction, BuildPackageSources
 │
-├── cli/                        ← REFACTORED: thin cobra wrapper calling appclient
-│   ├── root.go                 ← Global flags + server address, env vars
-│   ├── packages.go             ← Flag parsing → appclient.Packages*() → render output
-│   ├── bugs.go                 ← Flag parsing → appclient.Bugs*() → render output
-│   ├── output.go               ← Table/JSON/YAML renderers (stays here)
-│   └── ...
+├── cli/                        Thin Cobra CLI (flags → appclient → render)
+│   ├── root.go                 Global flags, embedded server lifecycle, env vars
+│   ├── serve.go                `watchtower serve` (standalone HTTP server)
+│   ├── packages.go             packages diff/show/list/dsc/rdepends commands
+│   ├── bug.go                  bug list/get/sync commands
+│   ├── review.go               review list/get commands
+│   ├── commit.go               commit log/track commands
+│   ├── build.go                build trigger/list/download/cleanup commands
+│   ├── project.go              project sync command
+│   ├── cache.go                cache sync/clear/status commands
+│   ├── config_cmd.go           config show command
+│   ├── auth.go                 OAuth flow (CLI-only, no API)
+│   ├── output.go               Table/JSON/YAML renderers
+│   └── version.go              Version command
+│
+├── service/                    Domain logic
+│   ├── package/                Package diff, show, list, rdepends, dsc
+│   ├── bug/                    Bug tracking across LP/GitHub
+│   ├── bugsync/                Bug sync orchestration
+│   ├── build/                  Recipe builds (trigger, list, download, cleanup)
+│   ├── commit/                 Commit log and tracking
+│   ├── review/                 Merge request reviews
+│   └── project/                LP project sync (series, focus of development)
+│
+├── adapter/                    External system integrations
+│   ├── git/                    Git operations
+│   ├── gitcache/               Local git cache management
+│   ├── distrocache/            Package index cache
+│   ├── launchpad/              Launchpad API client
+│   └── openstack/              Gerrit/OpenStack forge
+│
+├── port/                       Interface definitions
+│   └── build.go                Build, Recipe, BuildRequest interfaces
+│
+├── config/                     YAML config parsing
+└── pkg/                        Shared domain types
+    ├── forge/v1/               MergeRequest, Commit, BugRef types
+    ├── distro/v1/              Package, Source types
+    └── launchpad/v1/           LP API types
 ```
 
-## Phase 1 Todos
+## API Endpoints
 
-### 1. server-skeleton
-Install huma v2 + chi. Create `internal/api/server.go` with:
-- `NewServer(app *app.App, opts ServerOptions) *Server`
-- `ServerOptions{ListenAddr, UnixSocket}`
-- Chi router with huma adapter
-- `/openapi.json` endpoint (auto from huma)
-- Health check at `/api/v1/health`
-- Graceful shutdown
+All served under Huma v2 with auto-generated OpenAPI spec:
+- `GET /openapi.json` — OpenAPI 3.1 spec
+- `GET /docs` — Stoplight Elements interactive docs UI
+- `GET /api/v1/health` — health check
 
-### 2. app-wiring
-Extract factory logic from `cli/factory.go` into `internal/app/app.go`:
-- `App` struct holding config, logger, lazy-initialized services
-- `NewApp(cfg *config.Config, logger *slog.Logger) *App`
-- Methods: `PackageService()`, `BugService()`, `BugSyncService()`, etc.
-- `BuildPackageSources(distros, releases, suites, backports)` — moved from cli
-- `Close()` for cleanup
+### Packages
+- `GET /api/v1/packages/diff/{set}` — package diff across sources
+- `GET /api/v1/packages/show/{name}` — show package details
+- `GET /api/v1/packages/list` — list all packages
+- `GET /api/v1/packages/dsc` — find .dsc files
+- `GET /api/v1/packages/rdepends/{name}` — reverse dependencies
+- `GET /api/v1/packages/cache/status` — package cache status
+- `POST /api/v1/packages/cache/sync` — sync package index cache
 
-### 3. api-packages
-Huma handlers in `internal/api/packages.go`:
-- `GET /api/v1/packages/diff/{set}` → service.Diff()
-- `GET /api/v1/packages/show/{name}` → service.Show()
-- `GET /api/v1/packages/list` → service.List()
-- `GET /api/v1/packages/dsc` → service.FindDsc()
-- `GET /api/v1/packages/rdepends/{name}` → service.ReverseDepends()
-- `GET /api/v1/packages/cache/status` → service.CacheStatus()
-- `POST /api/v1/packages/cache/sync` → service.UpdateCache()
-Request/response types with huma tags for OpenAPI generation.
+### Bugs
+- `GET /api/v1/bugs` — list bugs
+- `GET /api/v1/bugs/{id}` — get bug details
+- `POST /api/v1/bugs/sync` — sync bugs from trackers
 
-### 4. api-bugs
-Huma handlers in `internal/api/bugs.go`:
-- `GET /api/v1/bugs` → bug.Service.List()
-- `GET /api/v1/bugs/{id}` → bug.Service.Get()
-- `POST /api/v1/bugs/sync` → bugsync.Service.Sync()
-Request/response types with huma tags.
+### Reviews
+- `GET /api/v1/reviews` — list merge requests
+- `GET /api/v1/reviews/{project}/{id}` — get merge request details
 
-### 5. appclient
-`internal/appclient/client.go`:
-- `NewClient(addr string)` — supports `unix:///path` and `http://host:port`
-- JSON request/response codec
-- Typed methods matching API endpoints
+### Commits
+- `GET /api/v1/commits` — list commits
+- `GET /api/v1/commits/track` — track commits across forges
 
-### 6. cli-packages-refactor
-Refactor `internal/cli/packages.go`:
-- Remove `buildPackageSources()` and factory calls
-- Each command's RunE: parse flags → build request → `appclient.PackagesDiff(req)` → render response
-- Keep output.go renderers unchanged
+### Builds
+- `POST /api/v1/builds/trigger` — trigger recipe builds
+- `GET /api/v1/builds` — list builds
+- `POST /api/v1/builds/download` — download build artifacts
+- `POST /api/v1/builds/cleanup` — cleanup old builds
 
-### 7. cli-bugs-refactor
-Refactor `internal/cli/bug.go`:
-- Remove `buildBugTrackers()` factory calls
-- Each command's RunE: parse flags → `appclient.BugsList(req)` → render response
+### Projects
+- `POST /api/v1/projects/sync` — sync LP projects (series, focus of development)
 
-### 8. serve-command
-New `watchtower serve` command:
-- Starts the HTTP server (foreground)
-- `--listen` flag: `unix:///tmp/watchtower.sock` (default) or `tcp://0.0.0.0:8080`
-- Loads config, creates App, starts server
+### Cache
+- `POST /api/v1/cache/sync/git` — sync git cache
+- `POST /api/v1/cache/sync/upstream` — sync upstream repos
+- `DELETE /api/v1/cache/{type}` — clear cache by type
+- `GET /api/v1/cache/status` — cache status
 
-### 9. cli-server-integration
-- CLI auto-starts server in background if not running (for UX)
-- Or: CLI requires `--server` flag / `WATCHTOWER_SERVER` env var
-- Connect via unix socket by default
+### Config
+- `GET /api/v1/config` — show current config
 
-### 10. verify-openapi
-- Run server, fetch `/openapi.json`
-- Validate spec is complete and correct
-- Ensure `go test ./...` passes
-- Ensure `go vet ./...` passes
-
-## Dependency Order
-```
-server-skeleton ─┐
-app-wiring ──────┼→ api-packages ─→ appclient ─→ cli-packages-refactor ─┐
-                 └→ api-bugs ─────→ appclient ─→ cli-bugs-refactor ─────┼→ serve-command → cli-server-integration → verify-openapi
-```
-
-## API Design Principles
+## Design Principles
+- Hexagonal architecture — no contamination of concerns
+- CLI only imports `appclient`, `config`, presentation helpers
 - RESTful where natural (GET for reads, POST for mutations)
-- Query params for filters (distro, release, suite, backport, etc.)
-- JSON responses always (no content negotiation needed server-side; CLI handles table rendering)
-- Consistent error format: `{"title": "...", "status": 404, "detail": "..."}`
+- JSON responses always; CLI handles table rendering
+- Consistent error format: `{"title": "...", "status": N, "detail": "..."}`
 - All types have `json` + `doc` tags for OpenAPI spec quality
+- Custom `schemaNamer` resolves cross-package Huma type name collisions
 
----
+## Completed Work
 
-## Previous Plan (Complete ✅)
-<details>
-<summary>Releases Restructure (completed)</summary>
+### HTTP Server Refactor
+- **Phase 1** ✅ — Server skeleton + packages + bugs domains
+- **Phase 2** ✅ — Reviews, commits, builds, projects, cache, config domains
+- `factory.go` deleted — all wiring via `app.App` → API handlers
 
-### Suite expansion rules (distro-level)
-- `release` → `<release-name>`, `updates` → `<release-name>-updates`, `proposed` → `<release-name>-proposed`, `backports` → `<release-name>-backports`
-
-### Backport suite expansion rules
-- `release` → `<release-name>`, `updates` → `releaseName-updates/backportName`, `proposed` → `releaseName-proposed/backportName`, default → literal
-
-### Features delivered
-- Config restructure, backport suite expansion, parent release inference, per-source filtering
-- 3-state backport filter, --only-in auto-inference, env var support
+### Earlier Features
+- Config restructure, backport suite expansion, parent release inference
+- Per-source filtering, 3-state backport filter, `--only-in` auto-inference
+- Environment variable support (`WATCHTOWER_` prefix)
 - Structured JSON/YAML output for all commands
-</details>
+- LP project sync (series assignment, focus of development)
