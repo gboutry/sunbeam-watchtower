@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -52,10 +54,14 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 
 			var builds []dto.Build
 			var requests []dto.BuildRequest
+			var errs []error
 			for _, r := range result.RecipeResults {
 				builds = append(builds, r.Builds...)
 				if r.BuildRequest != nil {
 					requests = append(requests, *r.BuildRequest)
+				}
+				if r.Error != nil {
+					errs = append(errs, fmt.Errorf("recipe %s: %w", r.Name, r.Error))
 				}
 			}
 
@@ -70,7 +76,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				}
 			}
 
-			return nil
+			return errors.Join(errs...)
 		},
 	}
 

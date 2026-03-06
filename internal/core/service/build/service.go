@@ -176,6 +176,8 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		if err != nil {
 			return nil, fmt.Errorf("get/create project: %w", err)
 		}
+		// Use the temp LP project for recipe operations in local mode.
+		pb.LPProject = projName
 
 		repoLink, sshURL, err := s.repoManager.GetOrCreateRepo(ctx, owner, projName, projectName)
 		if err != nil {
