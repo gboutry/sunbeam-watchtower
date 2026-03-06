@@ -155,7 +155,8 @@ All built on top of the HTTP API:
   - distro Sources parsing helpers now live in `internal/pkg/distro/v1`, so services no longer depend on adapter helpers
   - commit source metadata no longer depends on `internal/config` types
   - `depguard` now enforces key `internal/api`, `internal/service`, and `internal/pkg` import boundaries in CI/lint
-- `arch-go` looks like a good complement to `depguard` for broader architecture policies (package contents, naming, coverage/compliance thresholds), but it has not been wired yet because the tool is not available locally to validate an `arch-go.yml` configuration.
+- `arch-go` is now wired with `arch-go.yml` and pre-commit to enforce whole-module dependency boundaries across `cmd`, `api`, `app`, `appclient`, `cli`, `config`, `port`, `pkg`, `adapter`, and `service`.
+- `cli` and `appclient` still intentionally reuse some `service/*` result types; if those DTOs are extracted into a dedicated reusable package later, the `arch-go` rules can be tightened further.
 - The next refactor step should extend the same factory pattern across the remaining API domains for consistency.
 - MCP/TUI readiness gaps:
   - auth is still CLI-only

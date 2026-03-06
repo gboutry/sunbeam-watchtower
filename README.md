@@ -342,14 +342,14 @@ time=... level=DEBUG msg="commit log complete" total_commits=142
 
 ## Developer tooling
 
-This repository ships with pre-commit hooks and a curated `golangci-lint` v2 configuration.
+This repository ships with pre-commit hooks, `arch-go` architecture checks, and a curated `golangci-lint` v2 configuration.
 
 ```bash
 pre-commit install
 pre-commit run --all-files
 ```
 
-The hooks run whitespace/YAML checks plus `golangci-lint`, `go build`, `go test`, and `go mod tidy`.
+The hooks run whitespace/YAML checks plus `arch-go`, `golangci-lint`, `go build`, `go test`, and `go mod tidy`.
 
 ## License
 

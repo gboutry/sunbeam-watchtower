@@ -17,6 +17,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: arch-go
+        name: arch-go
+        entry: arch-go --color no
+        language: system
+        pass_filenames: false
+        types: [go]
+
       - id: go-build
         name: go build
         entry: go build ./...
