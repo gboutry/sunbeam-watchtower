@@ -263,7 +263,24 @@ For local-only builds the owner is resolved at runtime via the LP `Me()` API.
   - `ProjectBuilder.RecipeProject()` fallback logic.
   - `List()`: active-only, all-builds, project filter, graceful degradation, sorting.
 
-## Remaining follow-ups
+### Build listing modes
+
+The `build list` command supports three listing modes:
+
+1. **Remote** (`--source remote`, default): Lists builds for configured project recipes.
+2. **Local with SHA** (`--source local --sha <commit>`): Computes exact temp recipe names
+   from the given SHA and prefix (e.g. `tmp-build-9e1ed720-nova-consolidated`).
+3. **Local with prefix** (`--source local` without `--sha`): Uses LP's `findByOwner` API
+   to discover all recipes owned by the authenticated user, then filters by `--prefix`
+   (default `tmp-build`) and LP project. This enables `build list --source local --prefix tmp-build`
+   to find all local builds without knowing the exact commit SHA.
+
+The prefix-based discovery is implemented via:
+- `RecipeBuilder.ListRecipesByOwner(ctx, owner)` port method
+- LP's `findByOwner` web-service operation on `+rock-recipes`, `+charm-recipes`, `+snaps`
+- Client-side filtering by prefix and LP project in `Service.List()`
+
+### Remaining follow-ups
 
 These are still the main gaps before TUI and MCP work:
 
