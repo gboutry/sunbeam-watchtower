@@ -98,23 +98,24 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 		c.logger.Debug("full bug cache sync", "project", c.project)
 	}
 
-	tasks, err := c.inner.ListBugTasks(ctx, c.project, opts)
+	incoming, err := c.inner.ListBugTasks(ctx, c.project, opts)
 	if err != nil {
 		return 0, fmt.Errorf("fetching bug tasks for %s: %w", c.project, err)
 	}
 
+	// Only fetch bug details for newly returned tasks, not the entire cache.
+	bugIDs := uniqueBugIDs(incoming)
+
 	// For incremental sync, merge new tasks with existing cached tasks.
+	tasks := incoming
 	if opts.ModifiedSince != "" {
 		existing, _ := c.cache.ListBugTasks(ctx, forgeType, c.project, forge.ListBugTasksOpts{})
-		tasks = mergeTasks(existing, tasks)
+		tasks = mergeTasks(existing, incoming)
 	}
 
 	if err := c.cache.StoreBugTasks(ctx, forgeType, c.project, tasks); err != nil {
 		return 0, fmt.Errorf("storing tasks for %s: %w", c.project, err)
 	}
-
-	// Fetch full bug details for all unique bug IDs.
-	bugIDs := uniqueBugIDs(tasks)
 	var bugs []*forge.Bug
 	for _, id := range bugIDs {
 		b, bErr := c.inner.GetBug(ctx, id)
