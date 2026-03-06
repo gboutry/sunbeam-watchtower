@@ -53,3 +53,13 @@ go-git does not reliably resolve `HEAD` in push refspecs. A push with `HEAD:refs
 ### `NoErrAlreadyUpToDate` is not an error
 
 go-git's `Push` returns `NoErrAlreadyUpToDate` when the remote already has the ref at the same commit. This is a no-op, not a failure — treat it as success.
+
+## Huma (API framework)
+
+### Slices and maps are required by default
+
+Huma treats non-pointer `[]string`, `map[...]`, and `bool` fields as **required** — in both `Body` structs and `query`/`header` params. Omitting them from the request triggers a **422 Unprocessable Entity** validation error. Add `required:"false"` to every optional slice/map/bool field. The `omitempty` JSON tag does **not** affect Huma's required inference.
+
+### Use correct HTTP status codes for errors
+
+`huma.Error422UnprocessableEntity` should only be used for actual validation/format issues. For missing resources use `huma.Error404NotFound`, for server failures use `huma.Error500InternalServerError`. Misusing 422 for "not found" scenarios misleads both clients and developers into debugging request format issues.
