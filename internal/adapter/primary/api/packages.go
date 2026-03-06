@@ -55,6 +55,21 @@ type PackagesShowOutput struct {
 	Body *dto.PackageDiffResult `doc:"Package version information across sources"`
 }
 
+// PackagesDetailInput holds parameters for the detail endpoint.
+type PackagesDetailInput struct {
+	Name      string   `path:"name" doc:"Source package name" example:"nova"`
+	Version   string   `query:"version" required:"false" doc:"Exact Debian version string. If omitted, returns the highest version found."`
+	Distros   []string `query:"distro" doc:"Filter by distro name"`
+	Releases  []string `query:"release" doc:"Filter by distro release"`
+	Suites    []string `query:"suite" doc:"Filter by suite type"`
+	Backports []string `query:"backport" doc:"Backports to include (default: none)"`
+}
+
+// PackagesDetailOutput is the response for the detail endpoint.
+type PackagesDetailOutput struct {
+	Body *distro.SourcePackageInfo `doc:"Full APT source package metadata"`
+}
+
 // PackagesListInput holds parameters for the list endpoint.
 type PackagesListInput struct {
 	Distros    []string `query:"distro" required:"true" doc:"Distro(s) to list packages from"`
@@ -282,6 +297,36 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 		}
 
 		return &PackagesShowOutput{Body: result}, nil
+	})
+
+	// GET /api/v1/packages/detail/{name}
+	huma.Register(api, huma.Operation{
+		OperationID: "packages-detail",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/packages/detail/{name}",
+		Summary:     "Show full APT metadata for a package",
+		Description: "Returns all fields from the APT Sources paragraph for a specific package version. If version is omitted, returns the highest version found.",
+		Tags:        []string{"packages"},
+	}, func(ctx context.Context, input *PackagesDetailInput) (*PackagesDetailOutput, error) {
+		backports := input.Backports
+		if len(backports) == 0 {
+			backports = []string{"none"}
+		}
+
+		cache, err := application.DistroCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
+		}
+
+		sources := application.BuildPackageSources(input.Distros, input.Releases, input.Suites, backports)
+		svc := pkg.NewService(cache, application.Logger)
+
+		result, err := svc.ShowDetail(ctx, input.Name, input.Version, sources)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
+
+		return &PackagesDetailOutput{Body: result}, nil
 	})
 
 	// GET /api/v1/packages/list

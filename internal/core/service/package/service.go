@@ -140,12 +140,60 @@ func (s *Service) FindDsc(ctx context.Context, pairs []PackageVersionPair, sourc
 	return results, nil
 }
 
+// ShowDetail returns the full APT metadata for a specific package. If version is
+// provided, returns the exact match. Otherwise, returns the highest version found
+// across the given sources.
+func (s *Service) ShowDetail(ctx context.Context, pkgName, version string, sources []ProjectSource) (*distro.SourcePackageInfo, error) {
+	// If no explicit version, use the cache to find the highest version.
+	if version == "" {
+		result, err := s.Show(ctx, pkgName, sources)
+		if err != nil {
+			return nil, err
+		}
+		var best *distro.SourcePackage
+		for _, versions := range result.Versions {
+			h := distro.PickHighest(versions)
+			if h != nil && (best == nil || distro.CompareVersions(h.Version, best.Version) > 0) {
+				best = h
+			}
+		}
+		if best == nil {
+			return nil, fmt.Errorf("package %q not found in configured sources", pkgName)
+		}
+		version = best.Version
+	}
+
+	cacheDir := s.cache.CacheDir()
+
+	for _, src := range sources {
+		for _, entry := range src.Entries {
+			var pkgs []distro.SourcePackageInfo
+			for _, format := range []string{"xz", "gz"} {
+				fname := distro.SourcesFileName(entry.Suite, entry.Component, format)
+				path := filepath.Join(cacheDir, "sources", src.Name, fname)
+				parsed, err := distro.ParseSourcesFileFull(path, format, entry.Suite, entry.Component)
+				if err != nil {
+					continue
+				}
+				pkgs = parsed
+				break
+			}
+
+			for i := range pkgs {
+				if pkgs[i].Package == pkgName && pkgs[i].Version == version {
+					return &pkgs[i], nil
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("package %s=%s not found in Sources files", pkgName, version)
+}
+
 // CacheStatus returns metadata about the cached source groups.
 func (s *Service) CacheStatus() ([]dto.CacheStatus, error) {
 	return s.cache.Status()
 }
-
-// ReverseDepends returns source packages that have pkg in their Build-Depends.
 func (s *Service) ReverseDepends(ctx context.Context, pkg string, sources []ProjectSource, opts dto.QueryOpts) ([]distro.SourcePackageDetail, error) {
 	// Build the set of names to match (python-foo ↔ python3-foo).
 	matchNames := map[string]bool{pkg: true}

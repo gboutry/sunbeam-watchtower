@@ -25,6 +25,18 @@ type SourcePackageFiles struct {
 	Files     []string `json:"files,omitempty" yaml:"files,omitempty"` // filenames only
 }
 
+// SourcePackageInfo captures all metadata fields from an APT Sources paragraph.
+type SourcePackageInfo struct {
+	SourcePackage
+	Fields []FieldEntry `json:"fields" yaml:"fields"`
+}
+
+// FieldEntry is a single key-value pair from an APT Sources paragraph.
+type FieldEntry struct {
+	Key   string `json:"key" yaml:"key"`
+	Value string `json:"value" yaml:"value"`
+}
+
 // VersionComparison holds one package's versions across all queried sources.
 type VersionComparison struct {
 	Package  string                     `json:"package" yaml:"package"`

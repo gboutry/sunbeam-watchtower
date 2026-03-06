@@ -24,6 +24,7 @@ func newPackagesCmd(opts *Options) *cobra.Command {
 	cmd.AddCommand(
 		newPackagesDiffCmd(opts),
 		newPackagesShowCmd(opts),
+		newPackagesShowDetailCmd(opts),
 		newPackagesListCmd(opts),
 		newPackagesDscCmd(opts),
 		newPackagesRdependsCmd(opts),
@@ -121,6 +122,48 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none; pass names to include)")
 	cmd.Flags().BoolVar(&merge, "merge", false, "merge suites per source into a single column showing highest version")
 	cmd.Flags().StringVar(&upstreamRelease, "upstream-release", "", "upstream release to compare against (e.g. 2025.1)")
+
+	return cmd
+}
+
+func newPackagesShowDetailCmd(opts *Options) *cobra.Command {
+	var distros, releases, suites, backports []string
+
+	cmd := &cobra.Command{
+		Use:   "show <package> [version]",
+		Short: "Show full APT metadata for a package",
+		Long: `Show all fields from the APT Sources index for a specific package.
+
+If a Debian version string is given as a second argument, returns the exact
+match. Otherwise, returns the highest version found across the configured
+(or filtered) sources.`,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pkgName := args[0]
+			var version string
+			if len(args) > 1 {
+				version = args[1]
+			}
+
+			result, err := opts.Client.PackagesDetail(cmd.Context(), pkgName, client.PackagesDetailOptions{
+				Version:   version,
+				Distros:   distros,
+				Releases:  releases,
+				Suites:    suites,
+				Backports: backports,
+			})
+			if err != nil {
+				return err
+			}
+
+			return renderPackageInfo(opts.Out, opts.Output, result)
+		},
+	}
+
+	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
+	cmd.Flags().StringSliceVar(&suites, "suite", nil, "suite types to query (default: all)")
+	cmd.Flags().StringSliceVar(&backports, "backport", []string{"none"}, "backports to include (default: none)")
 
 	return cmd
 }
@@ -526,6 +569,42 @@ func renderSourcePackageDetailsTable(w io.Writer, pkgs []distro.SourcePackageDet
 	fmt.Fprintln(tw, "PACKAGE\tVERSION\tSUITE\tCOMPONENT")
 	for _, p := range pkgs {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.Package, p.Version, p.Suite, p.Component)
+	}
+	return tw.Flush()
+}
+
+func renderPackageInfo(w io.Writer, format string, info *distro.SourcePackageInfo) error {
+	switch format {
+	case "json":
+		return renderJSON(w, info)
+	case "yaml":
+		return renderYAML(w, info)
+	default:
+		return renderPackageInfoTable(w, info)
+	}
+}
+
+func renderPackageInfoTable(w io.Writer, info *distro.SourcePackageInfo) error {
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintf(tw, "Source:\t%s\n", info.Package)
+	fmt.Fprintf(tw, "Version:\t%s\n", info.Version)
+	fmt.Fprintf(tw, "Suite:\t%s\n", info.Suite)
+	fmt.Fprintf(tw, "Component:\t%s\n", info.Component)
+	fmt.Fprintln(tw, "---\t")
+	for _, f := range info.Fields {
+		if f.Key == "Package" || f.Key == "Version" {
+			continue
+		}
+		value := f.Value
+		if strings.Contains(value, "\n") {
+			lines := strings.Split(value, "\n")
+			fmt.Fprintf(tw, "%s:\t%s\n", f.Key, lines[0])
+			for _, line := range lines[1:] {
+				fmt.Fprintf(tw, "\t%s\n", line)
+			}
+		} else {
+			fmt.Fprintf(tw, "%s:\t%s\n", f.Key, value)
+		}
 	}
 	return tw.Flush()
 }

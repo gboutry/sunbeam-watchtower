@@ -280,3 +280,88 @@ func decompressReader(r io.Reader, format string) (io.Reader, error) {
 		return r, nil
 	}
 }
+
+// ParseSourcesFull reads an RFC822-format Sources file and captures all fields per paragraph.
+func ParseSourcesFull(r io.Reader, suite, component string) ([]SourcePackageInfo, error) {
+	var results []SourcePackageInfo
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+
+	var pkg, ver string
+	var fields []FieldEntry
+	lastIdx := -1
+
+	flush := func() {
+		if pkg == "" || ver == "" {
+			return
+		}
+		results = append(results, SourcePackageInfo{
+			SourcePackage: SourcePackage{
+				Package:   pkg,
+				Version:   ver,
+				Suite:     suite,
+				Component: component,
+			},
+			Fields: fields,
+		})
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if line == "" {
+			flush()
+			pkg, ver = "", ""
+			fields = nil
+			lastIdx = -1
+			continue
+		}
+
+		// Continuation line: append to the last field's value.
+		if line[0] == ' ' || line[0] == '\t' {
+			if lastIdx >= 0 {
+				fields[lastIdx].Value += "\n" + line
+			}
+			continue
+		}
+
+		idx := strings.IndexByte(line, ':')
+		if idx < 0 {
+			continue
+		}
+		key := line[:idx]
+		value := strings.TrimSpace(line[idx+1:])
+
+		switch key {
+		case "Package":
+			pkg = value
+		case "Version":
+			ver = value
+		}
+
+		fields = append(fields, FieldEntry{Key: key, Value: value})
+		lastIdx = len(fields) - 1
+	}
+
+	flush()
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scanning sources full: %w", err)
+	}
+	return results, nil
+}
+
+// ParseSourcesFileFull opens and parses a compressed Sources file returning full metadata.
+func ParseSourcesFileFull(path, format, suite, component string) ([]SourcePackageInfo, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("opening sources file: %w", err)
+	}
+	defer f.Close()
+
+	reader, err := decompressReader(f, format)
+	if err != nil {
+		return nil, fmt.Errorf("decompressing: %w", err)
+	}
+	return ParseSourcesFull(reader, suite, component)
+}

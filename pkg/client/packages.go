@@ -98,6 +98,39 @@ func (c *Client) PackagesShow(ctx context.Context, name string, opts PackagesSho
 	return &result, err
 }
 
+// PackagesDetailOptions holds query parameters for the packages detail endpoint.
+type PackagesDetailOptions struct {
+	Version   string
+	Distros   []string
+	Releases  []string
+	Suites    []string
+	Backports []string
+}
+
+// PackagesDetail returns full APT metadata for a specific package version.
+func (c *Client) PackagesDetail(ctx context.Context, name string, opts PackagesDetailOptions) (*distro.SourcePackageInfo, error) {
+	q := url.Values{}
+	if opts.Version != "" {
+		q.Set("version", opts.Version)
+	}
+	for _, v := range opts.Distros {
+		q.Add("distro", v)
+	}
+	for _, v := range opts.Releases {
+		q.Add("release", v)
+	}
+	for _, v := range opts.Suites {
+		q.Add("suite", v)
+	}
+	for _, v := range opts.Backports {
+		q.Add("backport", v)
+	}
+
+	var result distro.SourcePackageInfo
+	err := c.get(ctx, "/api/v1/packages/detail/"+url.PathEscape(name), q, &result)
+	return &result, err
+}
+
 // PackagesListOptions holds query parameters for the packages list endpoint.
 type PackagesListOptions struct {
 	Distros    []string
