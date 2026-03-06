@@ -148,6 +148,14 @@ All built on top of the HTTP API:
 - **TUI Dashboard** — Terminal UI for real-time monitoring
 - **Prometheus Exporter** — Metrics endpoint for observability
 
+### Auth rework
+Auth needs to be reworked to fit the new architecture:
+- Move from CLI-only to API-based auth management
+- Implement token issuance, revocation, and storage via API
+- Ensure secure handling of credentials and tokens
+
+or should we keep it CLI-only for simplicity? We can revisit if API-based auth becomes a requirement.
+
 ## Completed Work
 
 ### HTTP Server Refactor
