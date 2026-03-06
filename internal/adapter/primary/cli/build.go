@@ -28,8 +28,8 @@ func newBuildCmd(opts *Options) *cobra.Command {
 }
 
 func newBuildTriggerCmd(opts *Options) *cobra.Command {
-	var source, owner, prefix, localPath string
-	var wait bool
+	var source, owner, prefix, localPath, artifactsDir string
+	var wait, download bool
 	var timeout time.Duration
 
 	cmd := &cobra.Command{
@@ -39,6 +39,11 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectName := args[0]
 			recipeNames := args[1:]
+
+			// --download implies --wait.
+			if download {
+				wait = true
+			}
 
 			triggerOpts := client.BuildsTriggerOptions{
 				Project: projectName,
@@ -84,16 +89,33 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				}
 			}
 
+			// Download succeeded build artifacts when requested.
+			if download && len(builds) > 0 {
+				dlRecipes := triggerOpts.Recipes
+				if len(dlRecipes) == 0 {
+					dlRecipes = recipeNames
+				}
+				if err := opts.Client.BuildsDownload(cmd.Context(), client.BuildsDownloadOptions{
+					Project:      projectName,
+					Recipes:      dlRecipes,
+					ArtifactsDir: artifactsDir,
+				}); err != nil {
+					errs = append(errs, fmt.Errorf("download: %w", err))
+				}
+			}
+
 			return errors.Join(errs...)
 		},
 	}
 
 	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait for builds to complete")
+	cmd.Flags().BoolVar(&download, "download", false, "download artifacts after builds succeed (implies --wait)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Hour, "max wait time")
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
 	cmd.Flags().StringVar(&localPath, "local-path", ".", "path to local git repo (local mode)")
+	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory for downloaded artifacts (default from config)")
 
 	return cmd
 }
