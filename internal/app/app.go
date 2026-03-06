@@ -18,6 +18,7 @@ import (
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/bugcache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/distrocache"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/excusescache"
 	adaptergit "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/git"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/gitcache"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/launchpad"
@@ -53,6 +54,10 @@ type App struct {
 	bugCacheOnce sync.Once
 	bugCache     *bugcache.Cache
 	bugCacheErr  error
+
+	excusesOnce  sync.Once
+	excusesCache *excusescache.Cache
+	excusesErr   error
 }
 
 // NewApp creates a new App instance.
@@ -70,6 +75,11 @@ func (a *App) Close() error {
 	}
 	if a.bugCache != nil {
 		if err := a.bugCache.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if a.excusesCache != nil {
+		if err := a.excusesCache.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -130,6 +140,19 @@ func (a *App) BugCache() (*bugcache.Cache, error) {
 		a.bugCache, a.bugCacheErr = bugcache.NewCache(filepath.Join(cacheDir, "bugs"), a.Logger)
 	})
 	return a.bugCache, a.bugCacheErr
+}
+
+// ExcusesCache returns a lazy-initialized excuses cache singleton.
+func (a *App) ExcusesCache() (*excusescache.Cache, error) {
+	a.excusesOnce.Do(func() {
+		cacheDir, err := ResolveCacheDir()
+		if err != nil {
+			a.excusesErr = err
+			return
+		}
+		a.excusesCache, a.excusesErr = excusescache.NewCache(filepath.Join(cacheDir, "excuses"), a.Logger)
+	})
+	return a.excusesCache, a.excusesErr
 }
 
 // NewLaunchpadClient creates an LP client with credentials from env/file cache.

@@ -63,3 +63,13 @@ Huma treats non-pointer `[]string`, `map[...]`, and `bool` fields as **required*
 ### Use correct HTTP status codes for errors
 
 `huma.Error422UnprocessableEntity` should only be used for actual validation/format issues. For missing resources use `huma.Error404NotFound`, for server failures use `huma.Error500InternalServerError`. Misusing 422 for "not found" scenarios misleads both clients and developers into debugging request format issues.
+
+## Excuses feeds
+
+### Ubuntu team ownership comes from `update_excuses_by_team.yaml`
+
+The main Ubuntu excuses feed (`update_excuses.yaml.xz`) does **not** carry team ownership directly. Fetch the companion `update_excuses_by_team.yaml` feed and merge its per-package team data if `--team` needs to work.
+
+### `update_excuses_by_team.yaml` is not normal YAML
+
+Ubuntu's team feed contains Python-specific YAML tags/aliases (for example `!!python/object/apply:collections.defaultdict`, anchors, and aliases) that `gopkg.in/yaml.v3` does not cleanly unmarshal at scale. Parse it defensively for the fields you need instead of assuming a normal schema-safe YAML decode.

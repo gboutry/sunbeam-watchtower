@@ -441,6 +441,11 @@ type cacheFullStatus struct {
 		Entries   []dto.BugCacheStatus `json:"entries" yaml:"entries"`
 		Error     string               `json:"error,omitempty" yaml:"error,omitempty"`
 	} `json:"bugs" yaml:"bugs"`
+	Excuses struct {
+		Directory string                   `json:"directory" yaml:"directory"`
+		Entries   []dto.ExcusesCacheStatus `json:"entries" yaml:"entries"`
+		Error     string                   `json:"error,omitempty" yaml:"error,omitempty"`
+	} `json:"excuses" yaml:"excuses"`
 }
 
 func renderCacheFullStatus(w io.Writer, format string, status *cacheFullStatus) error {
@@ -503,5 +508,44 @@ func renderCacheFullStatusTable(w io.Writer, status *cacheFullStatus) error {
 		}
 	}
 
+	fmt.Fprintln(w, "\n=== Excuses ===")
+	if status.Excuses.Error != "" {
+		fmt.Fprintf(w, "  (unavailable: %s)\n", status.Excuses.Error)
+	} else if len(status.Excuses.Entries) == 0 {
+		fmt.Fprintln(w, "  (none)")
+	} else {
+		fmt.Fprintf(w, "directory: %s\n", status.Excuses.Directory)
+		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(tw, "  TRACKER\tENTRIES\tLAST UPDATED\tSIZE")
+		for _, entry := range status.Excuses.Entries {
+			lastUpdated := "never"
+			if !entry.LastUpdated.IsZero() {
+				lastUpdated = entry.LastUpdated.Format("2006-01-02 15:04:05")
+			}
+			fmt.Fprintf(tw, "  %s\t%d\t%s\t%s\n", entry.Tracker, entry.EntryCount, lastUpdated, formatSize(entry.DiskSize))
+		}
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func formatSize(bytes int64) string {
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+	switch {
+	case bytes >= gb:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(gb))
+	case bytes >= mb:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(mb))
+	case bytes >= kb:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }

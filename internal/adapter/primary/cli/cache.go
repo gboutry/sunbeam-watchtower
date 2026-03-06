@@ -14,9 +14,10 @@ const (
 	cacheTypePackagesIndex = "packages-index"
 	cacheTypeUpstreamRepos = "upstream-repos"
 	cacheTypeBugs          = "bugs"
+	cacheTypeExcuses       = "excuses"
 )
 
-var allCacheTypes = []string{cacheTypeGit, cacheTypePackagesIndex, cacheTypeUpstreamRepos, cacheTypeBugs}
+var allCacheTypes = []string{cacheTypeGit, cacheTypePackagesIndex, cacheTypeUpstreamRepos, cacheTypeBugs, cacheTypeExcuses}
 
 func validateCacheTypes(args []string) error {
 	for _, arg := range args {
@@ -46,6 +47,7 @@ func newCacheCmd(opts *Options) *cobra.Command {
 func newCacheSyncCmd(opts *Options) *cobra.Command {
 	var project string
 	var distros, releases, backports []string
+	var trackers []string
 
 	cmd := &cobra.Command{
 		Use:   "sync [types...]",
@@ -109,6 +111,17 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 				fmt.Fprintf(progressOut, "bug cache sync done (%d tasks synced).\n", result.Synced)
 			}
 
+			if wantCacheType(args, cacheTypeExcuses) {
+				fmt.Fprintln(progressOut, "syncing excuses caches...")
+				result, err := opts.Client.CacheSyncExcuses(cmd.Context(), client.CacheSyncExcusesOptions{
+					Trackers: trackers,
+				})
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(progressOut, "excuses cache sync: %s\n", result.Status)
+			}
+
 			return nil
 		},
 	}
@@ -117,12 +130,14 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to update (packages-index only, default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to sync (packages-index only, default: all configured)")
 	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to sync (packages-index only, default: all)")
+	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to sync (excuses only, default: all built-in trackers)")
 
 	return cmd
 }
 
 func newCacheClearCmd(opts *Options) *cobra.Command {
 	var project string
+	var trackers []string
 
 	cmd := &cobra.Command{
 		Use:   "clear [types...]",
@@ -172,11 +187,20 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 				fmt.Fprintln(progressOut, "bug cache cleared.")
 			}
 
+			if wantCacheType(args, cacheTypeExcuses) {
+				fmt.Fprintln(progressOut, "clearing excuses cache...")
+				if err := opts.Client.CacheDeleteWithTrackers(cmd.Context(), "excuses", "", trackers); err != nil {
+					return err
+				}
+				fmt.Fprintln(progressOut, "excuses cache cleared.")
+			}
+
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&project, "project", "", "clear only this project (git only)")
+	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to clear (excuses only, default: all built-in trackers)")
 	return cmd
 }
 
@@ -208,6 +232,9 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 			status.Bugs.Entries = append(status.Bugs.Entries, result.Bugs.Entries...)
 			status.Bugs.Directory = result.Bugs.Directory
 			status.Bugs.Error = result.Bugs.Error
+			status.Excuses.Entries = append(status.Excuses.Entries, result.Excuses.Entries...)
+			status.Excuses.Directory = result.Excuses.Directory
+			status.Excuses.Error = result.Excuses.Error
 
 			return renderCacheFullStatus(opts.Out, opts.Output, &status)
 		},

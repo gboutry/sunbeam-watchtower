@@ -25,6 +25,7 @@ func newPackagesCmd(opts *Options) *cobra.Command {
 		newPackagesDiffCmd(opts),
 		newPackagesShowCmd(opts),
 		newPackagesShowDetailCmd(opts),
+		newPackagesExcusesCmd(opts),
 		newPackagesListCmd(opts),
 		newPackagesDscCmd(opts),
 		newPackagesRdependsCmd(opts),

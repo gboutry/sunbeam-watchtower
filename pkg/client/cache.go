@@ -57,11 +57,36 @@ func (c *Client) CacheSyncBugs(ctx context.Context, opts CacheSyncBugsOptions) (
 	return &result, err
 }
 
+// CacheSyncExcusesOptions holds the request body for syncing excuses caches.
+type CacheSyncExcusesOptions struct {
+	Trackers []string `json:"trackers,omitempty"`
+}
+
+// CacheSyncExcusesResult is the response returned by CacheSyncExcuses.
+type CacheSyncExcusesResult struct {
+	Status string `json:"status"`
+}
+
+// CacheSyncExcuses syncs excuses caches for the requested trackers.
+func (c *Client) CacheSyncExcuses(ctx context.Context, opts CacheSyncExcusesOptions) (*CacheSyncExcusesResult, error) {
+	var result CacheSyncExcusesResult
+	err := c.post(ctx, "/api/v1/cache/sync/excuses", opts, &result)
+	return &result, err
+}
+
 // CacheDelete clears a specific cache type.
 func (c *Client) CacheDelete(ctx context.Context, cacheType string, project string) error {
+	return c.CacheDeleteWithTrackers(ctx, cacheType, project, nil)
+}
+
+// CacheDeleteWithTrackers clears a specific cache type with optional excuses tracker filters.
+func (c *Client) CacheDeleteWithTrackers(ctx context.Context, cacheType string, project string, trackers []string) error {
 	q := url.Values{}
 	if project != "" {
 		q.Set("project", project)
+	}
+	for _, tracker := range trackers {
+		q.Add("tracker", tracker)
 	}
 	return c.delete(ctx, "/api/v1/cache/"+url.PathEscape(cacheType), q, nil)
 }
@@ -92,6 +117,11 @@ type CacheStatusResult struct {
 		Entries   []dto.BugCacheStatus `json:"entries"`
 		Error     string               `json:"error,omitempty"`
 	} `json:"bugs"`
+	Excuses struct {
+		Directory string                   `json:"directory"`
+		Entries   []dto.ExcusesCacheStatus `json:"entries"`
+		Error     string                   `json:"error,omitempty"`
+	} `json:"excuses"`
 }
 
 // CacheStatus returns the full cache status (git + packages + upstream).

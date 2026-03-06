@@ -176,6 +176,15 @@ watchtower packages show nova 2:2025.1-0ubuntu1
 # Show highest version matching filters
 watchtower packages show nova --distro ubuntu --backport gazpacho
 
+# List Ubuntu proposed-migration excuses
+watchtower packages excuses list --tracker ubuntu --ftbfs
+
+# Filter Ubuntu excuses by owning team
+watchtower packages excuses list --tracker ubuntu --team debcrafters-packages
+
+# Inspect one package's migration blockers
+watchtower packages excuses show nova --tracker ubuntu
+
 # List packages in a configured distro release
 watchtower packages list --distro ubuntu --release noble
 ```
@@ -302,6 +311,12 @@ watchtower cache sync upstream-repos
 # Sync only bug/task caches
 watchtower cache sync bugs
 
+# Sync Ubuntu and Debian excuses caches
+watchtower cache sync excuses --tracker ubuntu --tracker debian
+
+# Sync Ubuntu excuses and refresh the companion team mapping used by --team
+watchtower cache sync excuses --tracker ubuntu
+
 # Sync a specific project's git cache
 watchtower cache sync git --project snap-openstack
 
@@ -313,9 +328,12 @@ watchtower cache clear
 
 # Remove a specific project's git cache
 watchtower cache clear git --project snap-openstack
+
+# Remove only Debian excuses cache entries
+watchtower cache clear excuses --tracker debian
 ```
 
-Valid cache types are `git`, `packages-index`, `upstream-repos`, and `bugs`.
+Valid cache types are `git`, `packages-index`, `upstream-repos`, `bugs`, and `excuses`.
 
 Git cache data is stored at `$XDG_CACHE_HOME/sunbeam-watchtower/repos/` (defaults to `~/.cache/sunbeam-watchtower/repos/`). Repos are bare git clones organized by host:
 

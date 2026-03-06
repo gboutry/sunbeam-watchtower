@@ -520,6 +520,8 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 		out.Body.Status = "ok"
 		return out, nil
 	})
+
+	registerPackagesExcusesAPI(api, application)
 }
 
 // --- Helpers -----------------------------------------------------------------

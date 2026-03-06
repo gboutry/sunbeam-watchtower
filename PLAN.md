@@ -83,13 +83,14 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - `GET /api/v1/health` — health check
 - `GET /api/v1/packages/*` / `POST /api/v1/packages/cache/sync`
   - `GET /api/v1/packages/detail/{name}` — full APT metadata for a package
+  - `GET /api/v1/packages/excuses` / `GET /api/v1/packages/excuses/{name}` — normalized migration excuses from Ubuntu/Debian trackers
 - `GET /api/v1/bugs*` / `POST /api/v1/bugs/sync`
 - `GET /api/v1/reviews*`
 - `GET /api/v1/commits*`
 - `POST /api/v1/builds/*` / `GET /api/v1/builds`
 - `POST /api/v1/projects/sync`
-- `POST /api/v1/cache/sync/git` / `POST /api/v1/cache/sync/upstream` / `POST /api/v1/cache/sync/bugs`
-- `DELETE /api/v1/cache/{type}` (git, packages-index, upstream-repos, bugs)
+- `POST /api/v1/cache/sync/git` / `POST /api/v1/cache/sync/upstream` / `POST /api/v1/cache/sync/bugs` / `POST /api/v1/cache/sync/excuses`
+- `DELETE /api/v1/cache/{type}` (git, packages-index, upstream-repos, bugs, excuses)
 - `GET /api/v1/cache/status`
 - `GET /api/v1/config`
 
@@ -125,9 +126,33 @@ The CLI `cache sync|clear|status` subcommands support the following cache types:
 - `packages-index` — APT package sources
 - `upstream-repos` — upstream OpenStack repos
 - `bugs` — bug/task caches from forges (Launchpad, etc.)
+- `excuses` — normalized migration excuses from Ubuntu/Debian tracker feeds
 
-All four types are wired through `internal/adapter/primary/cli/cache.go` and rendered
+All five types are wired through `internal/adapter/primary/cli/cache.go` and rendered
 via `internal/adapter/primary/cli/output.go`.
+
+## Excuses integration
+
+Watchtower now includes a first packaging-focused integration for migration excuses:
+
+- **CLI**:
+  - `packages excuses list`
+  - `packages excuses show <package>`
+  - `cache sync excuses`
+  - `cache clear excuses`
+- **API**:
+  - `GET /api/v1/packages/excuses`
+  - `GET /api/v1/packages/excuses/{name}`
+  - `POST /api/v1/cache/sync/excuses`
+- **Providers**:
+  - `ubuntu` → `update_excuses.yaml.xz` + `update_excuses_by_team.yaml`
+  - `debian` → `excuses.yaml`
+
+The implementation keeps excuses in a dedicated cache domain (`ExcusesCache`) rather
+than overloading `DistroCache`. Raw tracker files are stored on disk and normalized
+records are indexed in bbolt for fast list/show queries. For Ubuntu, cache sync also
+fetches the companion `update_excuses_by_team.yaml` feed so `packages excuses list
+--team ...` and `packages excuses show ...` can surface ownership information.
 
 ## Bug cache architecture
 

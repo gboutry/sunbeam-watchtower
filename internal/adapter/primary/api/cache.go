@@ -52,8 +52,9 @@ type CacheSyncUpstreamOutput struct {
 
 // CacheDeleteInput is the request for DELETE /api/v1/cache/{type}.
 type CacheDeleteInput struct {
-	Type    string `path:"type" doc:"Cache type to clear (git, packages-index, upstream-repos)"`
-	Project string `query:"project" doc:"Clear only this project (git type only)"`
+	Type     string   `path:"type" doc:"Cache type to clear (git, packages-index, upstream-repos, bugs, excuses)"`
+	Project  string   `query:"project" required:"false" doc:"Clear only this project (git/bugs types only)"`
+	Trackers []string `query:"tracker" required:"false" doc:"Clear only these excuses trackers (excuses type only)"`
 }
 
 // CacheDeleteOutput is the response for DELETE /api/v1/cache/{type}.
@@ -74,6 +75,20 @@ type CacheSyncBugsInput struct {
 type CacheSyncBugsOutput struct {
 	Body struct {
 		Synced int `json:"synced" doc:"Number of bug tasks synced"`
+	}
+}
+
+// CacheSyncExcusesInput is the request body for POST /api/v1/cache/sync/excuses.
+type CacheSyncExcusesInput struct {
+	Body struct {
+		Trackers []string `json:"trackers,omitempty" required:"false" doc:"Excuses trackers to sync (default: all built-in trackers)"`
+	}
+}
+
+// CacheSyncExcusesOutput is the response for POST /api/v1/cache/sync/excuses.
+type CacheSyncExcusesOutput struct {
+	Body struct {
+		Status string `json:"status" example:"ok"`
 	}
 }
 
@@ -98,6 +113,11 @@ type CacheStatusOutput struct {
 			Entries   []dto.BugCacheStatus `json:"entries"`
 			Error     string               `json:"error,omitempty"`
 		} `json:"bugs"`
+		Excuses struct {
+			Directory string                   `json:"directory"`
+			Entries   []dto.ExcusesCacheStatus `json:"entries"`
+			Error     string                   `json:"error,omitempty"`
+		} `json:"excuses"`
 	}
 }
 
@@ -245,6 +265,36 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		return out, nil
 	})
 
+	// POST /api/v1/cache/sync/excuses
+	huma.Register(api, huma.Operation{
+		OperationID: "cache-sync-excuses",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/cache/sync/excuses",
+		Summary:     "Sync package migration excuses caches",
+		Tags:        []string{"cache"},
+	}, func(ctx context.Context, input *CacheSyncExcusesInput) (*CacheSyncExcusesOutput, error) {
+		trackers := input.Body.Trackers
+		if err := dto.ValidateExcusesTrackers(trackers); err != nil {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
+		sources := dto.FilterExcusesSources(trackers)
+		if len(sources) == 0 {
+			return nil, huma.Error400BadRequest("no excuses trackers selected")
+		}
+
+		cache, err := application.ExcusesCache()
+		if err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open excuses cache: %v", err))
+		}
+		svc := pkg.NewExcusesService(cache, application.Logger)
+		if err := svc.UpdateCache(ctx, sources); err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("excuses cache sync failed: %v", err))
+		}
+		out := &CacheSyncExcusesOutput{}
+		out.Body.Status = "ok"
+		return out, nil
+	})
+
 	// DELETE /api/v1/cache/{type}
 	huma.Register(api, huma.Operation{
 		OperationID: "cache-delete",
@@ -341,9 +391,29 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				}
 			}
 
+		case "excuses":
+			cache, err := application.ExcusesCache()
+			if err != nil {
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open excuses cache: %v", err))
+			}
+			if len(input.Trackers) == 0 {
+				if err := cache.RemoveAll(); err != nil {
+					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing excuses cache: %v", err))
+				}
+			} else {
+				if err := dto.ValidateExcusesTrackers(input.Trackers); err != nil {
+					return nil, huma.Error400BadRequest(err.Error())
+				}
+				for _, tracker := range input.Trackers {
+					if err := cache.Remove(tracker); err != nil {
+						return nil, huma.Error500InternalServerError(fmt.Sprintf("removing excuses cache for %s: %v", tracker, err))
+					}
+				}
+			}
+
 		default:
 			return nil, huma.Error400BadRequest(
-				fmt.Sprintf("unknown cache type %q (valid: git, packages-index, upstream-repos, bugs)", input.Type))
+				fmt.Sprintf("unknown cache type %q (valid: git, packages-index, upstream-repos, bugs, excuses)", input.Type))
 		}
 
 		out := &CacheDeleteOutput{}
@@ -428,6 +498,21 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				out.Body.Bugs.Error = bErr.Error()
 			} else {
 				out.Body.Bugs.Entries = bugStatuses
+			}
+		}
+
+		// Excuses cache status.
+		excusesCache, err := application.ExcusesCache()
+		if err != nil {
+			out.Body.Excuses.Error = err.Error()
+		} else {
+			out.Body.Excuses.Directory = excusesCache.CacheDir()
+			svc := pkg.NewExcusesService(excusesCache, application.Logger)
+			statuses, sErr := svc.CacheStatus()
+			if sErr != nil {
+				out.Body.Excuses.Error = sErr.Error()
+			} else {
+				out.Body.Excuses.Entries = statuses
 			}
 		}
 
