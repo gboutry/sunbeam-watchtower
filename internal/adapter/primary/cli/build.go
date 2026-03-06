@@ -342,6 +342,11 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 			}
 
 			if source == "local" {
+				// Default to showing all builds for local source (user
+				// typically wants to see completed results).
+				if !cmd.Flags().Changed("all") {
+					listOpts.All = true
+				}
 				if sha != "" {
 					// SHA given: compute exact temp recipe names.
 					if err := prepareLocalList(cmd, opts, sha, prefix, &listOpts); err != nil {
