@@ -2,7 +2,7 @@
 
 A unified CLI dashboard for tracking packages, code, reviews, bugs, builds, and Launchpad project metadata across GitHub, Launchpad, and Gerrit forges.
 
-The CLI runs on top of a local HTTP API server. Shared DTO contracts live in `internal/dto/v1`, so the CLI, HTTP client, API, and future TUI/MCP consumers can reuse the same result models without depending on service packages. You can also run that server explicitly and consume its OpenAPI description at `/openapi.json` or the interactive docs UI at `/docs`.
+The CLI runs on top of a local HTTP API server. The codebase now uses a hexagonal split where `internal/adapter/primary/*` drives `internal/app`, which wires `internal/core/service/*` to `internal/adapter/secondary/*` through `internal/core/port/*`. Public reusable contracts and helpers live under `pkg/`, notably `pkg/client`, `pkg/dto/v1`, `pkg/distro/v1`, `pkg/forge/v1`, and `pkg/launchpad/v1`.
 
 ## Installation
 
@@ -61,6 +61,17 @@ watchtower bug list
 watchtower project sync --dry-run
 ```
 
+## Architecture
+
+- `cmd/watchtower` is a thin entrypoint into the CLI adapter.
+- `internal/adapter/primary/cli` contains Cobra command logic.
+- `internal/adapter/primary/api` exposes the application over HTTP/OpenAPI.
+- `internal/app` is the composition root used by the primary adapters.
+- `internal/core/port` contains interfaces only.
+- `internal/core/service/*` contains domain logic and use cases.
+- `internal/adapter/secondary/*` contains concrete integrations for git, Launchpad, caches, and OpenStack.
+- `pkg/*` contains reusable client and DTO packages that can be consumed outside the repository.
+
 ## Configuration
 
 The config file lives at `~/.config/sunbeam-watchtower/config.yaml` by default. Override with `--config <path>`.
@@ -69,11 +80,12 @@ The config file lives at `~/.config/sunbeam-watchtower/config.yaml` by default. 
 
 | Section     | Description |
 |-------------|-------------|
-| `launchpad` | Launchpad settings (`default_owner`, `use_keyring`) |
+| `launchpad` | Launchpad settings (`default_owner`, `use_keyring`, default `series`, `development_focus`) |
 | `github`    | GitHub settings (`use_keyring`) |
 | `gerrit`    | Gerrit settings (`hosts` list with `url` entries) |
 | `projects`  | List of tracked projects |
 | `build`     | Build pipeline settings (`default_prefix`, `timeout_minutes`, `artifacts_dir`) |
+| `packages`  | Package source, set, and upstream configuration |
 
 ### Project configuration
 
@@ -81,17 +93,21 @@ Each project has:
 
 ```yaml
 - name: my-project              # required, unique identifier
-  artifact_type: rock            # optional: rock, charm, or snap (required if build is set)
+  artifact_type: rock           # optional: rock, charm, or snap (required if build is set)
   code:
-    forge: github                # required: github, gerrit, or launchpad
-    owner: my-org                # required for github
+    forge: github               # required: github, gerrit, or launchpad
+    owner: my-org               # required for github
     host: https://review.dev.org # required for gerrit
-    project: my-project          # required: project name/path
+    project: my-project         # required: project name/path
     git_url: https://custom/repo # optional: explicit clone URL override
   bugs:
     - forge: launchpad
       project: my-project
-  build:                         # optional
+  series:                       # optional: Launchpad series to ensure on the project
+    - 2024.1
+    - 2024.2
+  development_focus: 2024.2     # optional: must be one of the declared series
+  build:                        # optional
     owner: my-team
     recipes:
       - recipe-name
@@ -100,17 +116,21 @@ Each project has:
 
 The `git_url` field is useful when the clone URL cannot be derived from the forge type and project name (e.g., Launchpad repos with complex paths like `~owner/project/+git/repo`).
 
-Projects tracked in Launchpad bug configuration can also declare the series that must exist on the Launchpad project plus the focus of development:
+Projects can declare the Launchpad series that must exist on the project, plus the desired focus of development:
 
 ```yaml
 - name: snap-openstack
+  code:
+    forge: github
+    owner: canonical
+    project: snap-openstack
   bugs:
     - forge: launchpad
       project: snap-openstack
-      series:
-        - 2024.1
-        - 2024.2
-      focus: 2024.2
+  series:
+    - 2024.1
+    - 2024.2
+  development_focus: 2024.2
 ```
 
 `watchtower project sync` ensures those series exist and sets the declared focus of development.

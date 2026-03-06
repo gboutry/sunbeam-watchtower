@@ -1,99 +1,70 @@
 version: 1
+
 threshold:
   compliance: 100
   coverage: 100
+
 dependenciesRules:
   - package: "**.cmd.watchtower"
-    shouldNotDependsOn:
+    shouldOnlyDependsOn:
       internal:
-        - "**.internal.adapter.**"
-        - "**.internal.service.**"
-
-  - package: "**.internal.api"
-    shouldNotDependsOn:
-      internal:
-        - "**.internal.adapter.**"
-
-  - package: "**.internal.app"
-    shouldNotDependsOn:
-      internal:
-        - "**.internal.api"
-        - "**.internal.appclient"
-        - "**.internal.cli"
-
-  - package: "**.internal.appclient"
-    shouldNotDependsOn:
-      internal:
-        - "**.internal.adapter.**"
-        - "**.internal.app"
-        - "**.internal.cli"
-        - "**.internal.service.**"
-
-  - package: "**.internal.cli"
-    shouldNotDependsOn:
-      internal:
-        - "**.internal.adapter.**"
-        - "**.internal.service.**"
-
-  - package: "**.internal.dto.**"
-    shouldNotDependsOn:
-      internal:
-        - "**.internal.adapter.**"
-        - "**.internal.api"
-        - "**.internal.app"
-        - "**.internal.appclient"
-        - "**.internal.cli"
-        - "**.internal.config"
-        - "**.internal.service.**"
+        - "**.internal.adapter.primary.**"
+        - "**.pkg.**"
 
   - package: "**.internal.config"
     shouldNotDependsOn:
       internal:
         - "**.internal.adapter.**"
-        - "**.internal.api"
         - "**.internal.app"
-        - "**.internal.appclient"
-        - "**.internal.cli"
-        - "**.internal.port"
-        - "**.internal.service.**"
+        - "**.internal.core.**"
 
-  - package: "**.internal.port"
+  - package: "**.internal.app"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.adapter.secondary.**"
+        - "**.internal.core.port.**"
+        - "**.internal.core.service.**"
+        - "**.internal.config.**"
+        - "**.pkg.**"
+
+  - package: "**.internal.core.port.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.pkg.**"
+
+  - package: "**.internal.core.service.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.core.port.**"
+        - "**.pkg.**"
+
+  - package: "**.internal.adapter.primary.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.adapter.primary.**"
+        - "**.internal.app"
+        - "**.internal.core.port.**"
+        - "**.internal.core.service.**"
+        - "**.internal.config.**"
+        - "**.pkg.**"
+
+  - package: "**.internal.adapter.secondary.**"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.adapter.secondary.**"
+        - "**.internal.core.port.**"
+        - "**.internal.config.**"
+        - "**.pkg.**"
+
+  - package: "**.pkg.**"
     shouldNotDependsOn:
       internal:
-        - "**.internal.adapter.**"
-        - "**.internal.api"
-        - "**.internal.app"
-        - "**.internal.appclient"
-        - "**.internal.cli"
-        - "**.internal.config"
-        - "**.internal.service.**"
+        - "**.internal.**"
+        - "**.cmd.**"
 
-  - package: "**.internal.pkg.**"
-    shouldNotDependsOn:
-      internal:
-        - "**.internal.adapter.**"
-        - "**.internal.api"
-        - "**.internal.app"
-        - "**.internal.appclient"
-        - "**.internal.cli"
-        - "**.internal.config"
-        - "**.internal.port"
-        - "**.internal.service.**"
+contentsRules:
+  - package: "**.internal.core.port.**"
+    shouldOnlyContainInterfaces: true
 
   - package: "**.internal.adapter.**"
-    shouldNotDependsOn:
-      internal:
-        - "**.internal.api"
-        - "**.internal.app"
-        - "**.internal.appclient"
-        - "**.internal.cli"
-        - "**.internal.service.**"
-
-  - package: "**.internal.service.**"
-    shouldNotDependsOn:
-      internal:
-        - "**.internal.adapter.**"
-        - "**.internal.api"
-        - "**.internal.app"
-        - "**.internal.cli"
-        - "**.internal.config"
+    shouldNotContainInterfaces: true

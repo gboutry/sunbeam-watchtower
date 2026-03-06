@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/cli"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/cli"
 )
 
 func main() {

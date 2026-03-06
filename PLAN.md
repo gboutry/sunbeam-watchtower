@@ -1,215 +1,115 @@
 # Sunbeam Watchtower — Plan
 
-## Architecture
+## Current architecture
 
-Hexagonal architecture: CLI → HTTP client → API server → services → adapters/ports, with shared cross-surface DTOs in `internal/dto/v1`.
+Sunbeam Watchtower now follows a stricter hexagonal layout:
 
-- **CLI** (`internal/cli/`): Thin Cobra wrappers. Parse flags, call `appclient`, render output. No business logic.
-- **API** (`internal/api/`): Huma v2 + chi HTTP handlers. All business logic accessed through service layer.
-- **App Client** (`internal/appclient/`): Typed HTTP client for CLI→server communication.
-- **DTOs** (`internal/dto/v1`): Shared application contracts reused by API, appclient, CLI rendering, and future TUI/MCP consumers.
-- **App** (`internal/app/`): Application wiring. Holds config, builds services, shared lifecycle.
-- **Services** (`internal/service/`): Domain logic (packages, bugs, bugsync, builds, commits, reviews, projects).
-- **Adapters** (`internal/adapter/`): External system integrations (git, launchpad, distrocache, gitcache).
-- **Ports** (`internal/port/`): Interface definitions for adapters.
+- **Entrypoint**: `cmd/watchtower`
+- **Primary adapters**: `internal/adapter/primary/api` and `internal/adapter/primary/cli`
+- **Composition root**: `internal/app`
+- **Core ports**: `internal/core/port` (interfaces only)
+- **Core services**: `internal/core/service/*`
+- **Secondary adapters**: `internal/adapter/secondary/*`
+- **Public reusable packages**: `pkg/client`, `pkg/dto/v1`, `pkg/distro/v1`, `pkg/forge/v1`, `pkg/launchpad/v1`
+- **Configuration loading**: `internal/config`
 
-Only `auth` remains CLI-only (interactive OAuth flow).
+The practical request from this refactor is in place:
 
-## Package Layout
+- reusable DTOs and client-facing contracts live under `pkg/`
+- `internal/core/service/*` depends only on `internal/core/port/*` and `pkg/*`
+- `internal/core/port/*` contains interfaces only
+- primary adapters do not import secondary adapters directly
+- public `pkg/*` code no longer imports `internal/*`
+- `internal/app` remains the shared wiring layer used by the CLI and HTTP API
 
-```
+## Package layout
+
+```text
+cmd/
+└── watchtower/
+    └── main.go
+
 internal/
-├── api/                        HTTP API server (Huma v2 + chi)
-│   ├── server.go               Server setup, custom schemaNamer, listener config
-│   ├── packages.go             /api/v1/packages/* (diff, show, list, dsc, rdepends, cache)
-│   ├── bugs.go                 /api/v1/bugs/* (list, get, sync)
-│   ├── reviews.go              /api/v1/reviews/* (list, get)
-│   ├── commits.go              /api/v1/commits/* (list, track)
-│   ├── builds.go               /api/v1/builds/* (trigger, list, download, cleanup)
-│   ├── projects.go             /api/v1/projects/sync
-│   ├── cache.go                /api/v1/cache/* (sync git/upstream, delete, status)
-│   └── config.go               /api/v1/config
-│
-├── appclient/                  Typed HTTP client (CLI→server)
-│   ├── client.go               Base client (unix socket or TCP), get/post/delete helpers
-│   ├── packages.go             PackagesDiff, PackagesShow, PackagesList, ...
-│   ├── bugs.go                 BugsList, BugsGet, BugsSync
-│   ├── reviews.go              ReviewsList, ReviewsGet
-│   ├── commits.go              CommitsList, CommitsTrack
-│   ├── builds.go               BuildsTrigger, BuildsList, BuildsDownload, BuildsCleanup
-│   ├── projects.go             ProjectsSync
-│   ├── cache.go                CacheSyncGit, CacheSyncUpstream, CacheDelete, CacheStatus
-│   └── config.go               ConfigShow
-│
-├── dto/                        Shared app-facing DTO contracts
-│   └── v1/                     Reusable result/action models for builds, bugs, packages, projects
-│
-├── app/                        Application wiring
-│   └── app.go                  App struct, service construction, BuildPackageSources
-│
-├── cli/                        Thin Cobra CLI (flags → appclient → render)
-│   ├── root.go                 Global flags, embedded server lifecycle, env vars
-│   ├── serve.go                `watchtower serve` (standalone HTTP server)
-│   ├── packages.go             packages diff/show/list/dsc/rdepends commands
-│   ├── bug.go                  bug list/get/sync commands
-│   ├── review.go               review list/get commands
-│   ├── commit.go               commit log/track commands
-│   ├── build.go                build trigger/list/download/cleanup commands
-│   ├── project.go              project sync command
-│   ├── cache.go                cache sync/clear/status commands
-│   ├── config_cmd.go           config show command
-│   ├── auth.go                 OAuth flow (CLI-only, no API)
-│   ├── output.go               Table/JSON/YAML renderers
-│   └── version.go              Version command
-│
-├── service/                    Domain logic
-│   ├── package/                Package diff, show, list, rdepends, dsc
-│   ├── bug/                    Bug tracking across LP/GitHub
-│   ├── bugsync/                Bug sync orchestration
-│   ├── build/                  Recipe builds (trigger, list, download, cleanup)
-│   ├── commit/                 Commit log and tracking
-│   ├── review/                 Merge request reviews
-│   └── project/                LP project sync (series, focus of development)
-│
-├── adapter/                    External system integrations
-│   ├── git/                    Git operations
-│   ├── gitcache/               Local git cache management
-│   ├── distrocache/            Package index cache
-│   ├── launchpad/              Launchpad API client
-│   └── openstack/              Gerrit/OpenStack forge
-│
-├── port/                       Interface definitions
-│   └── build.go                Build, Recipe, BuildRequest interfaces
-│
-├── config/                     YAML config parsing
-└── pkg/                        Shared domain types
-    ├── forge/v1/               MergeRequest, Commit, BugRef types
-    ├── distro/v1/              Package, Source types
-    └── launchpad/v1/           LP API types
+├── adapter/
+│   ├── primary/
+│   │   ├── api/
+│   │   └── cli/
+│   └── secondary/
+│       ├── distrocache/
+│       ├── git/
+│       ├── gitcache/
+│       ├── launchpad/
+│       └── openstack/
+├── app/
+├── config/
+└── core/
+    ├── port/
+    └── service/
+        ├── bug/
+        ├── bugsync/
+        ├── build/
+        ├── commit/
+        ├── package/
+        ├── project/
+        └── review/
+
+pkg/
+├── client/
+├── distro/v1/
+├── dto/v1/
+├── forge/v1/
+└── launchpad/v1/
 ```
 
-## API Endpoints
+## Architecture rules enforced in CI
 
-All served under Huma v2 with auto-generated OpenAPI spec:
+- `arch-go` enforces the package dependency model above with 100% compliance and coverage.
+- `depguard` mirrors the same boundaries in `golangci-lint`:
+  - `cmd/watchtower` enters through primary adapters only
+  - primary adapters do not import secondary adapters
+  - core services do not import adapters, config, or app wiring
+  - secondary adapters do not import primary adapters or core services
+  - public `pkg/*` packages stay independent from `internal/*`
+- `internal/adapter/*` packages are implementation packages and must not define interfaces.
+- `internal/core/port/*` is reserved for interfaces only.
+
+## API surface
+
+The HTTP API remains the application boundary for non-CLI consumers.
+
 - `GET /openapi.json` — OpenAPI 3.1 spec
-- `GET /docs` — Stoplight Elements interactive docs UI
+- `GET /docs` — interactive docs UI
 - `GET /api/v1/health` — health check
+- `GET /api/v1/packages/*` / `POST /api/v1/packages/cache/sync`
+- `GET /api/v1/bugs*` / `POST /api/v1/bugs/sync`
+- `GET /api/v1/reviews*`
+- `GET /api/v1/commits*`
+- `POST /api/v1/builds/*` / `GET /api/v1/builds`
+- `POST /api/v1/projects/sync`
+- `POST /api/v1/cache/*` / `DELETE /api/v1/cache/{type}` / `GET /api/v1/cache/status`
+- `GET /api/v1/config`
 
-### Packages
-- `GET /api/v1/packages/diff/{set}` — package diff across sources
-- `GET /api/v1/packages/show/{name}` — show package details
-- `GET /api/v1/packages/list` — list all packages
-- `GET /api/v1/packages/dsc` — find .dsc files
-- `GET /api/v1/packages/rdepends/{name}` — reverse dependencies
-- `GET /api/v1/packages/cache/status` — package cache status
-- `POST /api/v1/packages/cache/sync` — sync package index cache
+## Recent refactor outcomes
 
-### Bugs
-- `GET /api/v1/bugs` — list bugs
-- `GET /api/v1/bugs/{id}` — get bug details
-- `POST /api/v1/bugs/sync` — sync bugs from trackers
+- migrated the old `internal/api`, `internal/cli`, `internal/service`, and `internal/port` layout into the new `internal/adapter/*` and `internal/core/*` split
+- moved reusable client and contract packages to root `pkg/`
+- introduced public config DTOs under `pkg/dto/v1`, so `pkg/client` no longer leaks `internal/config`
+- removed the remaining core-service boundary leak by making bug sync consume `port.CommitSource` instead of commit-service types
+- preserved existing command and API behavior while tightening architecture linting
 
-### Reviews
-- `GET /api/v1/reviews` — list merge requests
-- `GET /api/v1/reviews/{project}/{id}` — get merge request details
+## Validation
 
-### Commits
-- `GET /api/v1/commits` — list commits
-- `GET /api/v1/commits/track` — track commits across forges
+The refactor is currently validated by all of the following:
 
-### Builds
-- `POST /api/v1/builds/trigger` — trigger recipe builds
-- `GET /api/v1/builds` — list builds
-- `POST /api/v1/builds/download` — download build artifacts
-- `POST /api/v1/builds/cleanup` — cleanup old builds
+- `go test ./...`
+- `golangci-lint run ./...`
+- `arch-go --color no`
+- `pre-commit run --all-files`
 
-### Projects
-- `POST /api/v1/projects/sync` — sync LP projects (series, focus of development)
+## Remaining follow-ups
 
-### Cache
-- `POST /api/v1/cache/sync/git` — sync git cache
-- `POST /api/v1/cache/sync/upstream` — sync upstream repos
-- `DELETE /api/v1/cache/{type}` — clear cache by type
-- `GET /api/v1/cache/status` — cache status
+These are still the main gaps before TUI and MCP work:
 
-### Config
-- `GET /api/v1/config` — show current config
-
-## Design Principles
-- Hexagonal architecture — no contamination of concerns
-- CLI only imports `appclient`, `config`, presentation helpers
-- RESTful where natural (GET for reads, POST for mutations)
-- JSON responses always; CLI handles table rendering
-- Consistent error format: `{"title": "...", "status": N, "detail": "..."}`
-- All types have `json` + `doc` tags for OpenAPI spec quality
-- Custom `schemaNamer` resolves cross-package Huma type name collisions
-
-## Roadmap
-
-### Planned Consumers
-All built on top of the HTTP API:
-- **MCP Server** — Model Context Protocol server for AI agent integration
-- **TUI Dashboard** — Terminal UI for real-time monitoring
-- **Prometheus Exporter** — Metrics endpoint for observability
-
-### Architecture review follow-ups
-- `internal/pkg/*` remains a good home for reusable internal libraries, and `internal/pkg` -> `internal/pkg` dependencies are acceptable as long as they stay acyclic and independent from repo-specific layers.
-- Boundary fixes completed:
-  - build and project API handlers now obtain services from `internal/app` instead of constructing adapters directly
-  - distro Sources parsing helpers now live in `internal/pkg/distro/v1`, so services no longer depend on adapter helpers
-  - commit source metadata no longer depends on `internal/config` types
-  - `depguard` now enforces key `internal/api`, `internal/service`, and `internal/pkg` import boundaries in CI/lint
-- `arch-go` is now wired with `arch-go.yml` and pre-commit to enforce whole-module dependency boundaries across `cmd`, `api`, `app`, `appclient`, `cli`, `config`, `port`, `pkg`, `adapter`, and `service`.
-- Shared reusable DTOs now live in `internal/dto/v1`, so `cli` and `appclient` no longer depend on `service/*` just to share result models.
-- `depguard` and `arch-go` now enforce that `internal/cli` and `internal/appclient` do not import `internal/service/*`, and that `internal/dto` stays independent from concrete layers.
-- The next refactor step should extend the same factory pattern across the remaining API domains for consistency.
-- MCP/TUI readiness gaps:
-  - auth is still CLI-only
-  - no async/progress/event abstraction for long-running sync/build operations
-  - no application-facing service façade for non-HTTP consumers
-
-### Auth rework
-Auth needs to be reworked to fit the new architecture:
-- Move from CLI-only to API-based auth management
-- Implement token issuance, revocation, and storage via API
-- Ensure secure handling of credentials and tokens
-
-or should we keep it CLI-only for simplicity? We can revisit if API-based auth becomes a requirement.
-
-## Developer Tooling
-
-### Pre-commit Hooks (`.pre-commit-config.yaml`)
-- `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-merge-conflict`, `check-added-large-files`
-- `golangci-lint` (v2, with `--fix`)
-- `go build`, `go test`, `go mod tidy`
-
-### Linting (`.golangci.yml`, v2 format)
-- Standard linters + bodyclose, copyloopvar, durationcheck, errname, errorlint, fatcontext, gosec, misspell, nilerr, prealloc, predeclared, unconvert, wastedassign
-- Formatters: gofmt + goimports
-- Test files excluded from errcheck, gosec, prealloc, errorlint
-- Gosec false positives/policy exceptions suppressed (G101, G107, G117, G204, G301, G304, G306, G402, G704)
-
-## Completed Work
-
-### HTTP Server Refactor
-- **Phase 1** ✅ — Server skeleton + packages + bugs domains
-- **Phase 2** ✅ — Reviews, commits, builds, projects, cache, config domains
-- `factory.go` deleted — all wiring via `app.App` → API handlers
-
-### Code Quality
-- Pre-commit hooks + golangci-lint v2 configuration
-- Dead code cleanup (5 unused functions removed)
-- Lint fixes: errcheck, nilerr, ineffassign, gofmt
-- Security hardening: cryptographic OAuth nonce generation and `ReadHeaderTimeout` on the HTTP server
-
-### Unit Tests
-- `internal/api/server_test.go` — 11 tests (server lifecycle, endpoints, parsers)
-- `internal/app/app_test.go` — 7 tests (pure functions)
-- `internal/appclient/client_test.go` — 11 tests (HTTP client)
-
-### Earlier Features
-- Config restructure, backport suite expansion, parent release inference
-- Per-source filtering, 3-state backport filter, `--only-in` auto-inference
-- Environment variable support (`WATCHTOWER_` prefix)
-- Structured JSON/YAML output for all commands
-- LP project sync (series assignment, focus of development)
+- auth is still CLI-driven rather than application-surface driven
+- long-running operations do not yet expose reusable async/progress/event primitives
+- `internal/app` is still the shared composition root; TUI/MCP will likely want a dedicated application facade on top of the core services

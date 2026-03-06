@@ -16,21 +16,21 @@ import (
 	"github.com/andygrunwald/go-gerrit"
 	"github.com/google/go-github/v68/github"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/distrocache"
-	adaptergit "github.com/gboutry/sunbeam-watchtower/internal/adapter/git"
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/gitcache"
-	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/launchpad"
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/openstack"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/distrocache"
+	adaptergit "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/git"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/gitcache"
+	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/launchpad"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/openstack"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
-	dto "github.com/gboutry/sunbeam-watchtower/internal/dto/v1"
-	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
-	lp "github.com/gboutry/sunbeam-watchtower/internal/pkg/launchpad/v1"
-	"github.com/gboutry/sunbeam-watchtower/internal/port"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/bug"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/commit"
-	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
-	"github.com/gboutry/sunbeam-watchtower/internal/service/review"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bug"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/commit"
+	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/project"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/review"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
+	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
 
 var ErrLaunchpadAuthRequired = errors.New("launchpad authentication required")
@@ -166,11 +166,11 @@ func MRGitRef(forgeName string, mrID string) string {
 	}
 }
 
-// ConvertToMRMetadata converts forge MergeRequests to port.MRMetadata entries.
-func ConvertToMRMetadata(mrs []forge.MergeRequest, forgeName string) []port.MRMetadata {
-	result := make([]port.MRMetadata, 0, len(mrs))
+// ConvertToMRMetadata converts forge MergeRequests to dto.MRMetadata entries.
+func ConvertToMRMetadata(mrs []forge.MergeRequest, forgeName string) []dto.MRMetadata {
+	result := make([]dto.MRMetadata, 0, len(mrs))
 	for _, mr := range mrs {
-		result = append(result, port.MRMetadata{
+		result = append(result, dto.MRMetadata{
 			ID:     mr.ID,
 			State:  mr.State,
 			URL:    mr.URL,
@@ -472,7 +472,7 @@ func (a *App) BuildUpstreamProvider() (port.UpstreamProvider, error) {
 }
 
 // BuildCommitSources creates commit sources backed by the local git cache.
-func (a *App) BuildCommitSources() (map[string]commit.ProjectSource, error) {
+func (a *App) BuildCommitSources() (map[string]port.CommitSource, error) {
 	cfg := a.Config
 	if cfg == nil {
 		return nil, fmt.Errorf("no configuration loaded")
@@ -485,7 +485,7 @@ func (a *App) BuildCommitSources() (map[string]commit.ProjectSource, error) {
 		return nil, err
 	}
 
-	result := make(map[string]commit.ProjectSource, len(cfg.Projects))
+	result := make(map[string]port.CommitSource, len(cfg.Projects))
 	for _, proj := range cfg.Projects {
 		cloneURL, err := proj.Code.CloneURL()
 		if err != nil {
@@ -495,14 +495,11 @@ func (a *App) BuildCommitSources() (map[string]commit.ProjectSource, error) {
 		a.Logger.Debug("configured commit source", "project", proj.Name, "cloneURL", cloneURL)
 
 		forgeType := ForgeTypeFromConfig(proj.Code.Forge)
-		result[proj.Name] = commit.ProjectSource{
-			Source: &commit.CachedGitSource{
-				Cache:     cache,
-				CloneURL:  cloneURL,
-				ForgeType: forgeType,
-				CommitURL: proj.Code.CommitURL,
-			},
-			ForgeType: forgeType,
+		result[proj.Name] = &commit.CachedGitSource{
+			Cache:     cache,
+			CloneURL:  cloneURL,
+			Type:      forgeType,
+			CommitURL: proj.Code.CommitURL,
 		}
 	}
 
@@ -597,7 +594,7 @@ func (a *App) BuildPackageSources(distros, releases, suites, backports []string)
 			effectiveFilterReleases = len(effectiveRelFilter) > 0
 		}
 
-		var entries []port.SourceEntry
+		var entries []dto.SourceEntry
 		for relName, rel := range d.Releases {
 			if effectiveFilterReleases && !effectiveRelFilter[relName] {
 				continue
@@ -610,7 +607,7 @@ func (a *App) BuildPackageSources(distros, releases, suites, backports []string)
 					}
 					fullSuite := config.ExpandSuiteType(relName, suiteType)
 					for _, comp := range d.Components {
-						entries = append(entries, port.SourceEntry{
+						entries = append(entries, dto.SourceEntry{
 							Mirror:    d.Mirror,
 							Suite:     fullSuite,
 							Component: comp,
@@ -629,12 +626,12 @@ func (a *App) BuildPackageSources(distros, releases, suites, backports []string)
 					continue
 				}
 				qualifiedName := name + "/" + bpName
-				var bpEntries []port.SourceEntry
+				var bpEntries []dto.SourceEntry
 				for _, src := range bp.Sources {
 					for _, suite := range src.Suites {
 						expandedSuite := config.ExpandBackportSuiteType(relName, bpName, suite)
 						for _, comp := range src.Components {
-							bpEntries = append(bpEntries, port.SourceEntry{
+							bpEntries = append(bpEntries, dto.SourceEntry{
 								Mirror:    src.Mirror,
 								Suite:     expandedSuite,
 								Component: comp,

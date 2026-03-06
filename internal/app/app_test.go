@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
-	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
+	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
 func TestForgeTypeFromConfig(t *testing.T) {
