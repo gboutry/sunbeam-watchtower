@@ -108,6 +108,8 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - moved Launchpad auth behind core ports and an `internal/core/service/auth` application service
 - added Launchpad auth API/client flows with server-side pending auth state, opaque flow IDs, and no token secrets in API DTOs
 - made CLI `auth login|status|logout` a thin adapter over the application/API auth surface instead of directly owning OAuth + credential persistence
+- added direct adapter tests for Launchpad credential persistence, pending auth flow storage, and the Launchpad auth adapter so the new auth boundary has focused secondary-adapter coverage
+- added HTTP tests for the Launchpad auth API endpoints so begin/finalize/logout/status flows now have primary-adapter coverage too
 
 ## Validation
 
