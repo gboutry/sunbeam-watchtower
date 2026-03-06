@@ -186,6 +186,7 @@ type BuildTriggerResult struct {
 type BuildRecipeResult struct {
 	Name         string            `json:"name" yaml:"name"`
 	Action       BuildRecipeAction `json:"action" yaml:"action"`
+	Recipe       *Recipe           `json:"-" yaml:"-"`
 	BuildRequest *BuildRequest     `json:"build_request,omitempty" yaml:"build_request,omitempty"`
 	Builds       []Build           `json:"builds,omitempty" yaml:"builds,omitempty"`
 	Error        error             `json:"-" yaml:"-"`

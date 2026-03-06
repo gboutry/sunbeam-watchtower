@@ -276,8 +276,8 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		result.RecipeResults = append(result.RecipeResults, rr)
 
 		// Collect recipe pointers for wait loop.
-		if rr.Error == nil && status.Recipe != nil {
-			recipePtrs = append(recipePtrs, status.Recipe)
+		if rr.Error == nil && rr.Recipe != nil {
+			recipePtrs = append(recipePtrs, rr.Recipe)
 		}
 	}
 
@@ -347,7 +347,7 @@ func (s *Service) assessRecipe(ctx context.Context, pb ProjectBuilder, recipeNam
 }
 
 func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status RecipeStatus, opts TriggerOpts, repoSelfLink, gitRefLink, buildPath string) RecipeResult {
-	result := RecipeResult{Name: status.Name, Action: status.Action}
+	result := RecipeResult{Name: status.Name, Action: status.Action, Recipe: status.Recipe}
 
 	switch status.Action {
 	case ActionCreateRecipe:
@@ -371,6 +371,7 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 			result.Error = fmt.Errorf("create recipe %q: %w", status.Name, err)
 			return result
 		}
+		result.Recipe = recipe
 		br, err := pb.Builder.RequestBuilds(ctx, recipe, buildOpts(opts))
 		result.BuildRequest = br
 		if err != nil {
