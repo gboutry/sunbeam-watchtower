@@ -1,0 +1,176 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+)
+
+func TestAuthStatusCmd_PrintsAuthenticatedUser(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/auth/status" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		_ = json.NewEncoder(w).Encode(dto.AuthStatus{
+			Launchpad: dto.LaunchpadAuthStatus{
+				Authenticated: true,
+				Username:      "jdoe",
+				DisplayName:   "Jane Doe",
+				Source:        "file",
+			},
+		})
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &bytes.Buffer{},
+		Output: "table",
+		Client: client.NewClient(ts.URL),
+	}
+
+	cmd := newAuthCmd(opts)
+	cmd.SetArgs([]string{"status"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Authenticated as: Jane Doe (jdoe)") || !strings.Contains(output, "Source: file") {
+		t.Fatalf("unexpected output: %q", output)
+	}
+}
+
+func TestAuthLoginCmd_CompletesFlow(t *testing.T) {
+	var finalizePayload map[string]string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/launchpad/begin":
+			_ = json.NewEncoder(w).Encode(dto.LaunchpadAuthBeginResult{
+				FlowID:       "flow-123",
+				AuthorizeURL: "https://launchpad.net/+authorize-token?oauth_token=req-token",
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/launchpad/finalize":
+			if err := json.NewDecoder(r.Body).Decode(&finalizePayload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(dto.LaunchpadAuthFinalizeResult{
+				Launchpad: dto.LaunchpadAuthStatus{
+					Authenticated:   true,
+					Username:        "jdoe",
+					DisplayName:     "Jane Doe",
+					CredentialsPath: "/tmp/launchpad-creds",
+				},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &bytes.Buffer{},
+		Output: "table",
+		Client: client.NewClient(ts.URL),
+	}
+
+	cmd := newAuthCmd(opts)
+	cmd.SetIn(strings.NewReader("\n"))
+	cmd.SetArgs([]string{"login"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if finalizePayload["flow_id"] != "flow-123" {
+		t.Fatalf("flow_id = %q, want flow-123", finalizePayload["flow_id"])
+	}
+	output := out.String()
+	if !strings.Contains(output, "Starting Launchpad OAuth flow") ||
+		!strings.Contains(output, "https://launchpad.net/+authorize-token?oauth_token=req-token") ||
+		!strings.Contains(output, "Authenticated as: Jane Doe (jdoe)") ||
+		!strings.Contains(output, "Credentials saved to /tmp/launchpad-creds") {
+		t.Fatalf("unexpected output: %q", output)
+	}
+}
+
+func TestAuthLogoutCmd_PrintsRemovedPath(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/auth/launchpad/logout" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		_ = json.NewEncoder(w).Encode(dto.LaunchpadAuthLogoutResult{
+			Cleared:         true,
+			CredentialsPath: "/tmp/launchpad-creds",
+		})
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &bytes.Buffer{},
+		Output: "table",
+		Client: client.NewClient(ts.URL),
+	}
+
+	cmd := newAuthCmd(opts)
+	cmd.SetArgs([]string{"logout"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if !strings.Contains(out.String(), "Removed Launchpad credentials from /tmp/launchpad-creds") {
+		t.Fatalf("unexpected output: %q", out.String())
+	}
+}
+
+func TestBuildListCmd_RendersBuildsFromAPI(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/builds" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if got := r.URL.Query().Get("state"); got != "building" {
+			t.Fatalf("state = %q, want building", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"builds": []dto.Build{{
+				Project:      "demo",
+				Recipe:       "my-rock",
+				ArtifactType: dto.ArtifactRock,
+				State:        dto.BuildBuilding,
+				Arch:         "amd64",
+				WebLink:      "https://launchpad.net/build/1",
+			}},
+		})
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &bytes.Buffer{},
+		Output: "table",
+		Client: client.NewClient(ts.URL),
+	}
+
+	cmd := newBuildCmd(opts)
+	cmd.SetArgs([]string{"list", "--state", "building"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "PROJECT") || !strings.Contains(output, "demo") || !strings.Contains(output, "my-rock") || !strings.Contains(output, "building") {
+		t.Fatalf("unexpected output: %q", output)
+	}
+}

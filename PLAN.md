@@ -110,6 +110,10 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - made CLI `auth login|status|logout` a thin adapter over the application/API auth surface instead of directly owning OAuth + credential persistence
 - added direct adapter tests for Launchpad credential persistence, pending auth flow storage, and the Launchpad auth adapter so the new auth boundary has focused secondary-adapter coverage
 - added HTTP tests for the Launchpad auth API endpoints so begin/finalize/logout/status flows now have primary-adapter coverage too
+- added focused Launchpad repo/project manager tests covering current-user lookup, default-repo fallback, project/repo create-or-reuse flows, git-ref resolution, project series handling, and development-focus updates
+- added focused Launchpad snap/charm/rock builder tests covering recipe creation/listing, build requests, build listing, artifact URL lookup, and retry/cancel/delete actions
+- added primary-adapter tests for build/cache/project endpoints covering build-list success, invalid timeout validation, invalid excuses tracker validation, cache-status wiring, and project-sync auth-required handling
+- added CLI execution tests for `auth login|status|logout` plus a build-list rendering path backed by a stubbed HTTP API
 
 ## Validation
 
