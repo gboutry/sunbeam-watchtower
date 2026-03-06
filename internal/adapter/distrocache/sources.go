@@ -291,21 +291,6 @@ func decompressReader(r io.Reader, format string) (io.Reader, error) {
 	}
 }
 
-// parseSourcesFile opens and parses a compressed Sources file from disk.
-func parseSourcesFile(path, format, suite, component string) ([]distro.SourcePackage, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("opening sources file: %w", err)
-	}
-	defer f.Close()
-
-	reader, err := decompressReader(f, format)
-	if err != nil {
-		return nil, fmt.Errorf("decompressing: %w", err)
-	}
-	return ParseSources(reader, suite, component)
-}
-
 // sourcesURL builds the URL for a Sources index file.
 func sourcesURL(mirror, suite, component, format string) string {
 	return fmt.Sprintf("%s/dists/%s/%s/source/Sources.%s",

@@ -73,7 +73,7 @@ func (m *mockCache) CacheDir() string {
 	}
 	return "/tmp/test"
 }
-func (m *mockCache) Close() error     { return nil }
+func (m *mockCache) Close() error { return nil }
 
 func (m *mockCache) QueryDetailed(_ context.Context, name string, opts port.QueryOpts) ([]distro.SourcePackageDetail, error) {
 	pkgs := m.detailedData[name]

@@ -36,7 +36,7 @@ func (m *mockBugTracker) ListBugTasks(_ context.Context, _ string, _ forge.ListB
 }
 
 func (m *mockBugTracker) UpdateBugTaskStatus(_ context.Context, _, _ string) error { return nil }
-func (m *mockBugTracker) AddBugTask(_ context.Context, _ int, _ string) error     { return nil }
+func (m *mockBugTracker) AddBugTask(_ context.Context, _ int, _ string) error      { return nil }
 func (m *mockBugTracker) GetProjectSeries(_ context.Context, _ string) ([]forge.ProjectSeries, error) {
 	return nil, nil
 }

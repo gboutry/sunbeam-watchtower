@@ -59,10 +59,14 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			}
 
 			if len(requests) > 0 {
-				renderBuildRequests(opts.Out, opts.Output, requests)
+				if err := renderBuildRequests(opts.Out, opts.Output, requests); err != nil {
+					return err
+				}
 			}
 			if len(builds) > 0 {
-				renderBuilds(opts.Out, opts.Output, builds)
+				if err := renderBuilds(opts.Out, opts.Output, builds); err != nil {
+					return err
+				}
 			}
 
 			return nil

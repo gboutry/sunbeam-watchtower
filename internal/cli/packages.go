@@ -352,18 +352,6 @@ func renderSourcePackagesTable(w io.Writer, pkgs []distro.SourcePackage) error {
 	return tw.Flush()
 }
 
-// renderCacheStatus writes cache status in the requested format.
-func renderCacheStatus(w io.Writer, format string, statuses []port.CacheStatus) error {
-	switch format {
-	case "json":
-		return renderJSON(w, statuses)
-	case "yaml":
-		return renderYAML(w, statuses)
-	default:
-		return renderCacheStatusTable(w, statuses)
-	}
-}
-
 func renderCacheStatusTable(w io.Writer, statuses []port.CacheStatus) error {
 	if len(statuses) == 0 {
 		fmt.Fprintln(w, "No cached sources found.")

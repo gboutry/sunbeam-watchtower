@@ -27,6 +27,6 @@ type SourcePackageFiles struct {
 
 // VersionComparison holds one package's versions across all queried sources.
 type VersionComparison struct {
-	Package  string                      `json:"package" yaml:"package"`
-	Versions map[string][]SourcePackage  `json:"versions" yaml:"versions"` // keyed by distro/backport name
+	Package  string                     `json:"package" yaml:"package"`
+	Versions map[string][]SourcePackage `json:"versions" yaml:"versions"` // keyed by distro/backport name
 }

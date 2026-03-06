@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
@@ -34,9 +32,4 @@ func newConfigShowCmd(opts *Options) *cobra.Command {
 			}
 		},
 	}
-}
-
-// renderConfigError returns a formatted error for missing configuration.
-func renderConfigError() error {
-	return fmt.Errorf("no configuration loaded")
 }

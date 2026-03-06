@@ -22,9 +22,9 @@ type DiffOpts struct {
 
 // DiffResult holds one package's versions across all queried sources.
 type DiffResult struct {
-	Package  string                           `json:"package" yaml:"package"`
+	Package  string                            `json:"package" yaml:"package"`
 	Versions map[string][]distro.SourcePackage `json:"versions" yaml:"versions"` // source name → versions
-	Upstream string                           `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+	Upstream string                            `json:"upstream,omitempty" yaml:"upstream,omitempty"`
 }
 
 // Diff compares package versions across multiple sources.

@@ -299,7 +299,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
 			_ = filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
-					return nil
+					return err
 				}
 				if !info.IsDir() || !isBareGitRepo(path) {
 					return nil

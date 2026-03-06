@@ -329,8 +329,11 @@ func (c *Cache) updateMeta(name string) error {
 // dirSize computes the total size of files in a directory.
 func dirSize(path string) int64 {
 	var size int64
-	filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
 			return nil
 		}
 		size += info.Size()

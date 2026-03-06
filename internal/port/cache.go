@@ -16,11 +16,11 @@ type SyncOptions struct {
 
 // MRMetadata stores merge request information as a sidecar to the cached repo.
 type MRMetadata struct {
-	ID      string          `json:"id"`
+	ID      string           `json:"id"`
 	State   forge.MergeState `json:"state"`
-	URL     string          `json:"url"`
-	HeadSHA string          `json:"head_sha"`
-	GitRef  string          `json:"git_ref"` // e.g. "refs/pull/123/head"
+	URL     string           `json:"url"`
+	HeadSHA string           `json:"head_sha"`
+	GitRef  string           `json:"git_ref"` // e.g. "refs/pull/123/head"
 }
 
 // GitRepoCache manages local bare git clones used for reading commit history.

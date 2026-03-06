@@ -6,6 +6,7 @@ package gitcache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -138,7 +139,7 @@ func (c *Cache) fetchRepo(ctx context.Context, path string, opts *port.SyncOptio
 
 	// Default fetch (branches).
 	err = repo.FetchContext(ctx, &git.FetchOptions{})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("fetching: %w", err)
 	}
 
@@ -152,7 +153,7 @@ func (c *Cache) fetchRepo(ctx context.Context, path string, opts *port.SyncOptio
 		err = repo.FetchContext(ctx, &git.FetchOptions{
 			RefSpecs: refSpecs,
 		})
-		if err != nil && err != git.NoErrAlreadyUpToDate {
+		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 			c.logger.Warn("extra refspec fetch failed", "path", path, "error", err)
 		}
 	}

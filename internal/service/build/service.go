@@ -63,11 +63,11 @@ type TriggerResult struct {
 
 // RecipeResult holds the result of a single recipe action.
 type RecipeResult struct {
-	Name         string            `json:"name" yaml:"name"`
-	Action       RecipeAction      `json:"action" yaml:"action"`
+	Name         string             `json:"name" yaml:"name"`
+	Action       RecipeAction       `json:"action" yaml:"action"`
 	BuildRequest *port.BuildRequest `json:"build_request,omitempty" yaml:"build_request,omitempty"`
-	Builds       []port.Build      `json:"builds,omitempty" yaml:"builds,omitempty"`
-	Error        error             `json:"-" yaml:"-"`
+	Builds       []port.Build       `json:"builds,omitempty" yaml:"builds,omitempty"`
+	Error        error              `json:"-" yaml:"-"`
 }
 
 // ListOpts holds options for listing builds.

@@ -40,10 +40,11 @@ func TestGetPerson(t *testing.T) {
 	})
 	defer server.Close()
 
-	p, err := c.GetPerson(context.Background(), server.URL+"/~jdoe")
+	_, err := c.GetPerson(context.Background(), server.URL+"/~jdoe")
+	_ = err
 	// We use the full URL here because GetPerson prepends /~
 	// Instead, test with the raw URL approach:
-	p = Person{}
+	var p Person
 	err = c.GetJSON(context.Background(), server.URL+"/~jdoe", &p)
 	if err != nil {
 		t.Fatalf("error: %v", err)

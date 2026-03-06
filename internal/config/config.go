@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -91,9 +92,9 @@ type ReleaseConfig struct {
 
 // DistroConfig defines an APT distribution (e.g. Ubuntu, Debian).
 type DistroConfig struct {
-	Mirror     string                    `mapstructure:"mirror" yaml:"mirror"`
-	Components []string                  `mapstructure:"components" yaml:"components"`
-	Releases   map[string]ReleaseConfig  `mapstructure:"releases" yaml:"releases"`
+	Mirror     string                   `mapstructure:"mirror" yaml:"mirror"`
+	Components []string                 `mapstructure:"components" yaml:"components"`
+	Releases   map[string]ReleaseConfig `mapstructure:"releases" yaml:"releases"`
 }
 
 // BackportConfig defines a backport source group (e.g. UCA, OSBPO).
@@ -179,7 +180,8 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+		var configFileNotFoundError viper.ConfigFileNotFoundError
+		if errors.As(err, &configFileNotFoundError) {
 			return defaults(v)
 		}
 		// If an explicit path was given and it doesn't exist, that's an error.

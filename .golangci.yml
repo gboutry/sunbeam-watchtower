@@ -1,0 +1,58 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - durationcheck
+    - errname
+    - errorlint
+    - fatcontext
+    - gosec
+    - misspell
+    - nilerr
+    - prealloc
+    - predeclared
+    - unconvert
+    - wastedassign
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gosec:
+      excludes:
+        - G101  # false positive on OAuth URL constants
+        - G104  # already covered by errcheck
+        - G107  # HTTP requests with variable URLs are expected (API client)
+        - G112  # ReadHeaderTimeout not needed for local-only embedded server
+        - G117  # false positive on OAuth struct fields
+        - G204  # subprocess with variable args is expected (git commands)
+        - G301  # 0755 dirs are fine for cache
+        - G304  # file path from variable is expected
+        - G306  # 0644 files are fine for cache metadata
+        - G402  # TLS min version — we rely on Go defaults
+        - G404  # weak random for OAuth nonce is fine
+        - G704  # SSRF via taint — our HTTP clients use controlled URLs
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - prealloc
+          - errorlint
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

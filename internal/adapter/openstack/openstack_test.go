@@ -46,7 +46,7 @@ func TestParseConstraints(t *testing.T) {
 alembic===1.13.1
 amqp===5.2.0;python_version>='3.0'
 aodhclient===3.6.0
- 
+
 # Another comment
 numpy===1.26.4
 `)

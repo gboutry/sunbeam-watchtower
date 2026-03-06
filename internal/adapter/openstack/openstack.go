@@ -38,8 +38,8 @@ func NewProvider(releasesDir, requirementsDir string) *Provider {
 // deliverableFile represents the YAML structure of a deliverables file in the
 // openstack/releases repository.
 type deliverableFile struct {
-	Team     string            `yaml:"team"`
-	Type     string            `yaml:"type"`
+	Team     string               `yaml:"team"`
+	Type     string               `yaml:"type"`
 	Releases []deliverableRelease `yaml:"releases"`
 }
 

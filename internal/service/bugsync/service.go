@@ -24,9 +24,9 @@ type ActionType string
 func (ActionType) SchemaName() string { return "BugSyncActionType" }
 
 const (
-	ActionStatusUpdate      ActionType = "status_update"
-	ActionSeriesAssignment  ActionType = "series_assignment"
-	ActionAddProjectTask    ActionType = "add_project_task"
+	ActionStatusUpdate     ActionType = "status_update"
+	ActionSeriesAssignment ActionType = "series_assignment"
+	ActionAddProjectTask   ActionType = "add_project_task"
 )
 
 // SyncAction represents a single action taken (or planned) during sync.
@@ -54,17 +54,17 @@ type SyncResult struct {
 
 // SyncOptions controls the sync behavior.
 type SyncOptions struct {
-	Projects []string   // filter to these watchtower project names (empty = all)
+	Projects []string // filter to these watchtower project names (empty = all)
 	DryRun   bool
 	Since    *time.Time // only consider commits after this time
 }
 
 // BugBranch tracks which bug was found on which branch of which project.
 type BugBranch struct {
-	BugID      string
-	Project    string          // watchtower project name
-	Branch     string          // "main", "stable/2024.1", etc.
-	RefType    forge.BugRefType // strongest ref type for this occurrence
+	BugID   string
+	Project string           // watchtower project name
+	Branch  string           // "main", "stable/2024.1", etc.
+	RefType forge.BugRefType // strongest ref type for this occurrence
 }
 
 // Service performs bug status synchronization from cached commits to LP.
@@ -73,11 +73,11 @@ type Service struct {
 	bugTracker    port.BugTracker
 	lpProjects    []string // LP project names for searchTasks queries
 	// Maps watchtower project name → LP bug project names.
-	lpProjectMap  map[string][]string
-	logger        *slog.Logger
+	lpProjectMap map[string][]string
+	logger       *slog.Logger
 
 	// Caches to avoid redundant API calls.
-	projectCache map[string]*forge.Project       // lpProject → Project
+	projectCache map[string]*forge.Project        // lpProject → Project
 	seriesCache  map[string][]forge.ProjectSeries // lpProject → series list
 }
 

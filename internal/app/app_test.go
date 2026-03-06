@@ -35,9 +35,9 @@ func TestForgeTypeFromConfig(t *testing.T) {
 
 func TestMRRefSpecs(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		forge string
-		want []string
+		want  []string
 	}{
 		{"github", "github", []string{"+refs/pull/*/head:refs/pull/*/head"}},
 		{"gerrit", "gerrit", []string{"+refs/changes/*:refs/changes/*"}},

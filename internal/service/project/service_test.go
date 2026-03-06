@@ -13,8 +13,8 @@ import (
 
 // mockProjectManager implements port.ProjectManager for testing.
 type mockProjectManager struct {
-	projects    map[string]*forge.Project
-	series      map[string][]forge.ProjectSeries // project → series
+	projects      map[string]*forge.Project
+	series        map[string][]forge.ProjectSeries // project → series
 	createdSeries []seriesCreate
 	devFocusSet   []devFocusUpdate
 	createErr     error
@@ -254,8 +254,8 @@ func TestSync_ProjectFilter(t *testing.T) {
 func TestSync_PerProjectOverrides(t *testing.T) {
 	mgr := &mockProjectManager{
 		projects: map[string]*forge.Project{
-			"sunbeam":        {Name: "sunbeam", DevelopmentFocusLink: ""},
-			"snap-consul":    {Name: "snap-consul", DevelopmentFocusLink: ""},
+			"sunbeam":     {Name: "sunbeam", DevelopmentFocusLink: ""},
+			"snap-consul": {Name: "snap-consul", DevelopmentFocusLink: ""},
 		},
 		series: map[string][]forge.ProjectSeries{
 			"sunbeam":     {},

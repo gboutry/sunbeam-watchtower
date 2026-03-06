@@ -37,15 +37,15 @@ func (m *mockCommitSource) ListBranches(_ context.Context) ([]string, error) {
 
 // mockBugTracker implements port.BugTracker for testing.
 type mockBugTracker struct {
-	bugs            map[string]*forge.Bug
-	updatedTasks    []taskUpdate
-	assignments     []assignment
-	project         *forge.Project
-	projects        map[string]*forge.Project // per-project override
-	series          []forge.ProjectSeries
-	recentBugTasks  []forge.BugTask // returned by ListBugTasks when CreatedSince is set
-	updateErr       error
-	assignErr       error
+	bugs           map[string]*forge.Bug
+	updatedTasks   []taskUpdate
+	assignments    []assignment
+	project        *forge.Project
+	projects       map[string]*forge.Project // per-project override
+	series         []forge.ProjectSeries
+	recentBugTasks []forge.BugTask // returned by ListBugTasks when CreatedSince is set
+	updateErr      error
+	assignErr      error
 }
 
 type taskUpdate struct {

@@ -276,18 +276,6 @@ func renderBuildRequestsTable(w io.Writer, results []port.BuildRequest) error {
 	return tw.Flush()
 }
 
-// renderRecipes writes recipes in the requested format.
-func renderRecipes(w io.Writer, format string, recipes []port.Recipe) error {
-	switch format {
-	case "json":
-		return renderJSON(w, recipes)
-	case "yaml":
-		return renderYAML(w, recipes)
-	default:
-		return renderRecipesTable(w, recipes)
-	}
-}
-
 // renderCommits writes commits in the requested format.
 func renderCommits(w io.Writer, format string, commits []forge.Commit) error {
 	switch format {
@@ -343,31 +331,6 @@ func renderCommitTable(w io.Writer, commits []forge.Commit) error {
 			status,
 			link,
 			msg,
-		)
-	}
-	return tw.Flush()
-}
-
-func renderRecipesTable(w io.Writer, recipes []port.Recipe) error {
-	if len(recipes) == 0 {
-		fmt.Fprintln(w, "No recipes found.")
-		return nil
-	}
-
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tTYPE\tOWNER\tPROJECT\tAUTO_BUILD\tCREATED")
-	for _, r := range recipes {
-		created := ""
-		if !r.CreatedAt.IsZero() {
-			created = r.CreatedAt.Format("2006-01-02 15:04")
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%v\t%s\n",
-			r.Name,
-			r.ArtifactType,
-			r.Owner,
-			r.Project,
-			r.AutoBuild,
-			created,
 		)
 	}
 	return tw.Flush()
