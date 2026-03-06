@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -51,17 +52,24 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 		forges   []string
 		state    string
 		author   string
+		since    string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List merge requests across forges",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			resolvedSince, err := dto.ResolveSince(since)
+			if err != nil {
+				return err
+			}
+
 			opts.Logger.Debug("review list command started",
 				"projects", projects,
 				"forges", forges,
 				"state", state,
 				"author", author,
+				"since", resolvedSince,
 			)
 
 			result, err := opts.Client.ReviewsList(cmd.Context(), client.ReviewsListOptions{
@@ -69,6 +77,7 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 				Forges:   forges,
 				State:    state,
 				Author:   author,
+				Since:    resolvedSince,
 			})
 			if err != nil {
 				return err
@@ -86,6 +95,7 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&forges, "forge", nil, "filter by forge type: github, launchpad, gerrit (repeatable)")
 	cmd.Flags().StringVar(&state, "state", "", "filter by state: open, merged, closed, wip, abandoned")
 	cmd.Flags().StringVar(&author, "author", "", "filter by author")
+	cmd.Flags().StringVar(&since, "since", "", "show only MRs updated since (e.g. 2d, 1w, 30m, 2025-01-01)")
 
 	return cmd
 }

@@ -21,6 +21,7 @@ type ReviewsListInput struct {
 	Forges   []string `query:"forge" doc:"Filter by forge type: github, launchpad, gerrit"`
 	State    string   `query:"state" doc:"Filter by state: open, merged, closed, wip, abandoned"`
 	Author   string   `query:"author" doc:"Filter by author"`
+	Since    string   `query:"since" doc:"Show only MRs updated since (RFC 3339 timestamp)"`
 }
 
 // ReviewsListOutput is the response for listing merge requests.
@@ -64,6 +65,7 @@ func RegisterReviewsAPI(api huma.API, application *app.App) {
 		listOpts := review.ListOptions{
 			Projects: input.Projects,
 			Author:   input.Author,
+			Since:    input.Since,
 		}
 
 		if input.State != "" {

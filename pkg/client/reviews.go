@@ -16,6 +16,7 @@ type ReviewsListOptions struct {
 	Forges   []string
 	State    string
 	Author   string
+	Since    string
 }
 
 // ReviewsListResult is the response returned by ReviewsList.
@@ -38,6 +39,9 @@ func (c *Client) ReviewsList(ctx context.Context, opts ReviewsListOptions) (*Rev
 	}
 	if opts.Author != "" {
 		q.Set("author", opts.Author)
+	}
+	if opts.Since != "" {
+		q.Set("since", opts.Since)
 	}
 
 	var result ReviewsListResult

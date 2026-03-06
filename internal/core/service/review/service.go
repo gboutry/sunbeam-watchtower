@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"sort"
+	"time"
 
 	port "github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
@@ -23,6 +24,7 @@ type ListOptions struct {
 	Forges   []forge.ForgeType // filter to these forge types (empty = all)
 	State    forge.MergeState
 	Author   string
+	Since    string // ISO 8601 date — filter MRs updated since this date
 }
 
 // ProjectResult holds merge requests from one project, or an error.
@@ -75,12 +77,22 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.MergeRequ
 		forgeFilter[f] = true
 	}
 
+	var sinceTime time.Time
+	if opts.Since != "" {
+		t, err := time.Parse(time.RFC3339, opts.Since)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid since value %q: %w", opts.Since, err)
+		}
+		sinceTime = t
+	}
+
 	s.logger.Debug("listing merge requests",
 		"project_count", len(s.projects),
 		"projects_filter", opts.Projects,
 		"forges_filter", opts.Forges,
 		"state", opts.State,
 		"author", opts.Author,
+		"since", opts.Since,
 	)
 
 	var results []ProjectResult
@@ -110,6 +122,15 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.MergeRequ
 		} else {
 			for i := range mrs {
 				mrs[i].Repo = name
+			}
+			if !sinceTime.IsZero() {
+				filtered := mrs[:0]
+				for _, mr := range mrs {
+					if !mr.UpdatedAt.Before(sinceTime) {
+						filtered = append(filtered, mr)
+					}
+				}
+				mrs = filtered
 			}
 			result.MergeRequests = mrs
 			all = append(all, mrs...)
