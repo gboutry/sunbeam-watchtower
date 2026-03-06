@@ -4,6 +4,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -98,7 +99,7 @@ func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) erro
 		Auth:       auth,
 		Force:      force,
 	}
-	if err := r.Push(opts); err != nil {
+	if err := r.Push(opts); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("push %s to %s for %s: %w", localRef, remoteRef, path, err)
 	}
 	return nil
