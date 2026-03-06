@@ -328,7 +328,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		result, err := svc.ShowDetail(ctx, input.Name, input.Version, sources)
 		if err != nil {
-			return nil, huma.Error422UnprocessableEntity(err.Error())
+			return nil, huma.Error404NotFound(err.Error())
 		}
 
 		return &PackagesDetailOutput{Body: result}, nil
