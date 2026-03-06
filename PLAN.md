@@ -82,6 +82,7 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - `GET /docs` — interactive docs UI
 - `GET /api/v1/health` — health check
 - `GET /api/v1/packages/*` / `POST /api/v1/packages/cache/sync`
+  - `GET /api/v1/packages/detail/{name}` — full APT metadata for a package
 - `GET /api/v1/bugs*` / `POST /api/v1/bugs/sync`
 - `GET /api/v1/reviews*`
 - `GET /api/v1/commits*`
