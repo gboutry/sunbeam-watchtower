@@ -39,7 +39,7 @@ type BugTrackerConfig struct {
 
 type ProjectBuildConfig struct {
 	Owner          string   `json:"owner" yaml:"owner"`
-	Recipes        []string `json:"recipes,omitempty" yaml:"recipes,omitempty"`
+	Artifacts      []string `json:"artifacts,omitempty" yaml:"artifacts,omitempty"`
 	PrepareCommand string   `json:"prepare_command,omitempty" yaml:"prepare_command,omitempty"`
 }
 

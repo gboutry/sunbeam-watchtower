@@ -85,7 +85,7 @@ func configToDTO(cfg *config.Config) *dto.Config {
 		if project.Build != nil {
 			outProject.Build = &dto.ProjectBuildConfig{
 				Owner:          project.Build.Owner,
-				Recipes:        append([]string(nil), project.Build.Recipes...),
+				Artifacts:      append([]string(nil), project.Build.Artifacts...),
 				PrepareCommand: project.Build.PrepareCommand,
 			}
 		}

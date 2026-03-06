@@ -385,12 +385,12 @@ func (a *App) BuildRecipeBuilders() (map[string]build.ProjectBuilder, error) {
 		}
 
 		var owner string
-		var recipes []string
+		var artifacts []string
 		var lpProject string
 		var officialCodehosting bool
 		if proj.Build != nil {
 			owner = proj.Build.Owner
-			recipes = proj.Build.Recipes
+			artifacts = proj.Build.Artifacts
 			lpProject = proj.Build.LPProject
 			officialCodehosting = proj.Build.OfficialCodehosting
 		}
@@ -409,7 +409,7 @@ func (a *App) BuildRecipeBuilders() (map[string]build.ProjectBuilder, error) {
 			Owner:               owner,
 			Project:             proj.Code.Project,
 			LPProject:           lpProject,
-			Recipes:             recipes,
+			Artifacts:           artifacts,
 			Series:              series,
 			DevFocus:            devFocus,
 			OfficialCodehosting: officialCodehosting,

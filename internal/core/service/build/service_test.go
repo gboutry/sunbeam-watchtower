@@ -216,7 +216,7 @@ func TestTrigger_RemoteMode_RequestBuilds(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -252,7 +252,7 @@ func TestTrigger_RemoteMode_AllSucceeded(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -285,7 +285,7 @@ func TestTrigger_RemoteMode_RetryFailed(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -319,7 +319,7 @@ func TestTrigger_RemoteMode_MonitorActive(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -346,7 +346,7 @@ func TestTrigger_RemoteMode_CreateRecipe(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -370,7 +370,7 @@ func TestTrigger_PreResolvedRefs_FullPipeline(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -417,7 +417,7 @@ func TestTrigger_MultipleRecipes(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone", "nova"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone", "nova"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -471,7 +471,7 @@ func TestList_ActiveOnly(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -506,7 +506,7 @@ func TestList_AllBuilds(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -538,8 +538,8 @@ func TestList_ProjectFilter(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"projA": {Builder: builderA, Owner: "team", Project: "projA", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
-			"projB": {Builder: builderB, Owner: "team", Project: "projB", Recipes: []string{"nova"}, Strategy: &mockStrategy{}},
+			"projA": {Builder: builderA, Owner: "team", Project: "projA", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"projB": {Builder: builderB, Owner: "team", Project: "projB", Artifacts: []string{"nova"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -571,8 +571,8 @@ func TestList_GracefulDegradation(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"good": {Builder: goodBuilder, Owner: "team", Project: "good", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
-			"bad":  {Builder: badBuilder, Owner: "team", Project: "bad", Recipes: []string{"missing"}, Strategy: &mockStrategy{}},
+			"good": {Builder: goodBuilder, Owner: "team", Project: "good", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"bad":  {Builder: badBuilder, Owner: "team", Project: "bad", Artifacts: []string{"missing"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -608,7 +608,7 @@ func TestList_Sorting(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -643,7 +643,7 @@ func TestTrigger_PreResolved_OwnerOverride(t *testing.T) {
 
 	svc := NewService(
 		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
+			"sunbeam": {Builder: builder, Owner: "", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
 		nil, testLogger(),
 	)
@@ -691,7 +691,7 @@ func TestTrigger_RemoteMode_UsesOfficialRepo(t *testing.T) {
 				Builder:             builder,
 				Owner:               "team",
 				Project:             "ubuntu-openstack-rocks",
-				Recipes:             []string{"nova-consolidated"},
+				Artifacts:           []string{"nova-consolidated"},
 				Series:              []string{"2024.1", "2025.1"},
 				DevFocus:            "2025.1",
 				OfficialCodehosting: true,
@@ -740,7 +740,7 @@ func TestTrigger_RemoteMode_FailsWithoutOfficialCodehosting(t *testing.T) {
 				Builder:             builder,
 				Owner:               "team",
 				Project:             "sunbeam",
-				Recipes:             []string{"keystone"},
+				Artifacts:           []string{"keystone"},
 				OfficialCodehosting: false,
 				Strategy:            &mockStrategy{},
 			},

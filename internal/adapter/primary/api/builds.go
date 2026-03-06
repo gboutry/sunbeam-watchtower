@@ -19,7 +19,7 @@ import (
 type BuildsTriggerInput struct {
 	Body struct {
 		Project      string            `json:"project" doc:"Project name"`
-		Recipes      []string          `json:"recipes,omitempty" doc:"Recipe names (empty = all configured)"`
+		Artifacts    []string          `json:"artifacts,omitempty" doc:"Artifact names to build (empty = all configured)"`
 		Wait         bool              `json:"wait,omitempty" doc:"Wait for builds to complete"`
 		Timeout      string            `json:"timeout,omitempty" doc:"Max wait time as Go duration (e.g. 5h)"`
 		Owner        string            `json:"owner,omitempty" doc:"Override LP owner"`
@@ -61,8 +61,8 @@ type BuildsListOutput struct {
 // BuildsDownloadInput holds the request body for downloading build artifacts.
 type BuildsDownloadInput struct {
 	Body struct {
-		Projects     []string `json:"projects,omitempty" doc:"Project names to download from"`
-		Recipes      []string `json:"recipes,omitempty" doc:"Recipe names (empty = all configured)"`
+		Project      string   `json:"project" doc:"Project name"`
+		Artifacts    []string `json:"artifacts,omitempty" doc:"Artifact names to download (empty = all)"`
 		RecipePrefix string   `json:"recipe_prefix,omitempty" doc:"Filter recipes by name prefix"`
 		Owner        string   `json:"owner,omitempty" doc:"Override LP owner"`
 		LPProject    string   `json:"lp_project,omitempty" doc:"Override LP project"`
@@ -103,7 +103,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Method:      http.MethodPost,
 		Path:        "/api/v1/builds/trigger",
 		Summary:     "Trigger builds for a project",
-		Description: "Trigger builds for a project's recipes, optionally from a local git repo.",
+		Description: "Trigger builds for a project's artifacts, optionally from a local git repo.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsTriggerInput) (*BuildsTriggerOutput, error) {
 		svc, err := application.BuildService()
@@ -130,7 +130,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			LPProject:    input.Body.LPProject,
 		}
 
-		result, err := svc.Trigger(ctx, input.Body.Project, input.Body.Recipes, triggerOpts)
+		result, err := svc.Trigger(ctx, input.Body.Project, input.Body.Artifacts, triggerOpts)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("trigger failed: %v", err))
 		}
@@ -176,7 +176,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Method:      http.MethodPost,
 		Path:        "/api/v1/builds/download",
 		Summary:     "Download build artifacts",
-		Description: "Download build artifacts for succeeded builds of the given recipes.",
+		Description: "Download build artifacts for succeeded builds of the given artifacts.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsDownloadInput) (*BuildsDownloadOutput, error) {
 		svc, err := application.BuildService()
@@ -190,12 +190,12 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		}
 
 		if err := svc.Download(ctx, build.DownloadOpts{
-			Projects:     input.Body.Projects,
-			RecipeNames:  input.Body.Recipes,
-			RecipePrefix: input.Body.RecipePrefix,
-			Owner:        input.Body.Owner,
-			LPProject:    input.Body.LPProject,
-			OutputDir:    artifactsDir,
+			Projects:      []string{input.Body.Project},
+			ArtifactNames: input.Body.Artifacts,
+			RecipePrefix:  input.Body.RecipePrefix,
+			Owner:         input.Body.Owner,
+			LPProject:     input.Body.LPProject,
+			OutputDir:     artifactsDir,
 		}); err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("download failed: %v", err))
 		}

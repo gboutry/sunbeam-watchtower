@@ -33,12 +33,12 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	var timeout time.Duration
 
 	cmd := &cobra.Command{
-		Use:   "trigger <project> [recipes...]",
+		Use:   "trigger <project> [artifacts...]",
 		Short: "Trigger builds for a project",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectName := args[0]
-			recipeNames := args[1:]
+			artifactNames := args[1:]
 
 			// --download implies --wait.
 			if download {
@@ -46,16 +46,16 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			}
 
 			triggerOpts := client.BuildsTriggerOptions{
-				Project: projectName,
-				Recipes: recipeNames,
-				Wait:    wait,
-				Timeout: timeout.String(),
-				Owner:   owner,
-				Prefix:  prefix,
+				Project:   projectName,
+				Artifacts: artifactNames,
+				Wait:      wait,
+				Timeout:   timeout.String(),
+				Owner:     owner,
+				Prefix:    prefix,
 			}
 
 			if source == "local" {
-				if err := prepareLocalTrigger(cmd, opts, projectName, recipeNames, localPath, prefix, &triggerOpts); err != nil {
+				if err := prepareLocalTrigger(cmd, opts, projectName, artifactNames, localPath, prefix, &triggerOpts); err != nil {
 					return err
 				}
 			}
@@ -91,13 +91,13 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 
 			// Download succeeded build artifacts when requested.
 			if download && len(builds) > 0 {
-				dlRecipes := triggerOpts.Recipes
-				if len(dlRecipes) == 0 {
-					dlRecipes = recipeNames
+				dlArtifacts := triggerOpts.Artifacts
+				if len(dlArtifacts) == 0 {
+					dlArtifacts = artifactNames
 				}
 				if err := opts.Client.BuildsDownload(cmd.Context(), client.BuildsDownloadOptions{
-					Projects:     []string{projectName},
-					Recipes:      dlRecipes,
+					Project:      projectName,
+					Artifacts:    dlArtifacts,
 					ArtifactsDir: artifactsDir,
 				}); err != nil {
 					errs = append(errs, fmt.Errorf("download: %w", err))
@@ -121,7 +121,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 }
 
 // prepareLocalTrigger resolves local git + LP resources and populates triggerOpts.
-func prepareLocalTrigger(cmd *cobra.Command, opts *Options, projectName string, recipeNames []string, localPath, prefix string, triggerOpts *client.BuildsTriggerOptions) error {
+func prepareLocalTrigger(cmd *cobra.Command, opts *Options, projectName string, artifactNames []string, localPath, prefix string, triggerOpts *client.BuildsTriggerOptions) error {
 	ctx := cmd.Context()
 	app := opts.App
 
@@ -156,23 +156,23 @@ func prepareLocalTrigger(cmd *cobra.Command, opts *Options, projectName string, 
 	}
 	shortSHA := sha[:8]
 
-	// Discover recipes if not specified.
-	if len(recipeNames) == 0 {
-		recipeNames, err = pb.Strategy.DiscoverRecipes(localPath)
+	// Discover artifacts if not specified.
+	if len(artifactNames) == 0 {
+		artifactNames, err = pb.Strategy.DiscoverRecipes(localPath)
 		if err != nil {
-			return fmt.Errorf("discover recipes: %w", err)
+			return fmt.Errorf("discover artifacts: %w", err)
 		}
 	}
 
 	// Compute temp recipe names, build paths.
-	tempNames := make([]string, 0, len(recipeNames))
-	buildPaths := make(map[string]string, len(recipeNames))
-	for _, name := range recipeNames {
+	tempNames := make([]string, 0, len(artifactNames))
+	buildPaths := make(map[string]string, len(artifactNames))
+	for _, name := range artifactNames {
 		tempName := pb.Strategy.TempRecipeName(name, sha, prefix)
 		tempNames = append(tempNames, tempName)
 		buildPaths[tempName] = pb.Strategy.BuildPath(name)
 	}
-	triggerOpts.Recipes = tempNames
+	triggerOpts.Artifacts = tempNames
 	triggerOpts.BuildPaths = buildPaths
 
 	// Ensure LP project + repo exist.
@@ -330,16 +330,18 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 
 func newBuildDownloadCmd(opts *Options) *cobra.Command {
 	var artifactsDir, source, sha, prefix, owner string
-	var projects []string
 
 	cmd := &cobra.Command{
-		Use:   "download [projects...] [recipes...]",
+		Use:   "download <project> [artifacts...]",
 		Short: "Download build artifacts",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			allProjects := append(projects, args...)
+			projectName := args[0]
+			artifactNames := args[1:]
 
 			dlOpts := client.BuildsDownloadOptions{
-				Projects:     allProjects,
+				Project:      projectName,
+				Artifacts:    artifactNames,
 				ArtifactsDir: artifactsDir,
 			}
 
@@ -379,7 +381,6 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name")
 	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory (default from config)")
 	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
 	cmd.Flags().StringVar(&sha, "sha", "", "git commit SHA (narrows prefix in local mode)")

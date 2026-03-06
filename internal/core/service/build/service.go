@@ -120,7 +120,7 @@ func NewService(projects map[string]ProjectBuilder, repoManager port.RepoManager
 // When opts.RepoSelfLink and opts.GitRefLinks are provided (e.g. by CLI for
 // local builds), the service uses them directly. Otherwise, it resolves repo
 // and ref information from Launchpad (remote/official mode).
-func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames []string, opts TriggerOpts) (*TriggerResult, error) {
+func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames []string, opts TriggerOpts) (*TriggerResult, error) {
 	pb, ok := s.projects[projectName]
 	if !ok {
 		return nil, fmt.Errorf("unknown project %q", projectName)
@@ -139,12 +139,12 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		pb.LPProject = opts.LPProject
 	}
 
-	recipes := recipeNames
+	recipes := artifactNames
 	if len(recipes) == 0 {
-		recipes = pb.Recipes
+		recipes = pb.Artifacts
 	}
 	if len(recipes) == 0 {
-		return nil, fmt.Errorf("no recipes specified for project %q", projectName)
+		return nil, fmt.Errorf("no artifacts specified for project %q", projectName)
 	}
 
 	// Resolve LP repo and ref information.
@@ -442,7 +442,7 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 			lpProject = opts.LPProject
 		}
 
-		recipeNames := pb.Recipes
+		recipeNames := pb.Artifacts
 		if len(opts.RecipeNames) > 0 {
 			recipeNames = opts.RecipeNames
 		}
@@ -528,9 +528,10 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 }
 
 // DownloadOpts holds options for downloading build artifacts.
+// DownloadOpts holds options for downloading build artifacts.
 type DownloadOpts struct {
 	Projects     []string // project name filter
-	RecipeNames  []string // explicit recipe names
+	ArtifactNames []string // explicit artifact names (maps to recipe names)
 	RecipePrefix string   // discover recipes by prefix
 	Owner        string   // override LP owner
 	LPProject    string   // override LP project
@@ -559,13 +560,13 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 			lpProject = opts.LPProject
 		}
 
-		recipeNames := opts.RecipeNames
+		recipeNames := opts.ArtifactNames
 		if len(recipeNames) == 0 && opts.RecipePrefix == "" {
-			recipeNames = pb.Recipes
+			recipeNames = pb.Artifacts
 		}
 
 		// Prefix-based discovery.
-		if opts.RecipePrefix != "" && len(opts.RecipeNames) == 0 {
+		if opts.RecipePrefix != "" && len(opts.ArtifactNames) == 0 {
 			if owner == "" {
 				s.logger.Warn("skipping prefix discovery: owner required", "project", name)
 				continue
@@ -690,7 +691,7 @@ func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) ([]string, erro
 			projOwner = owner
 		}
 
-		for _, recipeName := range pb.Recipes {
+		for _, recipeName := range pb.Artifacts {
 			if opts.Prefix != "" && !strings.HasPrefix(recipeName, opts.Prefix) {
 				continue
 			}

@@ -13,7 +13,7 @@ import (
 // BuildsTriggerOptions holds the request body for triggering builds.
 type BuildsTriggerOptions struct {
 	Project      string            `json:"project"`
-	Recipes      []string          `json:"recipes,omitempty"`
+	Artifacts    []string          `json:"artifacts,omitempty"`
 	Wait         bool              `json:"wait,omitempty"`
 	Timeout      string            `json:"timeout,omitempty"`
 	Owner        string            `json:"owner,omitempty"`
@@ -79,8 +79,8 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 
 // BuildsDownloadOptions holds the request body for downloading build artifacts.
 type BuildsDownloadOptions struct {
-	Projects     []string `json:"projects,omitempty"`
-	Recipes      []string `json:"recipes,omitempty"`
+	Project      string   `json:"project"`
+	Artifacts    []string `json:"artifacts,omitempty"`
 	RecipePrefix string   `json:"recipe_prefix,omitempty"`
 	Owner        string   `json:"owner,omitempty"`
 	LPProject    string   `json:"lp_project,omitempty"`

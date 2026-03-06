@@ -249,7 +249,7 @@ func TestValidate_ValidArtifactTypeAndBuild(t *testing.T) {
 				Name:         "p1",
 				ArtifactType: "rock",
 				Code:         CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
-				Build:        &ProjectBuildConfig{Owner: "team", Recipes: []string{"recipe1"}},
+				Build:        &ProjectBuildConfig{Owner: "team", Artifacts: []string{"recipe1"}},
 			},
 		},
 	}
