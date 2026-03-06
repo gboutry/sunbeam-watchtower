@@ -195,6 +195,27 @@ behaviour independently in the future.
 Per-project build configuration is described in the
 [Build system design → Configuration](#configuration) section above.
 
+## Terminology: projects, artifacts, and recipes
+
+The build system uses three distinct concepts:
+
+| Term         | Scope        | Description                                                                     |
+|--------------|--------------|---------------------------------------------------------------------------------|
+| **Project**  | User-facing  | Top-level entity configured in `watchtower.yaml` (e.g. `ubuntu-openstack-rocks`)|
+| **Artifact** | User-facing  | A buildable unit within a project (e.g. `keystone`, `nova-consolidated`)        |
+| **Recipe**   | LP internal  | A Launchpad object created to build an artifact; includes prefix/SHA/series info|
+
+**User-facing surfaces** (CLI positional args, config YAML, API input fields, client options)
+use "artifact" terminology. **Internal implementation** (RecipeBuilder port, LP API calls,
+recipe prefix/name filtering, output table `RECIPE` column) uses "recipe" because it refers
+to the LP object directly.
+
+CLI examples:
+- `build trigger <project> [artifacts...]` — request builds for specific artifacts
+- `build list [projects...]` — list builds (output shows recipe names in RECIPE column)
+- `build download <project> [artifacts...]` — download build results
+- `build cleanup [projects...]` — delete LP recipe objects (explicitly about recipes)
+
 ## Build system design
 
 The build system supports two distinct modes: **local** (development/testing) and
@@ -238,7 +259,7 @@ Per-project build settings live in `ProjectBuildConfig`:
 | Field                 | YAML key                | Purpose                                                          |
 |-----------------------|-------------------------|------------------------------------------------------------------|
 | `Owner`               | `owner`                 | LP owner for recipe operations (optional for local-only builds)  |
-| `Recipes`             | `recipes`               | Explicit recipe names to build                                   |
+| `Artifacts`           | `artifacts`             | Explicit artifact names to build                                 |
 | `PrepareCommand`      | `prepare_command`       | Shell command run before each build                              |
 | `OfficialCodehosting` | `official_codehosting`  | When true, use LP's default git repo for remote builds           |
 | `LPProject`           | `lp_project`            | LP project name for recipe ops (defaults to code.project)        |
