@@ -1,5 +1,5 @@
 launchpad:
-  default_owner: my-team
+  default_owner: sunbeam
   use_keyring: true
   series:
     - "2024.1"
