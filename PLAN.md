@@ -140,6 +140,14 @@ All served under Huma v2 with auto-generated OpenAPI spec:
 - All types have `json` + `doc` tags for OpenAPI spec quality
 - Custom `schemaNamer` resolves cross-package Huma type name collisions
 
+## Roadmap
+
+### Planned Consumers
+All built on top of the HTTP API:
+- **MCP Server** — Model Context Protocol server for AI agent integration
+- **TUI Dashboard** — Terminal UI for real-time monitoring
+- **Prometheus Exporter** — Metrics endpoint for observability
+
 ## Completed Work
 
 ### HTTP Server Refactor
