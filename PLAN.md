@@ -263,22 +263,35 @@ For local-only builds the owner is resolved at runtime via the LP `Me()` API.
   - `ProjectBuilder.RecipeProject()` fallback logic.
   - `List()`: active-only, all-builds, project filter, graceful degradation, sorting.
 
-### Build listing modes
+### Build listing and download modes
 
-The `build list` command supports three listing modes:
+Both `build list` and `build download` share the same discovery parameters:
+
+| Flag            | Purpose                                               |
+|-----------------|-------------------------------------------------------|
+| `--source`      | `remote` (default) or `local`                         |
+| `--sha`         | Narrow prefix to a specific commit (`<prefix><sha>-`) |
+| `--prefix`      | Recipe name prefix (default `tmp-build-`)             |
+| `--owner`       | Override LP owner                                     |
+| `--project`     | Filter by project name (also positional args)         |
+| `--artifacts-dir` | (download only) Output directory                    |
+
+**Listing modes:**
 
 1. **Remote** (`--source remote`, default): Lists builds for configured project recipes.
-2. **Local with SHA** (`--source local --sha <commit>`): Computes exact temp recipe names
-   from the given SHA and prefix (e.g. `tmp-build-9e1ed720-nova-consolidated`).
-3. **Local with prefix** (`--source local` without `--sha`): Uses LP's `findByOwner` API
-   to discover all recipes owned by the authenticated user, then filters by `--prefix`
-   (default `tmp-build`) and LP project. This enables `build list --source local --prefix tmp-build`
-   to find all local builds without knowing the exact commit SHA.
+2. **Local with SHA** (`--source local --sha <commit>`): Discovers recipes matching
+   `<prefix><sha>-` via `findByOwner`, narrowing to an exact commit.
+3. **Local with prefix** (`--source local` without `--sha`): Discovers all recipes matching
+   `--prefix` (default `tmp-build-`) via `findByOwner`.
+
+**Download** uses the same discovery logic: in local mode it resolves the LP owner and
+project automatically, discovers recipes by prefix, and downloads artifacts from all
+succeeded builds.
 
 The prefix-based discovery is implemented via:
 - `RecipeBuilder.ListRecipesByOwner(ctx, owner)` port method
 - LP's `findByOwner` web-service operation on `+rock-recipes`, `+charm-recipes`, `+snaps`
-- Client-side filtering by prefix and LP project in `Service.List()`
+- Client-side filtering by prefix and LP project in `Service.List()` / `Service.Download()`
 
 ### Remaining follow-ups
 
