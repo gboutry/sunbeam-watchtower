@@ -59,10 +59,10 @@ type PackagesShowOutput struct {
 type PackagesDetailInput struct {
 	Name      string   `path:"name" doc:"Source package name" example:"nova"`
 	Version   string   `query:"version" required:"false" doc:"Exact Debian version string. If omitted, returns the highest version found."`
-	Distros   []string `query:"distro" doc:"Filter by distro name"`
-	Releases  []string `query:"release" doc:"Filter by distro release"`
-	Suites    []string `query:"suite" doc:"Filter by suite type"`
-	Backports []string `query:"backport" doc:"Backports to include (default: none)"`
+	Distros   []string `query:"distro" required:"false" doc:"Filter by distro name"`
+	Releases  []string `query:"release" required:"false" doc:"Filter by distro release"`
+	Suites    []string `query:"suite" required:"false" doc:"Filter by suite type"`
+	Backports []string `query:"backport" required:"false" doc:"Backports to include (default: none)"`
 }
 
 // PackagesDetailOutput is the response for the detail endpoint.
