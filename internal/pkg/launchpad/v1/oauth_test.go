@@ -6,6 +6,7 @@ package v1
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -188,5 +189,14 @@ func TestSignRequest(t *testing.T) {
 		if !strings.Contains(auth, param) {
 			t.Errorf("Authorization header missing %q\ngot: %s", param, auth)
 		}
+	}
+
+	re := regexp.MustCompile(`oauth_nonce="([0-9a-f]+)"`)
+	match := re.FindStringSubmatch(auth)
+	if len(match) != 2 {
+		t.Fatalf("Authorization header missing hex nonce: %s", auth)
+	}
+	if len(match[1]) != 32 {
+		t.Fatalf("expected 32 hex chars in nonce, got %q", match[1])
 	}
 }

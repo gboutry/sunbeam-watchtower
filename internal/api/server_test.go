@@ -46,6 +46,21 @@ func TestNewServer(t *testing.T) {
 	}
 }
 
+func TestServerReadHeaderTimeout(t *testing.T) {
+	srv := NewServer(discardLogger(), ServerOptions{ListenAddr: "127.0.0.1:0"})
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Shutdown(context.Background())
+
+	if srv.httpSrv == nil {
+		t.Fatal("expected http server to be initialized")
+	}
+	if srv.httpSrv.ReadHeaderTimeout != defaultReadHeaderTimeout {
+		t.Fatalf("expected ReadHeaderTimeout=%s, got %s", defaultReadHeaderTimeout, srv.httpSrv.ReadHeaderTimeout)
+	}
+}
+
 func TestHealth(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())

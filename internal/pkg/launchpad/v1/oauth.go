@@ -4,9 +4,9 @@
 package v1
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -132,7 +132,10 @@ func ExchangeAccessToken(consumerKey string, rt *RequestToken) (*Credentials, er
 // Launchpad requires PLAINTEXT signing with all OAuth params in the
 // Authorization header only — never in query strings or request bodies.
 func signRequest(req *http.Request, creds *Credentials) {
-	nonce := strconv.FormatInt(rand.Int64(), 36)
+	nonce, err := oauthNonce()
+	if err != nil {
+		panic(fmt.Sprintf("generate oauth nonce: %v", err))
+	}
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
 	// PLAINTEXT signature: "&" + access_token_secret
@@ -150,4 +153,12 @@ func signRequest(req *http.Request, creds *Credentials) {
 	}
 
 	req.Header.Set("Authorization", strings.Join(params, ", "))
+}
+
+func oauthNonce() (string, error) {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", buf[:]), nil
 }

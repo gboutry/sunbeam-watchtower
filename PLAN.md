@@ -167,7 +167,7 @@ or should we keep it CLI-only for simplicity? We can revisit if API-based auth b
 - Standard linters + bodyclose, copyloopvar, durationcheck, errname, errorlint, fatcontext, gosec, misspell, nilerr, prealloc, predeclared, unconvert, wastedassign
 - Formatters: gofmt + goimports
 - Test files excluded from errcheck, gosec, prealloc, errorlint
-- Gosec false positives suppressed (G101, G107, G112, G204, G301, G304, G306, G402, G404, G704)
+- Gosec false positives/policy exceptions suppressed (G101, G107, G117, G204, G301, G304, G306, G402, G704)
 
 ## Completed Work
 
@@ -180,6 +180,7 @@ or should we keep it CLI-only for simplicity? We can revisit if API-based auth b
 - Pre-commit hooks + golangci-lint v2 configuration
 - Dead code cleanup (5 unused functions removed)
 - Lint fixes: errcheck, nilerr, ineffassign, gofmt
+- Security hardening: cryptographic OAuth nonce generation and `ReadHeaderTimeout` on the HTTP server
 
 ### Unit Tests
 - `internal/api/server_test.go` — 11 tests (server lifecycle, endpoints, parsers)

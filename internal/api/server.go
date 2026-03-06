@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -37,6 +38,7 @@ func derefType(t reflect.Type) reflect.Type {
 }
 
 const Version = "0.1.0"
+const defaultReadHeaderTimeout = 5 * time.Second
 
 // ServerOptions configures the HTTP server.
 type ServerOptions struct {
@@ -123,7 +125,10 @@ func (s *Server) Start() error {
 	}
 
 	s.listener = ln
-	s.httpSrv = &http.Server{Handler: s.router}
+	s.httpSrv = &http.Server{
+		Handler:           s.router,
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+	}
 
 	go func() {
 		if err := s.httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
