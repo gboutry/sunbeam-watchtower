@@ -170,6 +170,12 @@ watchtower packages diff released
 # Show all versions of a package
 watchtower packages show-version nova
 
+# Show full APT metadata for a specific version
+watchtower packages show nova 2:2025.1-0ubuntu1
+
+# Show highest version matching filters
+watchtower packages show nova --distro ubuntu --backport gazpacho
+
 # List packages in a configured distro release
 watchtower packages list --distro ubuntu --release noble
 ```
