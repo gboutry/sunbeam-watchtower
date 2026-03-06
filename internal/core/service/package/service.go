@@ -76,51 +76,102 @@ type PackageVersionPair struct {
 type DscResult = dto.PackageDscResult
 
 // FindDsc searches raw Sources files for .dsc URLs matching the given package/version pairs.
+// It first uses the bbolt cache to locate which source files contain each pair,
+// then parses only the necessary files.
 func (s *Service) FindDsc(ctx context.Context, pairs []PackageVersionPair, sources []ProjectSource) ([]DscResult, error) {
-	// Build a lookup key set for fast matching.
 	type pairKey struct{ pkg, ver string }
-	wanted := make(map[pairKey]bool, len(pairs))
-	for _, p := range pairs {
-		wanted[pairKey{p.Package, p.Version}] = true
+
+	// Use cache to find which source/suite/component holds each pair.
+	type location struct {
+		srcName   string
+		suite     string
+		component string
+		mirror    string
+	}
+	pairLocations := make(map[pairKey][]location, len(pairs))
+
+	// Build a source→entries lookup with mirrors.
+	type entryWithMirror struct {
+		suite     string
+		component string
+		mirror    string
+	}
+	srcEntries := make(map[string][]entryWithMirror, len(sources))
+	for _, src := range sources {
+		for _, entry := range src.Entries {
+			srcEntries[src.Name] = append(srcEntries[src.Name], entryWithMirror{
+				suite:     entry.Suite,
+				component: entry.Component,
+				mirror:    strings.TrimRight(entry.Mirror, "/"),
+			})
+		}
 	}
 
-	// Collect URLs per pair.
-	type pairResult struct{ urls []string }
-	found := make(map[pairKey]*pairResult, len(pairs))
-	for k := range wanted {
-		found[k] = &pairResult{}
+	for _, p := range pairs {
+		result, err := s.Show(ctx, p.Package, sources)
+		if err != nil {
+			continue
+		}
+		for srcName, versions := range result.Versions {
+			for _, v := range versions {
+				if v.Version != p.Version {
+					continue
+				}
+				// Find the mirror for this suite/component from source entries.
+				mirror := ""
+				for _, e := range srcEntries[srcName] {
+					if e.suite == v.Suite && e.component == v.Component {
+						mirror = e.mirror
+						break
+					}
+				}
+				pairLocations[pairKey{p.Package, p.Version}] = append(
+					pairLocations[pairKey{p.Package, p.Version}],
+					location{srcName: srcName, suite: v.Suite, component: v.Component, mirror: mirror},
+				)
+			}
+		}
 	}
 
 	cacheDir := s.cache.CacheDir()
 
-	for _, src := range sources {
-		for _, entry := range src.Entries {
-			mirror := strings.TrimRight(entry.Mirror, "/")
+	// Parse only the specific Sources files we need.
+	type pairResult struct{ urls []string }
+	found := make(map[pairKey]*pairResult, len(pairs))
+	for _, p := range pairs {
+		found[pairKey{p.Package, p.Version}] = &pairResult{}
+	}
 
-			// Try both formats (xz, gz) to find the raw Sources file.
-			var pkgs []distro.SourcePackageFiles
-			for _, format := range []string{"xz", "gz"} {
-				fname := distro.SourcesFileName(entry.Suite, entry.Component, format)
-				path := filepath.Join(cacheDir, "sources", src.Name, fname)
-				parsed, err := distro.ParseSourcesFileWithFiles(path, format, entry.Suite, entry.Component)
-				if err != nil {
-					continue
+	// Track already-parsed files to avoid re-parsing.
+	type fileKey struct{ srcName, suite, component string }
+	parsed := make(map[fileKey][]distro.SourcePackageFiles)
+
+	for pk, locs := range pairLocations {
+		for _, loc := range locs {
+			fk := fileKey{loc.srcName, loc.suite, loc.component}
+			pkgs, ok := parsed[fk]
+			if !ok {
+				for _, format := range []string{"xz", "gz"} {
+					fname := distro.SourcesFileName(loc.suite, loc.component, format)
+					path := filepath.Join(cacheDir, "sources", loc.srcName, fname)
+					p, err := distro.ParseSourcesFileWithFiles(path, format, loc.suite, loc.component)
+					if err != nil {
+						continue
+					}
+					pkgs = p
+					break
 				}
-				pkgs = parsed
-				break
+				parsed[fk] = pkgs
 			}
 
 			for _, p := range pkgs {
-				k := pairKey{p.Package, p.Version}
-				pr, ok := found[k]
-				if !ok {
+				if p.Package != pk.pkg || p.Version != pk.ver {
 					continue
 				}
-				// Find the .dsc filename.
 				for _, f := range p.Files {
 					if strings.HasSuffix(f, ".dsc") {
-						url := mirror + "/" + p.Directory + "/" + f
-						pr.urls = append(pr.urls, url)
+						url := loc.mirror + "/" + p.Directory + "/" + f
+						found[pk].urls = append(found[pk].urls, url)
 					}
 				}
 			}
@@ -140,51 +191,70 @@ func (s *Service) FindDsc(ctx context.Context, pairs []PackageVersionPair, sourc
 	return results, nil
 }
 
-// ShowDetail returns the full APT metadata for a specific package. If version is
-// provided, returns the exact match. Otherwise, returns the highest version found
-// across the given sources.
+// ShowDetail returns the full APT metadata for a specific package. It uses the
+// bbolt cache index to locate the exact source/suite/component, then parses only
+// that single Sources file for the full RFC822 fields.
 func (s *Service) ShowDetail(ctx context.Context, pkgName, version string, sources []ProjectSource) (*distro.SourcePackageInfo, error) {
-	// If no explicit version, use the cache to find the highest version.
-	if version == "" {
-		result, err := s.Show(ctx, pkgName, sources)
-		if err != nil {
-			return nil, err
-		}
-		var best *distro.SourcePackage
-		for _, versions := range result.Versions {
-			h := distro.PickHighest(versions)
-			if h != nil && (best == nil || distro.CompareVersions(h.Version, best.Version) > 0) {
-				best = h
-			}
-		}
-		if best == nil {
-			return nil, fmt.Errorf("package %q not found in configured sources", pkgName)
-		}
-		version = best.Version
+	// Use the cache to find which source/suite/component holds this package.
+	result, err := s.Show(ctx, pkgName, sources)
+	if err != nil {
+		return nil, err
 	}
 
-	cacheDir := s.cache.CacheDir()
-
-	for _, src := range sources {
-		for _, entry := range src.Entries {
-			var pkgs []distro.SourcePackageInfo
-			for _, format := range []string{"xz", "gz"} {
-				fname := distro.SourcesFileName(entry.Suite, entry.Component, format)
-				path := filepath.Join(cacheDir, "sources", src.Name, fname)
-				parsed, err := distro.ParseSourcesFileFull(path, format, entry.Suite, entry.Component)
-				if err != nil {
-					continue
+	// Find the target entry: either exact version match or highest version.
+	var target *distro.SourcePackage
+	var targetSource string
+	for srcName, versions := range result.Versions {
+		for i := range versions {
+			v := &versions[i]
+			if version != "" {
+				if v.Version == version {
+					target = v
+					targetSource = srcName
+					break
 				}
-				pkgs = parsed
-				break
-			}
-
-			for i := range pkgs {
-				if pkgs[i].Package == pkgName && pkgs[i].Version == version {
-					return &pkgs[i], nil
+			} else {
+				if target == nil || distro.CompareVersions(v.Version, target.Version) > 0 {
+					target = v
+					targetSource = srcName
 				}
 			}
 		}
+		if target != nil && version != "" {
+			break
+		}
+	}
+
+	if target == nil {
+		if version != "" {
+			return nil, fmt.Errorf("package %s=%s not found in cache", pkgName, version)
+		}
+		return nil, fmt.Errorf("package %q not found in configured sources", pkgName)
+	}
+
+	// Parse only the single Sources file that contains our package.
+	return s.parseOneSourcesFile(pkgName, target.Version, targetSource, target.Suite, target.Component)
+}
+
+// parseOneSourcesFile parses the full metadata for a specific package from
+// a single cached Sources file identified by source name, suite, and component.
+func (s *Service) parseOneSourcesFile(pkgName, version, srcName, suite, component string) (*distro.SourcePackageInfo, error) {
+	cacheDir := s.cache.CacheDir()
+
+	for _, format := range []string{"xz", "gz"} {
+		fname := distro.SourcesFileName(suite, component, format)
+		path := filepath.Join(cacheDir, "sources", srcName, fname)
+		pkgs, err := distro.ParseSourcesFileFull(path, format, suite, component)
+		if err != nil {
+			continue
+		}
+		for i := range pkgs {
+			if pkgs[i].Package == pkgName && pkgs[i].Version == version {
+				return &pkgs[i], nil
+			}
+		}
+		// File parsed successfully but package not found — don't try gz.
+		break
 	}
 
 	return nil, fmt.Errorf("package %s=%s not found in Sources files", pkgName, version)

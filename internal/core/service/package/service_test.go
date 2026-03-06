@@ -318,7 +318,12 @@ Files:
 	}
 
 	cache := &mockCache{
-		data:    map[string][]distro.SourcePackage{},
+		data: map[string][]distro.SourcePackage{
+			"ubuntu": {
+				{Package: "nova", Version: "1:29.1.0-0ubuntu1", Suite: "noble-updates", Component: "main"},
+				{Package: "keystone", Version: "2:27.0.1-0ubuntu1", Suite: "noble-updates", Component: "main"},
+			},
+		},
 		baseDir: tmpDir,
 	}
 	svc := NewService(cache, nil)
