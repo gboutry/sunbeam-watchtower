@@ -528,14 +528,13 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 }
 
 // DownloadOpts holds options for downloading build artifacts.
-// DownloadOpts holds options for downloading build artifacts.
 type DownloadOpts struct {
-	Projects     []string // project name filter
+	Projects      []string // project name filter
 	ArtifactNames []string // explicit artifact names (maps to recipe names)
-	RecipePrefix string   // discover recipes by prefix
-	Owner        string   // override LP owner
-	LPProject    string   // override LP project
-	OutputDir    string   // output directory
+	RecipePrefix  string   // discover recipes by prefix
+	Owner         string   // override LP owner
+	LPProject     string   // override LP project
+	OutputDir     string   // output directory
 }
 
 // Download retrieves build artifacts for succeeded builds of the given recipes.

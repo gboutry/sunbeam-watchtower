@@ -156,21 +156,6 @@ func (m *mockRepoManager) WaitForGitRef(_ context.Context, _, _ string, _ time.D
 	return m.refSelfLink, nil
 }
 
-// mockGitClient implements port.GitClient for testing.
-type mockGitClient struct {
-	isRepo      bool
-	headSHA     string
-	uncommitted bool
-	pushErr     error
-}
-
-func (m *mockGitClient) IsRepo(_ string) bool                         { return m.isRepo }
-func (m *mockGitClient) HeadSHA(_ string) (string, error)             { return m.headSHA, nil }
-func (m *mockGitClient) HasUncommittedChanges(_ string) (bool, error) { return m.uncommitted, nil }
-func (m *mockGitClient) Push(_, _, _, _ string, _ bool) error         { return m.pushErr }
-func (m *mockGitClient) AddRemote(_, _, _ string) error               { return nil }
-func (m *mockGitClient) RemoveRemote(_, _ string) error               { return nil }
-
 // mockStrategy implements ArtifactStrategy for testing.
 type mockStrategy struct {
 	artifactType dto.ArtifactType

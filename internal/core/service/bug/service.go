@@ -116,10 +116,10 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 		s.logger.Debug("querying tracker", "tracker", key, "projects", projectNames)
 
 		tasks, err := pt.Tracker.ListBugTasks(ctx, pt.ProjectID, forge.ListBugTasksOpts{
-			Status:     opts.Status,
-			Importance: opts.Importance,
-			Assignee:   opts.Assignee,
-			Tags:       opts.Tags,
+			Status:        opts.Status,
+			Importance:    opts.Importance,
+			Assignee:      opts.Assignee,
+			Tags:          opts.Tags,
 			ModifiedSince: opts.Since,
 		})
 
