@@ -1,6 +1,8 @@
 # Sunbeam Watchtower
 
-A unified CLI dashboard for tracking code, reviews, bugs, and builds across GitHub, Launchpad, and Gerrit forges.
+A unified CLI dashboard for tracking packages, code, reviews, bugs, builds, and Launchpad project metadata across GitHub, Launchpad, and Gerrit forges.
+
+The CLI runs on top of a local HTTP API server. You can also run that server explicitly and consume its OpenAPI description at `/openapi.json` or the interactive docs UI at `/docs`.
 
 ## Installation
 
@@ -43,7 +45,7 @@ projects:
       project: charm-keystone-k8s
 ```
 
-2. Sync the local git cache (clones repos for fast commit lookups):
+2. Sync the local caches:
 
 ```bash
 watchtower cache sync
@@ -52,9 +54,11 @@ watchtower cache sync
 3. Start exploring:
 
 ```bash
+watchtower packages diff released
 watchtower commit log
 watchtower review list
 watchtower bug list
+watchtower project sync --dry-run
 ```
 
 ## Configuration
@@ -96,7 +100,37 @@ Each project has:
 
 The `git_url` field is useful when the clone URL cannot be derived from the forge type and project name (e.g., Launchpad repos with complex paths like `~owner/project/+git/repo`).
 
+Projects tracked in Launchpad bug configuration can also declare the series that must exist on the Launchpad project plus the focus of development:
+
+```yaml
+- name: snap-openstack
+  bugs:
+    - forge: launchpad
+      project: snap-openstack
+      series:
+        - 2024.1
+        - 2024.2
+      focus: 2024.2
+```
+
+`watchtower project sync` ensures those series exist and sets the declared focus of development.
+
 ## Commands
+
+### `watchtower packages`
+
+Compare package versions and inspect package metadata across configured distro sources.
+
+```bash
+# Compare package sets
+watchtower packages diff released
+
+# Show all versions of a package
+watchtower packages show nova
+
+# List packages in a configured distro release
+watchtower packages list --distro ubuntu --release noble
+```
 
 ### `watchtower commit`
 
@@ -167,28 +201,51 @@ watchtower build download my-project --artifacts-dir ./output
 watchtower build cleanup --project my-project --dry-run
 ```
 
-### `watchtower cache`
+### `watchtower project`
 
-Manage the local git repo cache used by `commit log` and `commit track`.
+Manage Launchpad project metadata derived from configuration.
 
 ```bash
-# Clone missing repos and fetch all existing ones
+# Preview Launchpad project changes
+watchtower project sync --dry-run
+
+# Sync a subset of Launchpad projects
+watchtower project sync --project snap-openstack --project sunbeam-charms
+```
+
+### `watchtower cache`
+
+Manage local caches used by commit tracking, package lookups, and upstream repository inspection.
+
+```bash
+# Sync all cache types
 watchtower cache sync
 
-# Sync a specific project only
-watchtower cache sync --project snap-openstack
+# Sync only git repos
+watchtower cache sync git
+
+# Sync only package indexes for selected distros/releases
+watchtower cache sync packages-index --distro ubuntu --release noble
+
+# Sync only configured upstream repos
+watchtower cache sync upstream-repos
+
+# Sync a specific project's git cache
+watchtower cache sync git --project snap-openstack
 
 # Show cached repos and their disk usage
 watchtower cache status
 
-# Remove all cached repos
+# Remove all cached data
 watchtower cache clear
 
-# Remove a specific project's cache
-watchtower cache clear --project snap-openstack
+# Remove a specific project's git cache
+watchtower cache clear git --project snap-openstack
 ```
 
-The cache is stored at `$XDG_CACHE_HOME/sunbeam-watchtower/repos/` (defaults to `~/.cache/sunbeam-watchtower/repos/`). Repos are bare git clones organized by host:
+Valid cache types are `git`, `packages-index`, and `upstream-repos`.
+
+Git cache data is stored at `$XDG_CACHE_HOME/sunbeam-watchtower/repos/` (defaults to `~/.cache/sunbeam-watchtower/repos/`). Repos are bare git clones organized by host:
 
 ```
 ~/.cache/sunbeam-watchtower/repos/
@@ -215,6 +272,23 @@ watchtower auth status
 # Display the current configuration
 watchtower config show
 ```
+
+### `watchtower serve`
+
+Run the HTTP API server directly instead of using the embedded per-command server.
+
+```bash
+# Serve on TCP
+watchtower serve --listen 127.0.0.1:8472
+
+# Serve on a Unix domain socket
+watchtower serve --listen unix:///tmp/watchtower.sock
+```
+
+When served over TCP:
+
+- OpenAPI spec: `http://127.0.0.1:8472/openapi.json`
+- Interactive docs: `http://127.0.0.1:8472/docs`
 
 ## Output formats
 
@@ -265,6 +339,17 @@ time=... level=DEBUG msg="project commits fetched" project=snap-openstack commit
 time=... level=DEBUG msg="commits aggregated" total_count=142
 time=... level=DEBUG msg="commit log complete" total_commits=142
 ```
+
+## Developer tooling
+
+This repository ships with pre-commit hooks and a curated `golangci-lint` v2 configuration.
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+The hooks run whitespace/YAML checks plus `golangci-lint`, `go build`, `go test`, and `go mod tidy`.
 
 ## License
 
