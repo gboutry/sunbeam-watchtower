@@ -96,7 +96,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 					dlRecipes = recipeNames
 				}
 				if err := opts.Client.BuildsDownload(cmd.Context(), client.BuildsDownloadOptions{
-					Project:      projectName,
+					Projects:     []string{projectName},
 					Recipes:      dlRecipes,
 					ArtifactsDir: artifactsDir,
 				}); err != nil {
@@ -329,25 +329,62 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 }
 
 func newBuildDownloadCmd(opts *Options) *cobra.Command {
-	var artifactsDir string
+	var artifactsDir, source, sha, prefix, owner string
+	var projects []string
 
 	cmd := &cobra.Command{
-		Use:   "download <project> [recipes...]",
+		Use:   "download [projects...] [recipes...]",
 		Short: "Download build artifacts",
-		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projectName := args[0]
-			recipeNames := args[1:]
+			allProjects := append(projects, args...)
 
-			return opts.Client.BuildsDownload(cmd.Context(), client.BuildsDownloadOptions{
-				Project:      projectName,
-				Recipes:      recipeNames,
+			dlOpts := client.BuildsDownloadOptions{
+				Projects:     allProjects,
 				ArtifactsDir: artifactsDir,
-			})
+			}
+
+			if source == "local" {
+				listPrefix := prefix
+				if sha != "" {
+					listPrefix = prefix + sha + "-"
+				}
+
+				repoMgr, err := opts.App.BuildRepoManager()
+				if err != nil {
+					return fmt.Errorf("init repo manager: %w", err)
+				}
+				ctx := cmd.Context()
+
+				lpOwner := owner
+				if lpOwner == "" {
+					lpOwner, err = repoMgr.GetCurrentUser(ctx)
+					if err != nil {
+						return fmt.Errorf("get current LP user: %w", err)
+					}
+				}
+				dlOpts.Owner = lpOwner
+
+				lpProject, err := repoMgr.GetOrCreateProject(ctx, lpOwner)
+				if err != nil {
+					return fmt.Errorf("get LP project: %w", err)
+				}
+				dlOpts.LPProject = lpProject
+				dlOpts.RecipePrefix = listPrefix
+			}
+			if owner != "" {
+				dlOpts.Owner = owner
+			}
+
+			return opts.Client.BuildsDownload(cmd.Context(), dlOpts)
 		},
 	}
 
+	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name")
 	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory (default from config)")
+	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
+	cmd.Flags().StringVar(&sha, "sha", "", "git commit SHA (narrows prefix in local mode)")
+	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build-", "temp recipe name prefix (local mode)")
+	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
 
 	return cmd
 }

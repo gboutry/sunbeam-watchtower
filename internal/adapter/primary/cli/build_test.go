@@ -178,7 +178,8 @@ func TestBuildTriggerCmd_NoArgs(t *testing.T) {
 	}
 }
 
-func TestBuildDownloadCmd_NoArgs(t *testing.T) {
+// download accepts zero args now (projects are optional, same as list).
+func TestBuildDownloadCmd_NoArgs_Accepted(t *testing.T) {
 	cfgFile := writeTempConfig(t)
 
 	var out, errOut bytes.Buffer
@@ -186,10 +187,9 @@ func TestBuildDownloadCmd_NoArgs(t *testing.T) {
 	cmd := NewRootCmd(opts)
 	cmd.SetArgs([]string{"build", "download", "--config", cfgFile})
 
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for missing project argument")
-	}
+	// Should not error on arg count — actual execution will fail on missing
+	// server / config, but the point is no args-validation error.
+	_ = cmd.Execute()
 }
 
 // list and cleanup accept zero args — verify they don't error on arg count.

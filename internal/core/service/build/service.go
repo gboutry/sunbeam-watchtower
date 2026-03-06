@@ -527,40 +527,88 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 	return all, results, nil
 }
 
+// DownloadOpts holds options for downloading build artifacts.
+type DownloadOpts struct {
+	Projects     []string // project name filter
+	RecipeNames  []string // explicit recipe names
+	RecipePrefix string   // discover recipes by prefix
+	Owner        string   // override LP owner
+	LPProject    string   // override LP project
+	OutputDir    string   // output directory
+}
+
 // Download retrieves build artifacts for succeeded builds of the given recipes.
-func (s *Service) Download(ctx context.Context, projectName string, recipeNames []string, outputDir string) error {
-	pb, ok := s.projects[projectName]
-	if !ok {
-		return fmt.Errorf("unknown project %q", projectName)
+func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
+	projFilter := make(map[string]bool, len(opts.Projects))
+	for _, p := range opts.Projects {
+		projFilter[p] = true
 	}
 
-	recipes := recipeNames
-	if len(recipes) == 0 {
-		recipes = pb.Recipes
-	}
-
-	for _, name := range recipes {
-		recipe, err := pb.Builder.GetRecipe(ctx, pb.Owner, pb.RecipeProject(), name)
-		if err != nil {
-			return fmt.Errorf("recipe %q: %w", name, err)
-		}
-		builds, err := pb.Builder.ListBuilds(ctx, recipe)
-		if err != nil {
-			return fmt.Errorf("listing builds for %q: %w", name, err)
+	for name, pb := range s.projects {
+		if len(projFilter) > 0 && !projFilter[name] {
+			continue
 		}
 
-		for _, b := range builds {
-			if b.State != dto.BuildSucceeded {
+		owner := pb.Owner
+		if opts.Owner != "" {
+			owner = opts.Owner
+		}
+
+		lpProject := pb.RecipeProject()
+		if opts.LPProject != "" {
+			lpProject = opts.LPProject
+		}
+
+		recipeNames := opts.RecipeNames
+		if len(recipeNames) == 0 && opts.RecipePrefix == "" {
+			recipeNames = pb.Recipes
+		}
+
+		// Prefix-based discovery.
+		if opts.RecipePrefix != "" && len(opts.RecipeNames) == 0 {
+			if owner == "" {
+				s.logger.Warn("skipping prefix discovery: owner required", "project", name)
 				continue
 			}
-			urls, err := pb.Builder.GetBuildFileURLs(ctx, b.SelfLink)
+			allRecipes, err := pb.Builder.ListRecipesByOwner(ctx, owner)
 			if err != nil {
-				s.logger.Warn("failed to get file URLs", "build", b.SelfLink, "error", err)
-				continue
+				return fmt.Errorf("listing recipes by owner for %q: %w", name, err)
 			}
-			for _, u := range urls {
-				if err := downloadFile(u, outputDir, name); err != nil {
-					return fmt.Errorf("downloading %s: %w", u, err)
+			recipeNames = nil
+			for _, r := range allRecipes {
+				if !strings.HasPrefix(r.Name, opts.RecipePrefix) {
+					continue
+				}
+				if lpProject != "" && r.Project != lpProject {
+					continue
+				}
+				recipeNames = append(recipeNames, r.Name)
+			}
+		}
+
+		for _, recipeName := range recipeNames {
+			recipe, err := pb.Builder.GetRecipe(ctx, owner, lpProject, recipeName)
+			if err != nil {
+				return fmt.Errorf("recipe %q: %w", recipeName, err)
+			}
+			builds, err := pb.Builder.ListBuilds(ctx, recipe)
+			if err != nil {
+				return fmt.Errorf("listing builds for %q: %w", recipeName, err)
+			}
+
+			for _, b := range builds {
+				if b.State != dto.BuildSucceeded {
+					continue
+				}
+				urls, err := pb.Builder.GetBuildFileURLs(ctx, b.SelfLink)
+				if err != nil {
+					s.logger.Warn("failed to get file URLs", "build", b.SelfLink, "error", err)
+					continue
+				}
+				for _, u := range urls {
+					if err := downloadFile(u, opts.OutputDir, recipeName); err != nil {
+						return fmt.Errorf("downloading %s: %w", u, err)
+					}
 				}
 			}
 		}

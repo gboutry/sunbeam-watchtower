@@ -61,8 +61,11 @@ type BuildsListOutput struct {
 // BuildsDownloadInput holds the request body for downloading build artifacts.
 type BuildsDownloadInput struct {
 	Body struct {
-		Project      string   `json:"project" doc:"Project name"`
+		Projects     []string `json:"projects,omitempty" doc:"Project names to download from"`
 		Recipes      []string `json:"recipes,omitempty" doc:"Recipe names (empty = all configured)"`
+		RecipePrefix string   `json:"recipe_prefix,omitempty" doc:"Filter recipes by name prefix"`
+		Owner        string   `json:"owner,omitempty" doc:"Override LP owner"`
+		LPProject    string   `json:"lp_project,omitempty" doc:"Override LP project"`
 		ArtifactsDir string   `json:"artifacts_dir,omitempty" doc:"Output directory (default from config)"`
 	}
 }
@@ -186,7 +189,14 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			artifactsDir = application.Config.Build.ArtifactsDir
 		}
 
-		if err := svc.Download(ctx, input.Body.Project, input.Body.Recipes, artifactsDir); err != nil {
+		if err := svc.Download(ctx, build.DownloadOpts{
+			Projects:     input.Body.Projects,
+			RecipeNames:  input.Body.Recipes,
+			RecipePrefix: input.Body.RecipePrefix,
+			Owner:        input.Body.Owner,
+			LPProject:    input.Body.LPProject,
+			OutputDir:    artifactsDir,
+		}); err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("download failed: %v", err))
 		}
 

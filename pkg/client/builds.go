@@ -79,8 +79,11 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 
 // BuildsDownloadOptions holds the request body for downloading build artifacts.
 type BuildsDownloadOptions struct {
-	Project      string   `json:"project"`
+	Projects     []string `json:"projects,omitempty"`
 	Recipes      []string `json:"recipes,omitempty"`
+	RecipePrefix string   `json:"recipe_prefix,omitempty"`
+	Owner        string   `json:"owner,omitempty"`
+	LPProject    string   `json:"lp_project,omitempty"`
 	ArtifactsDir string   `json:"artifacts_dir,omitempty"`
 }
 
