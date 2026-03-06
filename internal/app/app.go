@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/go-github/v68/github"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/distrocache"
+	adaptergit "github.com/gboutry/sunbeam-watchtower/internal/adapter/git"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/gitcache"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/launchpad"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/openstack"
@@ -27,8 +29,11 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/commit"
 	pkg "github.com/gboutry/sunbeam-watchtower/internal/service/package"
+	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/review"
 )
+
+var ErrLaunchpadAuthRequired = errors.New("launchpad authentication required")
 
 // App holds shared application state and provides lazy-initialized factories
 // for services and adapters. Both the CLI and HTTP API use this layer.
@@ -363,6 +368,20 @@ func (a *App) BuildRecipeBuilders() (map[string]build.ProjectBuilder, error) {
 	return result, nil
 }
 
+// BuildService creates the build service with all required dependencies wired.
+func (a *App) BuildService() (*build.Service, error) {
+	builders, err := a.BuildRecipeBuilders()
+	if err != nil {
+		return nil, err
+	}
+	repoMgr, err := a.BuildRepoManager()
+	if err != nil {
+		return nil, err
+	}
+	gitClient := adaptergit.NewClient(a.Logger)
+	return build.NewService(builders, repoMgr, gitClient, a.Logger), nil
+}
+
 // BuildRepoManager creates a RepoManager backed by Launchpad.
 func (a *App) BuildRepoManager() (port.RepoManager, error) {
 	if a.Config == nil {
@@ -375,6 +394,57 @@ func (a *App) BuildRepoManager() (port.RepoManager, error) {
 	}
 
 	return lpadapter.NewRepoManager(lpClient, a.Logger), nil
+}
+
+// BuildProjectSyncConfigs resolves project sync configuration from the loaded config.
+func (a *App) BuildProjectSyncConfigs() (map[string]projectsvc.ProjectSyncConfig, error) {
+	if a.Config == nil {
+		return nil, fmt.Errorf("no configuration loaded")
+	}
+
+	projectConfigs := make(map[string]projectsvc.ProjectSyncConfig)
+	for _, proj := range a.Config.Projects {
+		for _, b := range proj.Bugs {
+			if b.Forge != "launchpad" {
+				continue
+			}
+			if _, ok := projectConfigs[b.Project]; ok {
+				continue
+			}
+			psc := projectsvc.ProjectSyncConfig{
+				Series:           a.Config.Launchpad.Series,
+				DevelopmentFocus: a.Config.Launchpad.DevelopmentFocus,
+			}
+			if len(proj.Series) > 0 {
+				psc.Series = proj.Series
+			}
+			if proj.DevelopmentFocus != "" {
+				psc.DevelopmentFocus = proj.DevelopmentFocus
+			}
+			projectConfigs[b.Project] = psc
+		}
+	}
+
+	return projectConfigs, nil
+}
+
+// ProjectService creates the project sync service with config-derived project settings.
+func (a *App) ProjectService() (*projectsvc.Service, error) {
+	projectConfigs, err := a.BuildProjectSyncConfigs()
+	if err != nil {
+		return nil, err
+	}
+	if len(projectConfigs) == 0 {
+		return projectsvc.NewService(nil, projectConfigs, a.Logger), nil
+	}
+
+	lpClient := NewLaunchpadClient(a.Config.Launchpad, a.Logger)
+	if lpClient == nil {
+		return nil, ErrLaunchpadAuthRequired
+	}
+
+	manager := lpadapter.NewProjectManager(lpClient)
+	return projectsvc.NewService(manager, projectConfigs, a.Logger), nil
 }
 
 // BuildUpstreamProvider creates an UpstreamProvider from config, or returns nil
@@ -427,9 +497,10 @@ func (a *App) BuildCommitSources() (map[string]commit.ProjectSource, error) {
 		forgeType := ForgeTypeFromConfig(proj.Code.Forge)
 		result[proj.Name] = commit.ProjectSource{
 			Source: &commit.CachedGitSource{
-				Cache:    cache,
-				CloneURL: cloneURL,
-				Code:     proj.Code,
+				Cache:     cache,
+				CloneURL:  cloneURL,
+				ForgeType: forgeType,
+				CommitURL: proj.Code.CommitURL,
 			},
 			ForgeType: forgeType,
 		}

@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/distrocache"
 	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
@@ -107,9 +106,9 @@ func (s *Service) FindDsc(ctx context.Context, pairs []PackageVersionPair, sourc
 			// Try both formats (xz, gz) to find the raw Sources file.
 			var pkgs []distro.SourcePackageFiles
 			for _, format := range []string{"xz", "gz"} {
-				fname := distrocache.SourcesFileName(entry.Suite, entry.Component, format)
+				fname := distro.SourcesFileName(entry.Suite, entry.Component, format)
 				path := filepath.Join(cacheDir, "sources", src.Name, fname)
-				parsed, err := distrocache.ParseSourcesFileWithFiles(path, format, entry.Suite, entry.Component)
+				parsed, err := distro.ParseSourcesFileWithFiles(path, format, entry.Suite, entry.Component)
 				if err != nil {
 					continue
 				}

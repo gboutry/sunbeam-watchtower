@@ -148,6 +148,20 @@ All built on top of the HTTP API:
 - **TUI Dashboard** — Terminal UI for real-time monitoring
 - **Prometheus Exporter** — Metrics endpoint for observability
 
+### Architecture review follow-ups
+- `internal/pkg/*` remains a good home for reusable internal libraries, and `internal/pkg` -> `internal/pkg` dependencies are acceptable as long as they stay acyclic and independent from repo-specific layers.
+- Boundary fixes completed:
+  - build and project API handlers now obtain services from `internal/app` instead of constructing adapters directly
+  - distro Sources parsing helpers now live in `internal/pkg/distro/v1`, so services no longer depend on adapter helpers
+  - commit source metadata no longer depends on `internal/config` types
+  - `depguard` now enforces key `internal/api`, `internal/service`, and `internal/pkg` import boundaries in CI/lint
+- `arch-go` looks like a good complement to `depguard` for broader architecture policies (package contents, naming, coverage/compliance thresholds), but it has not been wired yet because the tool is not available locally to validate an `arch-go.yml` configuration.
+- The next refactor step should extend the same factory pattern across the remaining API domains for consistency.
+- MCP/TUI readiness gaps:
+  - auth is still CLI-only
+  - no async/progress/event abstraction for long-running sync/build operations
+  - no application-facing service façade for non-HTTP consumers
+
 ### Auth rework
 Auth needs to be reworked to fit the new architecture:
 - Move from CLI-only to API-based auth management

@@ -2,11 +2,11 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/launchpad"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/service/project"
 )
@@ -39,48 +39,13 @@ func RegisterProjectsAPI(api huma.API, application *app.App) {
 		Description: "Ensure LP projects have declared series and set the development focus.",
 		Tags:        []string{"projects"},
 	}, func(ctx context.Context, input *ProjectsSyncInput) (*ProjectsSyncOutput, error) {
-		cfg := application.Config
-		if cfg == nil {
-			return nil, huma.Error500InternalServerError("no configuration loaded")
-		}
-
-		// Collect unique LP project names from bug tracker entries,
-		// resolving per-project series/dev-focus overrides.
-		projectConfigs := make(map[string]projectsvc.ProjectSyncConfig)
-		for _, proj := range cfg.Projects {
-			for _, b := range proj.Bugs {
-				if b.Forge != "launchpad" {
-					continue
-				}
-				if _, ok := projectConfigs[b.Project]; ok {
-					continue
-				}
-				psc := projectsvc.ProjectSyncConfig{
-					Series:           cfg.Launchpad.Series,
-					DevelopmentFocus: cfg.Launchpad.DevelopmentFocus,
-				}
-				if len(proj.Series) > 0 {
-					psc.Series = proj.Series
-				}
-				if proj.DevelopmentFocus != "" {
-					psc.DevelopmentFocus = proj.DevelopmentFocus
-				}
-				projectConfigs[b.Project] = psc
+		svc, err := application.ProjectService()
+		if err != nil {
+			if errors.Is(err, app.ErrLaunchpadAuthRequired) {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
 			}
+			return nil, huma.Error500InternalServerError("failed to build project service", err)
 		}
-
-		if len(projectConfigs) == 0 {
-			out := &ProjectsSyncOutput{}
-			return out, nil
-		}
-
-		lpClient := app.NewLaunchpadClient(cfg.Launchpad, application.Logger)
-		if lpClient == nil {
-			return nil, huma.Error422UnprocessableEntity("Launchpad authentication required")
-		}
-
-		manager := lpadapter.NewProjectManager(lpClient)
-		svc := projectsvc.NewService(manager, projectConfigs, application.Logger)
 
 		result, err := svc.Sync(ctx, projectsvc.SyncOptions{
 			Projects: input.Body.Projects,

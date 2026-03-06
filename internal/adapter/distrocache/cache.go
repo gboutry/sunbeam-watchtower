@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	distro "github.com/gboutry/sunbeam-watchtower/internal/pkg/distro/v1"
@@ -75,10 +74,7 @@ func (c *Cache) sourcesDir(name string) string {
 
 // SourcesFileName returns the filename for a Sources file.
 func SourcesFileName(suite, component, format string) string {
-	return fmt.Sprintf("%s_%s_Sources.%s",
-		strings.ReplaceAll(suite, "/", "_"),
-		component,
-		format)
+	return distro.SourcesFileName(suite, component, format)
 }
 
 // Update downloads Sources indexes and rebuilds the bbolt index for the named source.
@@ -110,7 +106,7 @@ func (c *Cache) Update(ctx context.Context, name string, entries []port.SourceEn
 			return fmt.Errorf("renaming sources file: %w", err)
 		}
 
-		pkgs, err := parseSourcesFileDetailed(destPath, format, entry.Suite, entry.Component)
+		pkgs, err := distro.ParseSourcesFileDetailed(destPath, format, entry.Suite, entry.Component)
 		if err != nil {
 			return fmt.Errorf("parsing %s: %w", destPath, err)
 		}

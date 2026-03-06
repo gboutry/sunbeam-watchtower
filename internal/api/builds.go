@@ -7,7 +7,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/git"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/service/build"
@@ -97,18 +96,10 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "Trigger builds for a project's recipes, optionally from a local git repo.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsTriggerInput) (*BuildsTriggerOutput, error) {
-		builders, err := application.BuildRecipeBuilders()
+		svc, err := application.BuildService()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build recipe builders", err)
+			return nil, huma.Error500InternalServerError("failed to build build service", err)
 		}
-
-		repoMgr, err := application.BuildRepoManager()
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build repo manager", err)
-		}
-
-		gitClient := git.NewClient(application.Logger)
-		svc := build.NewService(builders, repoMgr, gitClient, application.Logger)
 
 		var timeout time.Duration
 		if input.Body.Timeout != "" {
@@ -145,12 +136,10 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "List builds across all configured projects, with optional filters.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsListInput) (*BuildsListOutput, error) {
-		builders, err := application.BuildRecipeBuilders()
+		svc, err := application.BuildService()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build recipe builders", err)
+			return nil, huma.Error500InternalServerError("failed to build build service", err)
 		}
-
-		svc := build.NewService(builders, nil, nil, application.Logger)
 
 		builds, _, err := svc.List(ctx, build.ListOpts{
 			Projects: input.Projects,
@@ -174,12 +163,10 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "Download build artifacts for succeeded builds of the given recipes.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsDownloadInput) (*BuildsDownloadOutput, error) {
-		builders, err := application.BuildRecipeBuilders()
+		svc, err := application.BuildService()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build recipe builders", err)
+			return nil, huma.Error500InternalServerError("failed to build build service", err)
 		}
-
-		svc := build.NewService(builders, nil, nil, application.Logger)
 
 		artifactsDir := input.Body.ArtifactsDir
 		if artifactsDir == "" {
@@ -203,12 +190,10 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "Delete temporary build recipes matching a prefix.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsCleanupInput) (*BuildsCleanupOutput, error) {
-		builders, err := application.BuildRecipeBuilders()
+		svc, err := application.BuildService()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build recipe builders", err)
+			return nil, huma.Error500InternalServerError("failed to build build service", err)
 		}
-
-		svc := build.NewService(builders, nil, nil, application.Logger)
 
 		cleanupOpts := build.CleanupOpts{
 			Owner:  input.Body.Owner,

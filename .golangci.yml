@@ -9,6 +9,7 @@ linters:
     - bodyclose
     - copyloopvar
     - durationcheck
+    - depguard
     - errname
     - errorlint
     - fatcontext
@@ -39,6 +40,49 @@ linters:
         - G306  # 0644 files are fine for cache metadata
         - G402  # TLS min version — we rely on Go defaults
         - G704  # SSRF via taint — our HTTP clients use controlled URLs
+    depguard:
+      rules:
+        api-boundaries:
+          files:
+            - "**/internal/api/**/*.go"
+          list-mode: lax
+          deny:
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/adapter
+              desc: internal/api must go through internal/app or ports, not adapters directly
+        service-boundaries:
+          files:
+            - "**/internal/service/**/*.go"
+          list-mode: lax
+          deny:
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/adapter
+              desc: internal/service must depend on ports or internal/pkg, not adapters
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/api
+              desc: internal/service must not depend on the HTTP layer
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/app
+              desc: internal/service must not depend on the app composition root
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/cli
+              desc: internal/service must not depend on the CLI layer
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/config
+              desc: internal/service must not depend on config types directly
+        pkg-boundaries:
+          files:
+            - "**/internal/pkg/**/*.go"
+          list-mode: lax
+          deny:
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/adapter
+              desc: internal/pkg must stay reusable and independent from adapters
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/api
+              desc: internal/pkg must stay reusable and independent from API code
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/app
+              desc: internal/pkg must stay reusable and independent from app wiring
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/cli
+              desc: internal/pkg must stay reusable and independent from CLI code
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/config
+              desc: internal/pkg must stay reusable and independent from config
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/port
+              desc: internal/pkg must stay reusable and independent from ports
+            - pkg: github.com/gboutry/sunbeam-watchtower/internal/service
+              desc: internal/pkg must stay reusable and independent from services
   exclusions:
     presets:
       - std-error-handling

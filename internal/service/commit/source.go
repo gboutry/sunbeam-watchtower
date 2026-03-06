@@ -6,7 +6,6 @@ package commit
 import (
 	"context"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	forge "github.com/gboutry/sunbeam-watchtower/internal/pkg/forge/v1"
 	"github.com/gboutry/sunbeam-watchtower/internal/port"
 )
@@ -53,9 +52,10 @@ func (f *ForgeCommitSource) ListBranches(_ context.Context) ([]string, error) {
 
 // CachedGitSource reads commits from a local git cache.
 type CachedGitSource struct {
-	Cache    port.GitRepoCache
-	CloneURL string
-	Code     config.CodeConfig
+	Cache     port.GitRepoCache
+	CloneURL  string
+	ForgeType forge.ForgeType
+	CommitURL func(string) string
 }
 
 // ListCommits reads commits from the local git cache and populates commit URLs.
@@ -65,10 +65,11 @@ func (c *CachedGitSource) ListCommits(ctx context.Context, opts forge.ListCommit
 		return nil, err
 	}
 
-	forgeType := forgeTypeFromConfig(c.Code.Forge)
 	for i := range commits {
-		commits[i].Forge = forgeType
-		commits[i].URL = c.Code.CommitURL(commits[i].SHA)
+		commits[i].Forge = c.ForgeType
+		if c.CommitURL != nil {
+			commits[i].URL = c.CommitURL(commits[i].SHA)
+		}
 	}
 
 	return commits, nil
@@ -81,9 +82,8 @@ func (c *CachedGitSource) ListMRCommits(ctx context.Context) ([]forge.Commit, er
 		return nil, err
 	}
 
-	forgeType := forgeTypeFromConfig(c.Code.Forge)
 	for i := range commits {
-		commits[i].Forge = forgeType
+		commits[i].Forge = c.ForgeType
 	}
 
 	return commits, nil
@@ -92,17 +92,4 @@ func (c *CachedGitSource) ListMRCommits(ctx context.Context) ([]forge.Commit, er
 // ListBranches returns branch names from the local git cache.
 func (c *CachedGitSource) ListBranches(ctx context.Context) ([]string, error) {
 	return c.Cache.ListBranches(ctx, c.CloneURL)
-}
-
-func forgeTypeFromConfig(forgeName string) forge.ForgeType {
-	switch forgeName {
-	case "github":
-		return forge.ForgeGitHub
-	case "launchpad":
-		return forge.ForgeLaunchpad
-	case "gerrit":
-		return forge.ForgeGerrit
-	default:
-		return forge.ForgeGitHub
-	}
 }
