@@ -430,8 +430,7 @@ func (a *App) BuildService() (*build.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	gitClient := adaptergit.NewClient(a.Logger)
-	return build.NewService(builders, repoMgr, gitClient, a.Logger), nil
+	return build.NewService(builders, repoMgr, a.Logger), nil
 }
 
 // BuildRepoManager creates a RepoManager backed by Launchpad.
@@ -446,6 +445,11 @@ func (a *App) BuildRepoManager() (port.RepoManager, error) {
 	}
 
 	return lpadapter.NewRepoManager(lpClient, a.Logger), nil
+}
+
+// GitClient returns a new git client for local repository operations.
+func (a *App) GitClient() port.GitClient {
+	return adaptergit.NewClient(a.Logger)
 }
 
 // BuildProjectSyncConfigs resolves project sync configuration from the loaded config.

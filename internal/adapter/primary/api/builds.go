@@ -18,14 +18,16 @@ import (
 // BuildsTriggerInput holds the request body for triggering builds.
 type BuildsTriggerInput struct {
 	Body struct {
-		Project   string   `json:"project" doc:"Project name"`
-		Recipes   []string `json:"recipes,omitempty" doc:"Recipe names (empty = all configured)"`
-		Source    string   `json:"source,omitempty" doc:"Build source (remote|local)" default:"remote"`
-		Wait      bool     `json:"wait,omitempty" doc:"Wait for builds to complete"`
-		Timeout   string   `json:"timeout,omitempty" doc:"Max wait time as Go duration (e.g. 5h)"`
-		Owner     string   `json:"owner,omitempty" doc:"Override LP owner"`
-		Prefix    string   `json:"prefix,omitempty" doc:"Temp recipe name prefix (local mode)"`
-		LocalPath string   `json:"local_path,omitempty" doc:"Path to local git repo (local mode)"`
+		Project      string            `json:"project" doc:"Project name"`
+		Recipes      []string          `json:"recipes,omitempty" doc:"Recipe names (empty = all configured)"`
+		Wait         bool              `json:"wait,omitempty" doc:"Wait for builds to complete"`
+		Timeout      string            `json:"timeout,omitempty" doc:"Max wait time as Go duration (e.g. 5h)"`
+		Owner        string            `json:"owner,omitempty" doc:"Override LP owner"`
+		Prefix       string            `json:"prefix,omitempty" doc:"Temp recipe name prefix"`
+		RepoSelfLink string            `json:"repo_self_link,omitempty" doc:"LP git repo self_link (pre-resolved)"`
+		GitRefLinks  map[string]string `json:"git_ref_links,omitempty" doc:"Recipe name → git ref self_link (pre-resolved)"`
+		BuildPaths   map[string]string `json:"build_paths,omitempty" doc:"Recipe name → build path (pre-resolved)"`
+		LPProject    string            `json:"lp_project,omitempty" doc:"Override LP project name"`
 	}
 }
 
@@ -38,12 +40,11 @@ type BuildsTriggerOutput struct {
 
 // BuildsListInput holds query parameters for listing builds.
 type BuildsListInput struct {
-	Projects  []string `query:"project" doc:"Filter by project name"`
-	All       bool     `query:"all" doc:"Show all builds (not just active)"`
-	State     string   `query:"state" doc:"Filter by state"`
-	Source    string   `query:"source" doc:"Build source (remote|local)"`
-	LocalPath string   `query:"local_path" doc:"Path to local git repo (local mode)"`
-	Prefix    string   `query:"prefix" doc:"Temp recipe name prefix (local mode)"`
+	Projects    []string `query:"project" doc:"Filter by project name"`
+	All         bool     `query:"all" doc:"Show all builds (not just active)"`
+	State       string   `query:"state" doc:"Filter by state"`
+	Owner       string   `query:"owner" doc:"Override LP owner"`
+	RecipeNames []string `query:"recipe" doc:"Explicit recipe names (overrides project config)"`
 }
 
 // BuildsListOutput is the response for listing builds.
@@ -114,12 +115,14 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		}
 
 		triggerOpts := build.TriggerOpts{
-			Source:    input.Body.Source,
-			Wait:      input.Body.Wait,
-			Timeout:   timeout,
-			Owner:     input.Body.Owner,
-			Prefix:    input.Body.Prefix,
-			LocalPath: input.Body.LocalPath,
+			Wait:         input.Body.Wait,
+			Timeout:      timeout,
+			Owner:        input.Body.Owner,
+			Prefix:       input.Body.Prefix,
+			RepoSelfLink: input.Body.RepoSelfLink,
+			GitRefLinks:  input.Body.GitRefLinks,
+			BuildPaths:   input.Body.BuildPaths,
+			LPProject:    input.Body.LPProject,
 		}
 
 		result, err := svc.Trigger(ctx, input.Body.Project, input.Body.Recipes, triggerOpts)
@@ -146,12 +149,11 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		}
 
 		builds, _, err := svc.List(ctx, build.ListOpts{
-			Projects:  input.Projects,
-			All:       input.All,
-			State:     input.State,
-			Source:    input.Source,
-			LocalPath: input.LocalPath,
-			Prefix:    input.Prefix,
+			Projects:    input.Projects,
+			All:         input.All,
+			State:       input.State,
+			Owner:       input.Owner,
+			RecipeNames: input.RecipeNames,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list builds: %v", err))

@@ -209,10 +209,10 @@ func TestTrigger_RemoteMode_RequestBuilds(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{Source: "remote"})
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
 	}
@@ -245,10 +245,10 @@ func TestTrigger_RemoteMode_AllSucceeded(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{Source: "remote"})
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
 	}
@@ -278,10 +278,10 @@ func TestTrigger_RemoteMode_RetryFailed(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{Source: "remote"})
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
 	}
@@ -312,10 +312,10 @@ func TestTrigger_RemoteMode_MonitorActive(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{Source: "remote"})
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
 	}
@@ -339,10 +339,10 @@ func TestTrigger_RemoteMode_CreateRecipe(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{Source: "remote"})
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
 	}
@@ -353,32 +353,26 @@ func TestTrigger_RemoteMode_CreateRecipe(t *testing.T) {
 	}
 }
 
-func TestTrigger_LocalMode_FullPipeline(t *testing.T) {
+func TestTrigger_PreResolvedRefs_FullPipeline(t *testing.T) {
+	// Simulates the CLI passing pre-resolved LP resources (as in local mode).
 	builder := &mockRecipeBuilder{
 		recipes: map[string]*dto.Recipe{},
-	}
-	repoMgr := &mockRepoManager{
-		project:      "test-project",
-		repoSelfLink: "/repo/sunbeam",
-		gitSSHURL:    "git+ssh://lp/repo",
-		refSelfLink:  "/ref/abc12345",
-	}
-	gitCli := &mockGitClient{
-		isRepo:  true,
-		headSHA: "abc12345deadbeef",
 	}
 
 	svc := NewService(
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		repoMgr, gitCli, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
-		Source:    "local",
-		LocalPath: "/tmp/repo",
-		Prefix:    "tmp",
+	tempName := "tmp-abc12345-keystone"
+	result, err := svc.Trigger(context.Background(), "sunbeam", []string{tempName}, TriggerOpts{
+		Owner:        "test-user",
+		LPProject:    "test-project",
+		RepoSelfLink: "/repo/sunbeam",
+		GitRefLinks:  map[string]string{tempName: "/ref/abc12345"},
+		BuildPaths:   map[string]string{tempName: "rocks/keystone"},
 	})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
@@ -389,18 +383,15 @@ func TestTrigger_LocalMode_FullPipeline(t *testing.T) {
 	}
 
 	rr := result.RecipeResults[0]
-	// Local mode creates recipe then requests builds.
 	if rr.Error != nil {
 		t.Errorf("unexpected error: %v", rr.Error)
 	}
 	if rr.BuildRequest == nil {
-		t.Error("expected BuildRequest to be set after local create+request")
+		t.Error("expected BuildRequest to be set after create+request")
 	}
 
-	// The temp recipe name should have been created via strategy.
-	expectedTempName := "tmp-abc12345-keystone"
-	if _, ok := builder.recipes[expectedTempName]; !ok {
-		t.Errorf("expected recipe %q to be created, got keys: %v", expectedTempName, recipeKeys(builder.recipes))
+	if _, ok := builder.recipes[tempName]; !ok {
+		t.Errorf("expected recipe %q to be created, got keys: %v", tempName, recipeKeys(builder.recipes))
 	}
 }
 
@@ -419,10 +410,10 @@ func TestTrigger_MultipleRecipes(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone", "nova"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{Source: "remote"})
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
 	}
@@ -444,7 +435,7 @@ func TestTrigger_MultipleRecipes(t *testing.T) {
 }
 
 func TestTrigger_UnknownProject(t *testing.T) {
-	svc := NewService(map[string]ProjectBuilder{}, nil, nil, testLogger())
+	svc := NewService(map[string]ProjectBuilder{}, nil, testLogger())
 
 	_, err := svc.Trigger(context.Background(), "nonexistent", nil, TriggerOpts{})
 	if err == nil {
@@ -473,7 +464,7 @@ func TestList_ActiveOnly(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
 	builds, _, err := svc.List(context.Background(), ListOpts{})
@@ -508,7 +499,7 @@ func TestList_AllBuilds(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
 	builds, _, err := svc.List(context.Background(), ListOpts{All: true})
@@ -541,7 +532,7 @@ func TestList_ProjectFilter(t *testing.T) {
 			"projA": {Builder: builderA, Owner: "team", Project: "projA", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 			"projB": {Builder: builderB, Owner: "team", Project: "projB", Recipes: []string{"nova"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
 	builds, _, err := svc.List(context.Background(), ListOpts{Projects: []string{"projA"}})
@@ -574,7 +565,7 @@ func TestList_GracefulDegradation(t *testing.T) {
 			"good": {Builder: goodBuilder, Owner: "team", Project: "good", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 			"bad":  {Builder: badBuilder, Owner: "team", Project: "bad", Recipes: []string{"missing"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
 	builds, results, err := svc.List(context.Background(), ListOpts{})
@@ -610,7 +601,7 @@ func TestList_Sorting(t *testing.T) {
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
 	builds, _, err := svc.List(context.Background(), ListOpts{All: true})
@@ -635,34 +626,26 @@ func TestList_Sorting(t *testing.T) {
 // Trigger: local mode resolves owner from Me()
 // ---------------------------------------------------------------------------
 
-func TestTrigger_LocalMode_ResolvesOwnerFromMe(t *testing.T) {
-	// Project has NO owner configured; local mode should resolve via GetCurrentUser.
+func TestTrigger_PreResolved_OwnerOverride(t *testing.T) {
+	// Project has NO owner configured; pre-resolved opts provide owner.
 	builder := &mockRecipeBuilder{
 		recipes: map[string]*dto.Recipe{},
-	}
-	repoMgr := &mockRepoManager{
-		currentUser:  "test-user",
-		project:      "test-project",
-		repoSelfLink: "/repo/sunbeam",
-		gitSSHURL:    "git+ssh://lp/repo",
-		refSelfLink:  "/ref/abc12345",
-	}
-	gitCli := &mockGitClient{
-		isRepo:  true,
-		headSHA: "abc12345deadbeef",
 	}
 
 	svc := NewService(
 		map[string]ProjectBuilder{
 			"sunbeam": {Builder: builder, Owner: "", Project: "sunbeam", Recipes: []string{"keystone"}, Strategy: &mockStrategy{}},
 		},
-		repoMgr, gitCli, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
-		Source:    "local",
-		LocalPath: "/tmp/repo",
-		Prefix:    "tmp",
+	tempName := "tmp-abc12345-keystone"
+	result, err := svc.Trigger(context.Background(), "sunbeam", []string{tempName}, TriggerOpts{
+		Owner:        "test-user",
+		LPProject:    "test-project",
+		RepoSelfLink: "/repo/sunbeam",
+		GitRefLinks:  map[string]string{tempName: "/ref/abc12345"},
+		BuildPaths:   map[string]string{tempName: "rocks/keystone"},
 	})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
@@ -706,10 +689,10 @@ func TestTrigger_RemoteMode_UsesOfficialRepo(t *testing.T) {
 				Strategy:            &mockStrategy{},
 			},
 		},
-		repoMgr, nil, testLogger(),
+		repoMgr, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", []string{"nova-consolidated"}, TriggerOpts{Source: "remote"})
+	result, err := svc.Trigger(context.Background(), "sunbeam", []string{"nova-consolidated"}, TriggerOpts{})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
 	}
@@ -753,10 +736,10 @@ func TestTrigger_RemoteMode_FailsWithoutOfficialCodehosting(t *testing.T) {
 				Strategy:            &mockStrategy{},
 			},
 		},
-		nil, nil, testLogger(),
+		nil, testLogger(),
 	)
 
-	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{Source: "remote"})
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
 	}

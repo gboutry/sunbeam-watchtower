@@ -12,14 +12,16 @@ import (
 
 // BuildsTriggerOptions holds the request body for triggering builds.
 type BuildsTriggerOptions struct {
-	Project   string   `json:"project"`
-	Recipes   []string `json:"recipes,omitempty"`
-	Source    string   `json:"source,omitempty"`
-	Wait      bool     `json:"wait,omitempty"`
-	Timeout   string   `json:"timeout,omitempty"`
-	Owner     string   `json:"owner,omitempty"`
-	Prefix    string   `json:"prefix,omitempty"`
-	LocalPath string   `json:"local_path,omitempty"`
+	Project      string            `json:"project"`
+	Recipes      []string          `json:"recipes,omitempty"`
+	Wait         bool              `json:"wait,omitempty"`
+	Timeout      string            `json:"timeout,omitempty"`
+	Owner        string            `json:"owner,omitempty"`
+	Prefix       string            `json:"prefix,omitempty"`
+	RepoSelfLink string            `json:"repo_self_link,omitempty"`
+	GitRefLinks  map[string]string `json:"git_ref_links,omitempty"`
+	BuildPaths   map[string]string `json:"build_paths,omitempty"`
+	LPProject    string            `json:"lp_project,omitempty"`
 }
 
 // BuildsTrigger triggers builds for a project.
@@ -31,12 +33,11 @@ func (c *Client) BuildsTrigger(ctx context.Context, opts BuildsTriggerOptions) (
 
 // BuildsListOptions holds query parameters for listing builds.
 type BuildsListOptions struct {
-	Projects  []string
-	All       bool
-	State     string
-	Source    string
-	LocalPath string
-	Prefix    string
+	Projects    []string
+	All         bool
+	State       string
+	Owner       string
+	RecipeNames []string
 }
 
 // BuildsListResult is the response returned by BuildsList.
@@ -56,14 +57,11 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 	if opts.State != "" {
 		q.Set("state", opts.State)
 	}
-	if opts.Source != "" {
-		q.Set("source", opts.Source)
+	if opts.Owner != "" {
+		q.Set("owner", opts.Owner)
 	}
-	if opts.LocalPath != "" {
-		q.Set("local_path", opts.LocalPath)
-	}
-	if opts.Prefix != "" {
-		q.Set("prefix", opts.Prefix)
+	for _, v := range opts.RecipeNames {
+		q.Add("recipe", v)
 	}
 
 	var result BuildsListResult

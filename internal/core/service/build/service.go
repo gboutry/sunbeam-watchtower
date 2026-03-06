@@ -43,12 +43,19 @@ type RecipeStatus struct {
 
 // TriggerOpts holds options for triggering builds.
 type TriggerOpts struct {
-	Source        string // "remote" or "local"
-	Wait          bool
-	Timeout       time.Duration
-	Owner         string // override project owner
-	Prefix        string // temp recipe name prefix (local mode)
-	LocalPath     string // path to local git repo (local mode)
+	Wait    bool
+	Timeout time.Duration
+	Owner   string // override project owner
+	Prefix  string // temp recipe name prefix
+
+	// Pre-resolved LP resources (set by CLI for local builds).
+	// When RepoSelfLink and GitRefLinks are provided, the service skips
+	// its own repo/ref resolution and uses these directly.
+	RepoSelfLink string            // LP git repo self_link
+	GitRefLinks  map[string]string // recipe name → git ref self_link
+	BuildPaths   map[string]string // recipe name → build path (e.g. "rocks/keystone")
+	LPProject    string            // override LP project for recipe operations
+
 	Channels      map[string]string
 	Architectures []string
 	// Snap-specific
@@ -64,12 +71,11 @@ type RecipeResult = dto.BuildRecipeResult
 
 // ListOpts holds options for listing builds.
 type ListOpts struct {
-	Projects  []string
-	All       bool   // show all builds, not just active
-	State     string // filter by state
-	Source    string // "local" or "remote"
-	LocalPath string // path to local git repo (local mode)
-	Prefix    string // temp recipe name prefix (local mode)
+	Projects    []string
+	All         bool     // show all builds, not just active
+	State       string   // filter by state
+	Owner       string   // override project owner
+	RecipeNames []string // explicit recipe names (overrides project config)
 }
 
 // ProjectResult holds builds from one project, or an error.
@@ -91,25 +97,27 @@ type CleanupOpts struct {
 type Service struct {
 	projects    map[string]ProjectBuilder // keyed by watchtower project name
 	repoManager port.RepoManager
-	gitClient   port.GitClient
 	logger      *slog.Logger
 }
 
 // NewService creates a build service with the given project-to-builder mappings.
-func NewService(projects map[string]ProjectBuilder, repoManager port.RepoManager, gitClient port.GitClient, logger *slog.Logger) *Service {
+func NewService(projects map[string]ProjectBuilder, repoManager port.RepoManager, logger *slog.Logger) *Service {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Service{
 		projects:    projects,
 		repoManager: repoManager,
-		gitClient:   gitClient,
 		logger:      logger,
 	}
 }
 
 // Trigger orchestrates the build pipeline for a project. It is re-entrant:
 // calling it multiple times for the same recipes picks up where it left off.
+//
+// When opts.RepoSelfLink and opts.GitRefLinks are provided (e.g. by CLI for
+// local builds), the service uses them directly. Otherwise, it resolves repo
+// and ref information from Launchpad (remote/official mode).
 func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames []string, opts TriggerOpts) (*TriggerResult, error) {
 	pb, ok := s.projects[projectName]
 	if !ok {
@@ -117,17 +125,6 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 	}
 
 	owner := opts.Owner
-	if owner == "" && opts.Source == "local" {
-		// Local mode: resolve from LP Me() — config owner is the remote/official owner.
-		if s.repoManager == nil {
-			return nil, fmt.Errorf("local mode requires a RepoManager")
-		}
-		me, err := s.repoManager.GetCurrentUser(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("resolving current LP user: %w", err)
-		}
-		owner = me
-	}
 	if owner == "" {
 		owner = pb.Owner
 	}
@@ -136,103 +133,34 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 	}
 	pb.Owner = owner
 
+	if opts.LPProject != "" {
+		pb.LPProject = opts.LPProject
+	}
+
 	recipes := recipeNames
 	if len(recipes) == 0 {
 		recipes = pb.Recipes
 	}
-
-	// Local mode: auto-discover recipes from the local repo if none specified.
-	if len(recipes) == 0 && opts.Source == "local" && opts.LocalPath != "" {
-		discovered, err := pb.Strategy.DiscoverRecipes(opts.LocalPath)
-		if err != nil {
-			return nil, fmt.Errorf("discovering recipes in %s: %w", opts.LocalPath, err)
-		}
-		recipes = discovered
-	}
-
 	if len(recipes) == 0 {
 		return nil, fmt.Errorf("no recipes specified for project %q", projectName)
 	}
 
-	// Local mode: push local git to temp LP repo before recipe operations.
-	var repoSelfLink string
-	// Per-recipe git ref links: key is recipe name, value is git ref self_link
-	gitRefLinks := make(map[string]string)
-	// Per-recipe build paths: key is recipe name, value is build path
-	buildPaths := make(map[string]string)
+	// Resolve LP repo and ref information.
+	repoSelfLink := opts.RepoSelfLink
+	gitRefLinks := opts.GitRefLinks
+	buildPaths := opts.BuildPaths
+	if gitRefLinks == nil {
+		gitRefLinks = make(map[string]string)
+	}
+	if buildPaths == nil {
+		buildPaths = make(map[string]string)
+	}
 
-	if opts.Source == "local" {
-		if opts.LocalPath == "" {
-			return nil, fmt.Errorf("local mode requires LocalPath")
-		}
+	// If caller didn't provide pre-resolved values and project uses official
+	// codehosting, resolve repo and refs from Launchpad.
+	if repoSelfLink == "" && pb.OfficialCodehosting {
 		if s.repoManager == nil {
-			return nil, fmt.Errorf("local mode requires a RepoManager")
-		}
-		if s.gitClient == nil {
-			return nil, fmt.Errorf("local mode requires a GitClient")
-		}
-
-		projName, err := s.repoManager.GetOrCreateProject(ctx, owner)
-		if err != nil {
-			return nil, fmt.Errorf("get/create project: %w", err)
-		}
-		// Use the temp LP project for recipe operations in local mode.
-		pb.LPProject = projName
-
-		repoLink, sshURL, err := s.repoManager.GetOrCreateRepo(ctx, owner, projName, projectName)
-		if err != nil {
-			return nil, fmt.Errorf("get/create repo: %w", err)
-		}
-		repoSelfLink = repoLink
-
-		sha, err := s.gitClient.HeadSHA(opts.LocalPath)
-		if err != nil {
-			return nil, fmt.Errorf("get HEAD SHA: %w", err)
-		}
-
-		remoteName := "watchtower-tmp"
-		_ = s.gitClient.RemoveRemote(opts.LocalPath, remoteName)
-		if err := s.gitClient.AddRemote(opts.LocalPath, remoteName, sshURL); err != nil {
-			return nil, fmt.Errorf("add remote: %w", err)
-		}
-		defer func() {
-			_ = s.gitClient.RemoveRemote(opts.LocalPath, remoteName)
-		}()
-
-		// Push HEAD to both main (so the repo isn't empty) and a tmp branch
-		// for recipe creation. LP requires a real branch for git_ref.
-		refBranch := "refs/heads/tmp-" + sha[:8]
-		if err := s.gitClient.Push(opts.LocalPath, remoteName, "HEAD", "refs/heads/main", true); err != nil {
-			return nil, fmt.Errorf("push main to LP: %w", err)
-		}
-		if err := s.gitClient.Push(opts.LocalPath, remoteName, "HEAD", refBranch, true); err != nil {
-			return nil, fmt.Errorf("push tmp branch to LP: %w", err)
-		}
-
-		timeout := 2 * time.Minute
-		refLink, err := s.repoManager.WaitForGitRef(ctx, repoSelfLink, refBranch, timeout)
-		if err != nil {
-			return nil, fmt.Errorf("wait for git ref: %w", err)
-		}
-
-		// All local recipes use the same ref
-		for _, name := range recipes {
-			tempName := pb.Strategy.TempRecipeName(name, sha, opts.Prefix)
-			gitRefLinks[tempName] = refLink
-			buildPaths[tempName] = pb.Strategy.BuildPath(name)
-		}
-
-		// Rewrite recipe names to temp names for local mode.
-		tempRecipes := make([]string, len(recipes))
-		for i, name := range recipes {
-			tempRecipes[i] = pb.Strategy.TempRecipeName(name, sha, opts.Prefix)
-		}
-		recipes = tempRecipes
-
-	} else if opts.Source == "remote" && pb.OfficialCodehosting {
-		// Remote mode with official LP git repo: resolve repo and branches.
-		if s.repoManager == nil {
-			return nil, fmt.Errorf("remote mode requires a RepoManager")
+			return nil, fmt.Errorf("official codehosting requires a RepoManager")
 		}
 
 		lpProject := pb.RecipeProject()
@@ -242,7 +170,7 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 		}
 		repoSelfLink = repoLink
 
-		// If series are configured, expand artifacts into series-based recipes
+		// If series are configured, expand artifacts into series-based recipes.
 		if len(pb.Series) > 0 && len(pb.DevFocus) > 0 {
 			var expandedRecipes []string
 			for _, artifactName := range recipes {
@@ -263,7 +191,7 @@ func (s *Service) Trigger(ctx context.Context, projectName string, recipeNames [
 			}
 			recipes = expandedRecipes
 		} else {
-			// No series: use default branch for all recipes
+			// No series: use default branch for all recipes.
 			refPath := "refs/heads/" + defaultBranch
 			refLink, err := s.repoManager.GetGitRef(ctx, repoSelfLink, refPath)
 			if err != nil {
@@ -478,35 +406,13 @@ func (s *Service) waitForBuilds(ctx context.Context, pb ProjectBuilder, recipes 
 
 // List returns builds across configured projects, applying filters.
 // Per-project errors are collected but do not stop aggregation (graceful degradation).
+//
+// When opts.Owner is set, it overrides the project's configured owner.
+// When opts.RecipeNames is set, it overrides the project's configured recipe list.
 func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []ProjectResult, error) {
 	projFilter := make(map[string]bool, len(opts.Projects))
 	for _, p := range opts.Projects {
 		projFilter[p] = true
-	}
-
-	// For local mode, resolve owner and SHA once.
-	var localOwner, localSHA string
-	if opts.Source == "local" {
-		if s.repoManager == nil {
-			return nil, nil, fmt.Errorf("local mode requires a RepoManager")
-		}
-		if s.gitClient == nil {
-			return nil, nil, fmt.Errorf("local mode requires a GitClient")
-		}
-		if opts.LocalPath == "" {
-			return nil, nil, fmt.Errorf("local mode requires LocalPath")
-		}
-		me, err := s.repoManager.GetCurrentUser(ctx)
-		if err != nil {
-			return nil, nil, fmt.Errorf("resolving current LP user: %w", err)
-		}
-		localOwner = me
-
-		sha, err := s.gitClient.HeadSHA(opts.LocalPath)
-		if err != nil {
-			return nil, nil, fmt.Errorf("get HEAD SHA: %w", err)
-		}
-		localSHA = sha
 	}
 
 	var results []ProjectResult
@@ -521,19 +427,13 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 		var projBuilds []dto.Build
 
 		owner := pb.Owner
-		recipeNames := pb.Recipes
+		if opts.Owner != "" {
+			owner = opts.Owner
+		}
 
-		if opts.Source == "local" {
-			owner = localOwner
-			prefix := opts.Prefix
-			if prefix == "" {
-				prefix = "tmp-build"
-			}
-			tempNames := make([]string, len(recipeNames))
-			for i, rn := range recipeNames {
-				tempNames[i] = pb.Strategy.TempRecipeName(rn, localSHA, prefix)
-			}
-			recipeNames = tempNames
+		recipeNames := pb.Recipes
+		if len(opts.RecipeNames) > 0 {
+			recipeNames = opts.RecipeNames
 		}
 
 		for _, recipeName := range recipeNames {
