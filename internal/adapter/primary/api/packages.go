@@ -167,7 +167,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		cache, err := application.DistroCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 		}
 
 		sources := application.BuildPackageSources(distros, input.Releases, input.Suites, backports)
@@ -181,14 +181,14 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 			Sources:  sources,
 		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("diff failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("diff failed: %v", err))
 		}
 
 		// --constraints: merge upper-constraints packages into the diff.
 		if input.Constraints != "" {
 			provider, pErr := application.BuildUpstreamProvider()
 			if pErr != nil {
-				return nil, huma.Error500InternalServerError("upstream provider error", pErr)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("upstream provider error: %v", pErr))
 			}
 			if provider == nil {
 				return nil, huma.Error400BadRequest("constraints requires upstream provider configuration")
@@ -264,7 +264,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		cache, err := application.DistroCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 		}
 
 		sources := application.BuildPackageSources(input.Distros, input.Releases, input.Suites, backports)
@@ -272,7 +272,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		result, err := svc.Show(ctx, input.Name, sources)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("show failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("show failed: %v", err))
 		}
 
 		if input.UpstreamRelease != "" {
@@ -299,7 +299,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		cache, err := application.DistroCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 		}
 
 		sources := application.BuildPackageSources(input.Distros, input.Releases, input.Suites, backports)
@@ -319,7 +319,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 				Components: input.Components,
 			})
 			if qErr != nil {
-				return nil, huma.Error500InternalServerError("list failed", qErr)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("list failed: %v", qErr))
 			}
 			allPkgs = append(allPkgs, pkgs...)
 		}
@@ -342,7 +342,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		cache, err := application.DistroCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 		}
 
 		sources := application.BuildPackageSources(input.Distros, input.Releases, input.Suites, backports)
@@ -366,7 +366,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 			srcResults, qErr := svc.ReverseDepends(ctx, input.Name, []dto.PackageSource{src}, queryOpts)
 			if qErr != nil {
-				return nil, huma.Error500InternalServerError("rdepends failed", qErr)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("rdepends failed: %v", qErr))
 			}
 			results = append(results, srcResults...)
 		}
@@ -402,7 +402,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		cache, err := application.DistroCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 		}
 
 		sources := application.BuildPackageSources(input.Distros, input.Releases, nil, backports)
@@ -413,7 +413,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 		svc := pkg.NewService(cache, application.Logger)
 		results, err := svc.FindDsc(ctx, pairs, sources)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("dsc lookup failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("dsc lookup failed: %v", err))
 		}
 
 		return &PackagesDscOutput{Body: results}, nil
@@ -429,13 +429,13 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, _ *struct{}) (*PackagesCacheStatusOutput, error) {
 		cache, err := application.DistroCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 		}
 
 		svc := pkg.NewService(cache, application.Logger)
 		statuses, err := svc.CacheStatus()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("cache status failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("cache status failed: %v", err))
 		}
 
 		return &PackagesCacheStatusOutput{Body: statuses}, nil
@@ -451,7 +451,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *PackagesCacheSyncInput) (*PackagesCacheSyncOutput, error) {
 		cache, err := application.DistroCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 		}
 
 		// nil backports means include all (sync everything).
@@ -463,7 +463,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 
 		svc := pkg.NewService(cache, application.Logger)
 		if err := svc.UpdateCache(ctx, sources); err != nil {
-			return nil, huma.Error500InternalServerError("cache sync failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("cache sync failed: %v", err))
 		}
 
 		out := &PackagesCacheSyncOutput{}

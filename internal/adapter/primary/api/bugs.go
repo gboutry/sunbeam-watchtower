@@ -79,7 +79,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BugsListInput) (*BugsListOutput, error) {
 		trackers, projectMap, err := application.BuildBugTrackers()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build bug trackers", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build bug trackers: %v", err))
 		}
 
 		svc := bug.NewService(trackers, projectMap, application.Logger)
@@ -93,7 +93,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 			Since:      input.Since,
 		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to list bugs", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list bugs: %v", err))
 		}
 
 		out := &BugsListOutput{}
@@ -115,7 +115,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BugGetInput) (*BugGetOutput, error) {
 		trackers, projectMap, err := application.BuildBugTrackers()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build bug trackers", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build bug trackers: %v", err))
 		}
 
 		svc := bug.NewService(trackers, projectMap, application.Logger)
@@ -139,12 +139,12 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BugSyncInput) (*BugSyncOutput, error) {
 		sources, err := application.BuildCommitSources()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build commit sources", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build commit sources: %v", err))
 		}
 
 		trackers, _, err := application.BuildBugTrackers()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build bug trackers", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build bug trackers: %v", err))
 		}
 
 		// Use the first available bug tracker and collect LP project names.
@@ -185,7 +185,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 
 		result, err := svc.Sync(ctx, syncOpts)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("sync failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("sync failed: %v", err))
 		}
 
 		out := &BugSyncOutput{}

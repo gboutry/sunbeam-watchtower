@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -96,7 +97,7 @@ func RegisterCommitsAPI(api huma.API, application *app.App) {
 func listCommits(ctx context.Context, application *app.App, opts commit.ListOptions, forges []string) (*CommitsListOutput, error) {
 	sources, err := application.BuildCommitSources()
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to build commit sources", err)
+		return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build commit sources: %v", err))
 	}
 
 	for _, f := range forges {
@@ -111,7 +112,7 @@ func listCommits(ctx context.Context, application *app.App, opts commit.ListOpti
 
 	commits, results, err := svc.List(ctx, opts)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to list commits", err)
+		return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list commits: %v", err))
 	}
 
 	out := &CommitsListOutput{}

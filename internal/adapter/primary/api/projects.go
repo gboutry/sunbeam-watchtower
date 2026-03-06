@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -45,7 +46,7 @@ func RegisterProjectsAPI(api huma.API, application *app.App) {
 			if errors.Is(err, app.ErrLaunchpadAuthRequired) {
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			}
-			return nil, huma.Error500InternalServerError("failed to build project service", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build project service: %v", err))
 		}
 
 		result, err := svc.Sync(ctx, projectsvc.SyncOptions{
@@ -53,7 +54,7 @@ func RegisterProjectsAPI(api huma.API, application *app.App) {
 			DryRun:   input.Body.DryRun,
 		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("sync failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("sync failed: %v", err))
 		}
 
 		out := &ProjectsSyncOutput{}

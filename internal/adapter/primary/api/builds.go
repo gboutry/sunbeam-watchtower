@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -98,7 +99,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BuildsTriggerInput) (*BuildsTriggerOutput, error) {
 		svc, err := application.BuildService()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build build service", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
 		}
 
 		var timeout time.Duration
@@ -120,7 +121,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 
 		result, err := svc.Trigger(ctx, input.Body.Project, input.Body.Recipes, triggerOpts)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("trigger failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("trigger failed: %v", err))
 		}
 
 		out := &BuildsTriggerOutput{}
@@ -138,7 +139,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BuildsListInput) (*BuildsListOutput, error) {
 		svc, err := application.BuildService()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build build service", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
 		}
 
 		builds, _, err := svc.List(ctx, build.ListOpts{
@@ -147,7 +148,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			State:    input.State,
 		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to list builds", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list builds: %v", err))
 		}
 
 		out := &BuildsListOutput{}
@@ -165,7 +166,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BuildsDownloadInput) (*BuildsDownloadOutput, error) {
 		svc, err := application.BuildService()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build build service", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
 		}
 
 		artifactsDir := input.Body.ArtifactsDir
@@ -174,7 +175,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		}
 
 		if err := svc.Download(ctx, input.Body.Project, input.Body.Recipes, artifactsDir); err != nil {
-			return nil, huma.Error500InternalServerError("download failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("download failed: %v", err))
 		}
 
 		out := &BuildsDownloadOutput{}
@@ -192,7 +193,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BuildsCleanupInput) (*BuildsCleanupOutput, error) {
 		svc, err := application.BuildService()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build build service", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
 		}
 
 		cleanupOpts := build.CleanupOpts{
@@ -206,7 +207,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 
 		deleted, err := svc.Cleanup(ctx, cleanupOpts)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("cleanup failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("cleanup failed: %v", err))
 		}
 
 		out := &BuildsCleanupOutput{}

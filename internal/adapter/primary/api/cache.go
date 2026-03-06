@@ -115,7 +115,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *CacheSyncGitInput) (*CacheSyncGitOutput, error) {
 		cache, err := application.GitCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open git cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open git cache: %v", err))
 		}
 
 		cfg := application.Config
@@ -194,10 +194,10 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 
 		upDir, err := app.UpstreamCacheDir()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("resolving upstream cache dir", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("resolving upstream cache dir: %v", err))
 		}
 		if err := os.MkdirAll(upDir, 0o755); err != nil {
-			return nil, huma.Error500InternalServerError("creating upstream cache dir", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("creating upstream cache dir: %v", err))
 		}
 
 		repos := map[string]string{}
@@ -238,7 +238,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *CacheSyncBugsInput) (*CacheSyncBugsOutput, error) {
 		synced, err := application.SyncBugCache(ctx, input.Body.Project)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("bug cache sync failed", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("bug cache sync failed: %v", err))
 		}
 		out := &CacheSyncBugsOutput{}
 		out.Body.Synced = synced
@@ -257,11 +257,11 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		case "git":
 			cache, err := application.GitCache()
 			if err != nil {
-				return nil, huma.Error500InternalServerError("failed to open git cache", err)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open git cache: %v", err))
 			}
 			if input.Project == "" {
 				if err := cache.RemoveAll(); err != nil {
-					return nil, huma.Error500InternalServerError("clearing git cache", err)
+					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing git cache: %v", err))
 				}
 			} else {
 				cfg := application.Config
@@ -279,7 +279,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 						return nil, huma.Error500InternalServerError(fmt.Sprintf("%s: %v", proj.Name, err))
 					}
 					if err := cache.Remove(cloneURL); err != nil {
-						return nil, huma.Error500InternalServerError("removing git cache", err)
+						return nil, huma.Error500InternalServerError(fmt.Sprintf("removing git cache: %v", err))
 					}
 					break
 				}
@@ -291,29 +291,29 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		case "packages-index":
 			cache, err := application.DistroCache()
 			if err != nil {
-				return nil, huma.Error500InternalServerError("failed to open distro cache", err)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 			}
 			if err := cache.RemoveAll(); err != nil {
-				return nil, huma.Error500InternalServerError("clearing packages index", err)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing packages index: %v", err))
 			}
 
 		case "upstream-repos":
 			upDir, err := app.UpstreamCacheDir()
 			if err != nil {
-				return nil, huma.Error500InternalServerError("resolving upstream cache dir", err)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("resolving upstream cache dir: %v", err))
 			}
 			if err := os.RemoveAll(upDir); err != nil {
-				return nil, huma.Error500InternalServerError("removing upstream cache", err)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("removing upstream cache: %v", err))
 			}
 
 		case "bugs":
 			cache, err := application.BugCache()
 			if err != nil {
-				return nil, huma.Error500InternalServerError("failed to open bug cache", err)
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open bug cache: %v", err))
 			}
 			if input.Project == "" {
 				if err := cache.RemoveAll(ctx); err != nil {
-					return nil, huma.Error500InternalServerError("clearing bug cache", err)
+					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing bug cache: %v", err))
 				}
 			} else {
 				cfg := application.Config
@@ -327,7 +327,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 							found = true
 							forgeType := app.ForgeTypeFromConfig(b.Forge)
 							if err := cache.Remove(ctx, forgeType, b.Project); err != nil {
-								return nil, huma.Error500InternalServerError("removing bug cache", err)
+								return nil, huma.Error500InternalServerError(fmt.Sprintf("removing bug cache: %v", err))
 							}
 							break
 						}
@@ -364,7 +364,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		// Git repos status.
 		gitCache, err := application.GitCache()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to open git cache", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open git cache: %v", err))
 		}
 		cacheDir := gitCache.CacheDir()
 		out.Body.Git.Directory = cacheDir
@@ -401,7 +401,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		// Upstream repos status.
 		upDir, err := app.UpstreamCacheDir()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("resolving upstream cache dir", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("resolving upstream cache dir: %v", err))
 		}
 		out.Body.Upstream.Directory = upDir
 		if _, err := os.Stat(upDir); !os.IsNotExist(err) {

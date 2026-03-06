@@ -56,7 +56,7 @@ func RegisterReviewsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *ReviewsListInput) (*ReviewsListOutput, error) {
 		clients, err := application.BuildForgeClients()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build forge clients", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build forge clients: %v", err))
 		}
 
 		svc := review.NewService(clients, application.Logger)
@@ -84,7 +84,7 @@ func RegisterReviewsAPI(api huma.API, application *app.App) {
 
 		mrs, results, err := svc.List(ctx, listOpts)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to list reviews", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list reviews: %v", err))
 		}
 
 		out := &ReviewsListOutput{}
@@ -107,7 +107,7 @@ func RegisterReviewsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *ReviewGetInput) (*ReviewGetOutput, error) {
 		clients, err := application.BuildForgeClients()
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to build forge clients", err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build forge clients: %v", err))
 		}
 
 		svc := review.NewService(clients, application.Logger)
