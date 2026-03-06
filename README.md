@@ -111,7 +111,7 @@ Each project has:
     owner: my-team
     official_codehosting: false # when true, use LP's default git repo for remote builds
     lp_project: my-lp-project  # LP project for recipe ops (defaults to code.project)
-    recipes:
+    artifacts:
       - recipe-name
     prepare_command: make prepare
 ```
@@ -200,6 +200,9 @@ watchtower review list --state open
 # Filter by project or forge
 watchtower review list --project snap-openstack --forge github
 
+# List MRs updated in the last week
+watchtower review list --since 1w
+
 # Show details for a specific merge request
 watchtower review show --project snap-openstack "#42"
 ```
@@ -230,7 +233,7 @@ Manage Launchpad builds (rocks, charms, snaps). Two build modes are supported:
 
 ```bash
 # Local build (development) — push local tree and trigger
-watchtower build trigger --source local --local-path /path/to/repo ubuntu-openstack-rocks nova-consolidated keystone
+watchtower build trigger --source local ubuntu-openstack-rocks nova-consolidated keystone
 
 # Remote build (official, series-based)
 watchtower build trigger --source remote ubuntu-openstack-rocks nova-consolidated keystone
@@ -238,14 +241,23 @@ watchtower build trigger --source remote ubuntu-openstack-rocks nova-consolidate
 # Trigger and wait for completion
 watchtower build trigger my-project --wait --timeout 2h
 
+# Trigger and wait, then download artifacts
+watchtower build trigger my-project --wait --download
+
 # List builds
-watchtower build list --project my-project
+watchtower build list my-project
+
+# List local builds by prefix
+watchtower build list --source local ubuntu-openstack-rocks --prefix tmp-build-
 
 # Download build artifacts
 watchtower build download my-project --artifacts-dir ./output
 
+# Download specific artifacts from a local build
+watchtower build download --source local ubuntu-openstack-rocks keystone nova-consolidated
+
 # Clean up temporary recipes
-watchtower build cleanup --project my-project --dry-run
+watchtower build cleanup my-project --dry-run
 ```
 
 In remote mode with series configured, each artifact expands into per-series
