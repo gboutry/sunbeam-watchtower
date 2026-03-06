@@ -20,6 +20,7 @@ linters:
     - predeclared
     - unconvert
     - wastedassign
+    - unused
   settings:
     errcheck:
       exclude-functions:
