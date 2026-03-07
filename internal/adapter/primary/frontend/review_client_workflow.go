@@ -29,11 +29,11 @@ type ReviewListResponse struct {
 
 // ReviewClientWorkflow exposes reusable client-side review workflows for CLI/TUI/MCP frontends.
 type ReviewClientWorkflow struct {
-	client *client.Client
+	client *ClientTransport
 }
 
 // NewReviewClientWorkflow creates a client-side review workflow.
-func NewReviewClientWorkflow(apiClient *client.Client) *ReviewClientWorkflow {
+func NewReviewClientWorkflow(apiClient *ClientTransport) *ReviewClientWorkflow {
 	return &ReviewClientWorkflow{client: apiClient}
 }
 
@@ -75,7 +75,7 @@ func (w *ReviewClientWorkflow) List(ctx context.Context, req ReviewListRequest) 
 	}, nil
 }
 
-func (w *ReviewClientWorkflow) resolveClient() (*client.Client, error) {
+func (w *ReviewClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("review client workflow requires an API client")
 	}

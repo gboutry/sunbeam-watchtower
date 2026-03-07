@@ -8,7 +8,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
@@ -22,11 +21,11 @@ type OperationWaitOptions struct {
 
 // OperationClientWorkflow exposes reusable client-side operation workflows for CLI/TUI/MCP frontends.
 type OperationClientWorkflow struct {
-	client *client.Client
+	client *ClientTransport
 }
 
 // NewOperationClientWorkflow creates a client-side operation workflow.
-func NewOperationClientWorkflow(apiClient *client.Client) *OperationClientWorkflow {
+func NewOperationClientWorkflow(apiClient *ClientTransport) *OperationClientWorkflow {
 	return &OperationClientWorkflow{client: apiClient}
 }
 
@@ -115,7 +114,7 @@ func (w *OperationClientWorkflow) WaitForTerminalState(ctx context.Context, id s
 	})
 }
 
-func (w *OperationClientWorkflow) resolveClient() (*client.Client, error) {
+func (w *OperationClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("operation client workflow requires an API client")
 	}

@@ -29,7 +29,7 @@ func TestBuildWorkflowTriggerAsync(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewBuildWorkflow(client.NewClient(ts.URL), nil)
+	workflow := NewBuildWorkflow(NewClientTransport(client.NewClient(ts.URL)), nil)
 	got, err := workflow.Trigger(context.Background(), BuildTriggerRequest{
 		Async:   true,
 		Project: "demo",
@@ -92,7 +92,7 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 		},
 	)
 
-	workflow := NewBuildWorkflow(client.NewClient(ts.URL), preparer)
+	workflow := NewBuildWorkflow(NewClientTransport(client.NewClient(ts.URL)), preparer)
 	got, err := workflow.Trigger(context.Background(), BuildTriggerRequest{
 		Source:       "local",
 		LocalPath:    "/tmp/demo",
@@ -132,7 +132,7 @@ func TestBuildWorkflowListLocal(t *testing.T) {
 		nil,
 	)
 
-	workflow := NewBuildWorkflow(client.NewClient(ts.URL), preparer)
+	workflow := NewBuildWorkflow(NewClientTransport(client.NewClient(ts.URL)), preparer)
 	_, err := workflow.List(context.Background(), BuildListRequest{
 		Source:     "local",
 		SHA:        "01234567",
@@ -165,7 +165,7 @@ func TestBuildWorkflowCleanup(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewBuildWorkflow(client.NewClient(ts.URL), nil)
+	workflow := NewBuildWorkflow(NewClientTransport(client.NewClient(ts.URL)), nil)
 	got, err := workflow.Cleanup(context.Background(), BuildCleanupRequest{
 		Project: "keystone",
 		Owner:   "team-a",

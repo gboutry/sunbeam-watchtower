@@ -43,11 +43,11 @@ type BugSyncResponse struct {
 
 // BugClientWorkflow exposes reusable client-side bug workflows for CLI/TUI/MCP frontends.
 type BugClientWorkflow struct {
-	client *client.Client
+	client *ClientTransport
 }
 
 // NewBugClientWorkflow creates a client-side bug workflow.
-func NewBugClientWorkflow(apiClient *client.Client) *BugClientWorkflow {
+func NewBugClientWorkflow(apiClient *ClientTransport) *BugClientWorkflow {
 	return &BugClientWorkflow{client: apiClient}
 }
 
@@ -120,7 +120,7 @@ func (w *BugClientWorkflow) Sync(ctx context.Context, req BugSyncRequest) (*BugS
 	}, nil
 }
 
-func (w *BugClientWorkflow) resolveClient() (*client.Client, error) {
+func (w *BugClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("bug client workflow requires an API client")
 	}

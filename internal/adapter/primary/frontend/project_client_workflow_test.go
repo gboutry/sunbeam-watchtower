@@ -35,7 +35,7 @@ func TestProjectClientWorkflowSync(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewProjectClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewProjectClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Sync(context.Background(), ProjectSyncRequest{
 		Projects: []string{"demo"},
 		DryRun:   true,
@@ -81,7 +81,7 @@ func TestProjectClientWorkflowStartAndWaitForSyncCompletion(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewProjectClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewProjectClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	job, err := workflow.StartSync(context.Background(), ProjectSyncRequest{
 		Projects: []string{"demo"},
 	})

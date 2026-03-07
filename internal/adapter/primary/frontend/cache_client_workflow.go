@@ -96,11 +96,11 @@ type CacheStatusResponse struct {
 
 // CacheClientWorkflow exposes reusable client-side cache workflows for CLI/TUI/MCP frontends.
 type CacheClientWorkflow struct {
-	client *client.Client
+	client *ClientTransport
 }
 
 // NewCacheClientWorkflow creates a client-side cache workflow.
-func NewCacheClientWorkflow(apiClient *client.Client) *CacheClientWorkflow {
+func NewCacheClientWorkflow(apiClient *ClientTransport) *CacheClientWorkflow {
 	return &CacheClientWorkflow{client: apiClient}
 }
 
@@ -216,7 +216,7 @@ func (w *CacheClientWorkflow) Status(ctx context.Context) (*CacheStatusResponse,
 	return response, nil
 }
 
-func (w *CacheClientWorkflow) resolveClient() (*client.Client, error) {
+func (w *CacheClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("cache client workflow requires an API client")
 	}

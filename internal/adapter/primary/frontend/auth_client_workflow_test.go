@@ -28,7 +28,7 @@ func TestAuthClientWorkflowStatus(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewAuthClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewAuthClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Status(context.Background())
 	if err != nil {
 		t.Fatalf("Status() error = %v", err)
@@ -67,7 +67,7 @@ func TestAuthClientWorkflowLoginLaunchpad(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewAuthClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewAuthClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	handlerCalled := false
 	got, err := workflow.LoginLaunchpad(context.Background(), func(ctx context.Context, begin *dto.LaunchpadAuthBeginResult) error {
 		handlerCalled = true
@@ -102,7 +102,7 @@ func TestAuthClientWorkflowLogoutLaunchpad(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewAuthClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewAuthClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.LogoutLaunchpad(context.Background())
 	if err != nil {
 		t.Fatalf("LogoutLaunchpad() error = %v", err)

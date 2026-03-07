@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewClientFacadeProvidesWorkflows(t *testing.T) {
-	facade := NewClientFacade(client.NewClient("http://example.invalid"), nil)
+	facade := NewClientFacade(NewClientTransport(client.NewClient("http://example.invalid")), nil)
 
 	if facade.Auth() == nil || facade.Operations() == nil || facade.Projects() == nil {
 		t.Fatal("expected auth/operations/projects workflows to be wired")
@@ -31,7 +31,7 @@ func TestNewClientFacadeProvidesWorkflows(t *testing.T) {
 func TestNewClientFacadeTracksLocalBuildPreparationStatus(t *testing.T) {
 	application := app.NewApp(&config.Config{}, discardFrontendLogger())
 
-	facade := NewClientFacade(client.NewClient("http://example.invalid"), application)
+	facade := NewClientFacade(NewClientTransport(client.NewClient("http://example.invalid")), application)
 
 	if facade.Builds() == nil {
 		t.Fatal("Builds() = nil, want workflow")
