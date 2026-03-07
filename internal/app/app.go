@@ -26,12 +26,14 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/gitcache"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/launchpad"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/openstack"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/operationstore"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	authsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/auth"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bug"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/commit"
+	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
 	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/project"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/review"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -68,6 +70,12 @@ type App struct {
 	excusesOnce  sync.Once
 	excusesCache *excusescache.Cache
 	excusesErr   error
+
+	operationStoreOnce sync.Once
+	operationStore     port.OperationStore
+
+	operationServiceOnce sync.Once
+	operationService     *opsvc.Service
 }
 
 // NewApp creates a new App instance.
@@ -246,6 +254,23 @@ func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore
 		a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
 	})
 	return a.lpFlowStore
+}
+
+// OperationStore returns the shared long-running operation store.
+func (a *App) OperationStore() port.OperationStore {
+	a.operationStoreOnce.Do(func() {
+		a.operationStore = operationstore.NewMemoryStore()
+	})
+	return a.operationStore
+}
+
+// OperationService returns the shared async operation service.
+func (a *App) OperationService() (*opsvc.Service, error) {
+	a.operationServiceOnce.Do(func() {
+		a.operationService = opsvc.NewService(a.OperationStore(), a.Logger)
+	})
+
+	return a.operationService, nil
 }
 
 // AuthService creates the shared auth service.

@@ -1,0 +1,199 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
+package operation
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"sort"
+	"sync"
+	"testing"
+	"time"
+
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+)
+
+func TestServiceStartCompletes(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(newTestStore(), slog.Default())
+	job, err := service.Start(context.Background(), dto.OperationKindProjectSync, map[string]string{"scope": "test"}, func(_ context.Context, reporter *Reporter) (string, error) {
+		reporter.Event("entered test runner")
+		reporter.Progress(dto.OperationProgress{Phase: "step", Message: "halfway", Current: 1, Total: 2})
+		return "done", nil
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	finalJob := waitForState(t, service, job.ID, dto.OperationStateSucceeded)
+	if finalJob.Summary != "done" {
+		t.Fatalf("Summary = %q, want done", finalJob.Summary)
+	}
+	if finalJob.Progress == nil || finalJob.Progress.Message != "halfway" {
+		t.Fatalf("Progress = %+v, want latest progress snapshot", finalJob.Progress)
+	}
+
+	events, err := service.Events(context.Background(), job.ID)
+	if err != nil {
+		t.Fatalf("Events() error = %v", err)
+	}
+	if len(events) < 4 {
+		t.Fatalf("len(Events()) = %d, want at least 4", len(events))
+	}
+	if events[len(events)-1].Type != "succeeded" {
+		t.Fatalf("last event = %+v, want succeeded", events[len(events)-1])
+	}
+}
+
+func TestServiceCancel(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(newTestStore(), slog.Default())
+	job, err := service.Start(context.Background(), dto.OperationKindBuildTrigger, nil, func(ctx context.Context, _ *Reporter) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	if err := service.Cancel(context.Background(), job.ID); err != nil {
+		t.Fatalf("Cancel() error = %v", err)
+	}
+
+	finalJob := waitForState(t, service, job.ID, dto.OperationStateCancelled)
+	if !errors.Is(errors.New(finalJob.Error), context.Canceled) && finalJob.Error != context.Canceled.Error() {
+		t.Fatalf("Error = %q, want context canceled", finalJob.Error)
+	}
+
+	events, err := service.Events(context.Background(), job.ID)
+	if err != nil {
+		t.Fatalf("Events() error = %v", err)
+	}
+
+	foundCancelRequested := false
+	for _, event := range events {
+		if event.Type == "cancel_requested" {
+			foundCancelRequested = true
+			break
+		}
+	}
+	if !foundCancelRequested {
+		t.Fatalf("Events() = %+v, want cancel_requested event", events)
+	}
+}
+
+func waitForState(t *testing.T, service *Service, jobID string, want dto.OperationState) dto.OperationJob {
+	t.Helper()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		job, err := service.Get(context.Background(), jobID)
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
+		if job != nil && job.State == want {
+			return *job
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	job, err := service.Get(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	t.Fatalf("job %q did not reach %q, latest = %+v", jobID, want, job)
+	return dto.OperationJob{}
+}
+
+type testStore struct {
+	mu     sync.RWMutex
+	jobs   map[string]dto.OperationJob
+	events map[string][]dto.OperationEvent
+}
+
+func newTestStore() *testStore {
+	return &testStore{
+		jobs:   make(map[string]dto.OperationJob),
+		events: make(map[string][]dto.OperationEvent),
+	}
+}
+
+func (s *testStore) Create(_ context.Context, job dto.OperationJob) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.jobs[job.ID] = cloneJob(job)
+	return nil
+}
+
+func (s *testStore) Get(_ context.Context, id string) (*dto.OperationJob, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	job, ok := s.jobs[id]
+	if !ok {
+		return nil, nil
+	}
+	cloned := cloneJob(job)
+	return &cloned, nil
+}
+
+func (s *testStore) List(_ context.Context) ([]dto.OperationJob, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	jobs := make([]dto.OperationJob, 0, len(s.jobs))
+	for _, job := range s.jobs {
+		jobs = append(jobs, cloneJob(job))
+	}
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].CreatedAt.After(jobs[j].CreatedAt)
+	})
+	return jobs, nil
+}
+
+func (s *testStore) Update(_ context.Context, job dto.OperationJob) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.jobs[job.ID] = cloneJob(job)
+	return nil
+}
+
+func (s *testStore) AppendEvent(_ context.Context, id string, event dto.OperationEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events[id] = append(s.events[id], cloneEvent(event))
+	return nil
+}
+
+func (s *testStore) Events(_ context.Context, id string) ([]dto.OperationEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	events := s.events[id]
+	out := make([]dto.OperationEvent, 0, len(events))
+	for _, event := range events {
+		out = append(out, cloneEvent(event))
+	}
+	return out, nil
+}
+
+func cloneJob(job dto.OperationJob) dto.OperationJob {
+	job.Progress = cloneProgress(job.Progress)
+	if len(job.Attributes) == 0 {
+		job.Attributes = nil
+		return job
+	}
+
+	attributes := make(map[string]string, len(job.Attributes))
+	for key, value := range job.Attributes {
+		attributes[key] = value
+	}
+	job.Attributes = attributes
+	return job
+}
+
+func cloneEvent(event dto.OperationEvent) dto.OperationEvent {
+	event.Progress = cloneProgress(event.Progress)
+	return event
+}

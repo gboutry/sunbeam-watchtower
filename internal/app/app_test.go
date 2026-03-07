@@ -148,6 +148,26 @@ func TestNewApp(t *testing.T) {
 	}
 }
 
+func TestOperationService(t *testing.T) {
+	a := NewApp(&config.Config{}, slog.Default())
+
+	service, err := a.OperationService()
+	if err != nil {
+		t.Fatalf("OperationService() error = %v", err)
+	}
+	if service == nil {
+		t.Fatal("OperationService() returned nil")
+	}
+
+	second, err := a.OperationService()
+	if err != nil {
+		t.Fatalf("OperationService() second call error = %v", err)
+	}
+	if second != service {
+		t.Fatal("OperationService() did not return shared service instance")
+	}
+}
+
 func TestExcusesSources(t *testing.T) {
 	t.Run("uses explicit distro excuses config", func(t *testing.T) {
 		a := NewApp(&config.Config{
