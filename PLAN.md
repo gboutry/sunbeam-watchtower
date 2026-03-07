@@ -213,6 +213,7 @@ This distinction is important: stateful features must be designed around persist
 - hardened the local daemon lifecycle with metadata persistence, stale socket/pid detection, and cleanup semantics so repeated CLI/agent invocations can reason about local server state more safely
 - moved build command orchestration behind a reusable frontend build workflow so local preparation plus remote trigger/list/download flows are no longer encoded directly in Cobra handlers
 - decomposed `internal/app` bootstrap logic into focused build/project/review/package wiring files, with targeted tests on config-to-service resolution paths, so future refactors do not need to edit one monolithic composition file
+- defined initial restart semantics for persisted operations: queued/running jobs are now reconciled to an explicit `interrupted` terminal state on service startup, with deterministic recovery events, instead of remaining misleadingly in-flight forever
 
 ## Validation
 

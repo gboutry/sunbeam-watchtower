@@ -17,11 +17,12 @@ const (
 type OperationState string
 
 const (
-	OperationStateQueued    OperationState = "queued"
-	OperationStateRunning   OperationState = "running"
-	OperationStateSucceeded OperationState = "succeeded"
-	OperationStateFailed    OperationState = "failed"
-	OperationStateCancelled OperationState = "cancelled"
+	OperationStateQueued      OperationState = "queued"
+	OperationStateRunning     OperationState = "running"
+	OperationStateInterrupted OperationState = "interrupted"
+	OperationStateSucceeded   OperationState = "succeeded"
+	OperationStateFailed      OperationState = "failed"
+	OperationStateCancelled   OperationState = "cancelled"
 )
 
 // OperationProgress captures the latest progress snapshot for a job.

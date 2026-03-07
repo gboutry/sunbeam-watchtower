@@ -86,6 +86,95 @@ func TestServiceCancel(t *testing.T) {
 	}
 }
 
+func TestNewServiceRecoversInFlightJobsAsInterrupted(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore()
+	queued := dto.OperationJob{
+		ID:          "queued-job",
+		Kind:        dto.OperationKindProjectSync,
+		State:       dto.OperationStateQueued,
+		CreatedAt:   time.Date(2026, 3, 7, 10, 0, 0, 0, time.UTC),
+		Cancellable: true,
+	}
+	running := dto.OperationJob{
+		ID:          "running-job",
+		Kind:        dto.OperationKindBuildTrigger,
+		State:       dto.OperationStateRunning,
+		CreatedAt:   time.Date(2026, 3, 7, 10, 1, 0, 0, time.UTC),
+		StartedAt:   time.Date(2026, 3, 7, 10, 2, 0, 0, time.UTC),
+		Cancellable: true,
+	}
+	for _, job := range []dto.OperationJob{queued, running} {
+		if err := store.Create(context.Background(), job); err != nil {
+			t.Fatalf("Create(%s) error = %v", job.ID, err)
+		}
+	}
+
+	service := NewService(store, slog.Default())
+
+	for _, jobID := range []string{queued.ID, running.ID} {
+		job, err := service.Get(context.Background(), jobID)
+		if err != nil {
+			t.Fatalf("Get(%s) error = %v", jobID, err)
+		}
+		if job.State != dto.OperationStateInterrupted {
+			t.Fatalf("job %s state = %q, want interrupted", jobID, job.State)
+		}
+		if job.Cancellable {
+			t.Fatalf("job %s remained cancellable after recovery", jobID)
+		}
+		if job.FinishedAt.IsZero() {
+			t.Fatalf("job %s FinishedAt is zero after recovery", jobID)
+		}
+		if job.Error != interruptedMessage {
+			t.Fatalf("job %s Error = %q, want %q", jobID, job.Error, interruptedMessage)
+		}
+
+		events, err := service.Events(context.Background(), jobID)
+		if err != nil {
+			t.Fatalf("Events(%s) error = %v", jobID, err)
+		}
+		if len(events) != 1 || events[0].Type != "interrupted" {
+			t.Fatalf("Events(%s) = %+v, want one interrupted event", jobID, events)
+		}
+	}
+}
+
+func TestNewServiceLeavesTerminalJobsUntouched(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore()
+	terminal := dto.OperationJob{
+		ID:          "done-job",
+		Kind:        dto.OperationKindProjectSync,
+		State:       dto.OperationStateSucceeded,
+		CreatedAt:   time.Date(2026, 3, 7, 10, 0, 0, 0, time.UTC),
+		FinishedAt:  time.Date(2026, 3, 7, 10, 5, 0, 0, time.UTC),
+		Cancellable: false,
+		Summary:     "done",
+	}
+	if err := store.Create(context.Background(), terminal); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	service := NewService(store, slog.Default())
+	job, err := service.Get(context.Background(), terminal.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if job.State != dto.OperationStateSucceeded || job.Summary != "done" {
+		t.Fatalf("terminal job mutated during recovery: %+v", job)
+	}
+	events, err := service.Events(context.Background(), terminal.ID)
+	if err != nil {
+		t.Fatalf("Events() error = %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("terminal job recovery events = %+v, want none", events)
+	}
+}
+
 func waitForState(t *testing.T, service *Service, jobID string, want dto.OperationState) dto.OperationJob {
 	t.Helper()
 

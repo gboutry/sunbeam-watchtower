@@ -38,19 +38,23 @@ type Reporter struct {
 	jobID   string
 }
 
+const interruptedMessage = "operation interrupted by server restart"
+
 // NewService creates an operation service.
 func NewService(store port.OperationStore, logger *slog.Logger) *Service {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
-	return &Service{
+	service := &Service{
 		store:   store,
 		logger:  logger,
 		now:     time.Now,
 		newID:   randomID,
 		cancels: make(map[string]context.CancelFunc),
 	}
+	service.recoverInterruptedJobs(context.Background())
+	return service
 }
 
 // Start runs an operation asynchronously and records its lifecycle.
@@ -248,6 +252,42 @@ func (s *Service) finishJob(jobID string, kind dto.OperationKind, summary string
 
 	if err := s.store.AppendEvent(context.Background(), jobID, event); err != nil {
 		s.logger.Warn("failed to append operation finish event", "job_id", jobID, "kind", kind, "error", err)
+	}
+}
+
+func (s *Service) recoverInterruptedJobs(ctx context.Context) {
+	jobs, err := s.store.List(ctx)
+	if err != nil {
+		s.logger.Warn("failed to list persisted operations for recovery", "error", err)
+		return
+	}
+
+	finishedAt := s.now()
+	for _, job := range jobs {
+		if job.State != dto.OperationStateQueued && job.State != dto.OperationStateRunning {
+			continue
+		}
+
+		job.State = dto.OperationStateInterrupted
+		job.Cancellable = false
+		job.FinishedAt = finishedAt
+		job.Error = interruptedMessage
+		if job.Summary == "" {
+			job.Summary = interruptedMessage
+		}
+
+		if err := s.store.Update(ctx, job); err != nil {
+			s.logger.Warn("failed to mark operation interrupted during recovery", "job_id", job.ID, "error", err)
+			continue
+		}
+		if err := s.store.AppendEvent(ctx, job.ID, dto.OperationEvent{
+			Time:    finishedAt,
+			Type:    "interrupted",
+			Message: interruptedMessage,
+			Error:   interruptedMessage,
+		}); err != nil {
+			s.logger.Warn("failed to append interrupted event during recovery", "job_id", job.ID, "error", err)
+		}
 	}
 }
 
