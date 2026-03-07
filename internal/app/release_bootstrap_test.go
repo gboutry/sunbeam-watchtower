@@ -27,7 +27,7 @@ func TestTrackedReleases(t *testing.T) {
 		"charms/glance/charmcraft.yaml":   "name: glance-k8s\n",
 	})
 
-	application := NewApp(&config.Config{Projects: []config.ProjectConfig{{
+	application := NewApp(&config.Config{Launchpad: config.LaunchpadConfig{Series: []string{"2024.1"}}, Projects: []config.ProjectConfig{{
 		Name:         "sunbeam",
 		ArtifactType: "snap",
 		Series:       []string{"2024.1", "2025.1"},
@@ -71,6 +71,37 @@ func TestTrackedReleases(t *testing.T) {
 	}
 	if got := byName["snap-openstack"]; len(got.Branches) != 1 || got.Branches[0].Branch != "risc-v" || got.Branches[0].Track != "2024.1" {
 		t.Fatalf("TrackedReleases() snap branches = %+v, want resolved branch override", got.Branches)
+	}
+}
+
+func TestTrackedReleasesUsesLaunchpadSeriesByDefault(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	snapRemote := createReleaseTestRemote(t, map[string]string{
+		"snap/snapcraft.yaml": "name: snap-openstack\n",
+	})
+
+	application := NewApp(&config.Config{
+		Launchpad: config.LaunchpadConfig{Series: []string{"2024.1", "2025.1"}},
+		Projects: []config.ProjectConfig{{
+			Name:         "sunbeam",
+			ArtifactType: "snap",
+			Code:         config.CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack", GitURL: snapRemote},
+			Release: &config.ProjectReleaseConfig{
+				TrackMap: map[string]string{"2025.1": "latest"},
+			},
+		}},
+	}, nil)
+
+	publications, err := application.TrackedReleases(context.Background())
+	if err != nil {
+		t.Fatalf("TrackedReleases() error = %v", err)
+	}
+	if len(publications) != 1 {
+		t.Fatalf("TrackedReleases() = %+v, want one publication", publications)
+	}
+	if got := publications[0].Tracks; len(got) != 2 || got[0] != "2024.1" || got[1] != "latest" {
+		t.Fatalf("TrackedReleases() tracks = %+v, want launchpad-series defaults with track_map applied", got)
 	}
 }
 
