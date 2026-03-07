@@ -215,6 +215,7 @@ This distinction is important: stateful features must be designed around persist
 - decomposed `internal/app` bootstrap logic into focused build/project/review/package wiring files, with targeted tests on config-to-service resolution paths, so future refactors do not need to edit one monolithic composition file
 - defined initial restart semantics for persisted operations: queued/running jobs are now reconciled to an explicit `interrupted` terminal state on service startup, with deterministic recovery events, instead of remaining misleadingly in-flight forever
 - added dedicated frontend auth and operation workflows so API/frontends stop reaching into `internal/app` for those concerns service-by-service, and the existing async build/project frontend wrapper now layers on top of the operation workflow instead of duplicating that access pattern
+- added real daemon integration coverage for the CLI by re-entering the command surface through a helper subprocess, so `server start/status/stop`, auth persistence, and async operation persistence are verified across separate CLI invocations against an actual background server process
 
 ## Validation
 
