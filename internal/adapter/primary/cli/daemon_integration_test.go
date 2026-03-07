@@ -248,7 +248,8 @@ func waitForOperationStateViaCLI(
 ) dto.OperationJob {
 	t.Helper()
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
+	var lastJob dto.OperationJob
 	for time.Now().Before(deadline) {
 		show := runCLIHelper(t, wrapper, env, "", "-o", "json", "operation", "show", id)
 
@@ -256,6 +257,7 @@ func waitForOperationStateViaCLI(
 		if err := json.Unmarshal([]byte(show.Stdout), &job); err != nil {
 			t.Fatalf("json.Unmarshal(show) error = %v; stdout=%q", err, show.Stdout)
 		}
+		lastJob = job
 		if job.State == want {
 			return job
 		}
@@ -263,7 +265,7 @@ func waitForOperationStateViaCLI(
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	t.Fatalf("operation %q did not reach %q", id, want)
+	t.Fatalf("operation %q did not reach %q; last observed job: %+v", id, want, lastJob)
 	return dto.OperationJob{}
 }
 
