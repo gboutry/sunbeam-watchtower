@@ -2,12 +2,14 @@ default_threshold: 40
 
 package_thresholds:
   internal/app: 30
-  internal/adapter/primary/cli: 45
+  internal/config: 85
+  internal/adapter/primary/cli: 46
   internal/adapter/primary/frontend: 45
-  internal/core/service/build: 50
-  internal/core/service/operation: 70
-  internal/adapter/secondary/authflowstore: 75
-  internal/adapter/secondary/operationstore: 75
+  internal/core/service/auth: 80
+  internal/core/service/build: 54
+  internal/core/service/operation: 73
+  internal/adapter/secondary/authflowstore: 79
+  internal/adapter/secondary/operationstore: 79
   tools/coverageguard: 79
 
 exclude_packages:

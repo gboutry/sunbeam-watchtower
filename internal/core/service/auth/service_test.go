@@ -5,9 +5,11 @@ package auth
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,9 +19,15 @@ import (
 type fakeCredentialStore struct {
 	record   *lp.CredentialRecord
 	savePath string
+	loadErr  error
+	saveErr  error
+	clearErr error
 }
 
 func (s *fakeCredentialStore) Load(context.Context) (*lp.CredentialRecord, error) {
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
 	if s.record == nil {
 		return nil, nil
 	}
@@ -28,6 +36,9 @@ func (s *fakeCredentialStore) Load(context.Context) (*lp.CredentialRecord, error
 }
 
 func (s *fakeCredentialStore) Save(_ context.Context, creds *lp.Credentials) (*lp.CredentialRecord, error) {
+	if s.saveErr != nil {
+		return nil, s.saveErr
+	}
 	s.record = &lp.CredentialRecord{
 		Credentials: creds,
 		Source:      lp.CredentialSourceFile,
@@ -37,13 +48,18 @@ func (s *fakeCredentialStore) Save(_ context.Context, creds *lp.Credentials) (*l
 }
 
 func (s *fakeCredentialStore) Clear(context.Context) error {
+	if s.clearErr != nil {
+		return s.clearErr
+	}
 	s.record = nil
 	return nil
 }
 
 type fakeFlowStore struct {
-	flows map[string]lp.PendingAuthFlow
-	err   error
+	flows     map[string]lp.PendingAuthFlow
+	putErr    error
+	getErr    error
+	deleteErr error
 }
 
 func (s *fakeFlowStore) Put(_ context.Context, flow *lp.PendingAuthFlow) error {
@@ -51,12 +67,12 @@ func (s *fakeFlowStore) Put(_ context.Context, flow *lp.PendingAuthFlow) error {
 		s.flows = make(map[string]lp.PendingAuthFlow)
 	}
 	s.flows[flow.ID] = *flow
-	return s.err
+	return s.putErr
 }
 
 func (s *fakeFlowStore) Get(_ context.Context, id string) (*lp.PendingAuthFlow, error) {
-	if s.err != nil {
-		return nil, s.err
+	if s.getErr != nil {
+		return nil, s.getErr
 	}
 	flow, ok := s.flows[id]
 	if !ok {
@@ -68,7 +84,7 @@ func (s *fakeFlowStore) Get(_ context.Context, id string) (*lp.PendingAuthFlow, 
 
 func (s *fakeFlowStore) Delete(_ context.Context, id string) error {
 	delete(s.flows, id)
-	return s.err
+	return s.deleteErr
 }
 
 type fakeLaunchpadAuthenticator struct {
@@ -221,5 +237,111 @@ func TestLogoutLaunchpadRejectsEnvironmentCredentials(t *testing.T) {
 	_, err := svc.LogoutLaunchpad(context.Background())
 	if !errors.Is(err, ErrLaunchpadEnvironmentCredentials) {
 		t.Fatalf("LogoutLaunchpad() error = %v, want %v", err, ErrLaunchpadEnvironmentCredentials)
+	}
+}
+
+func TestBeginLaunchpadReturnsStoreError(t *testing.T) {
+	svc := NewService(
+		&fakeCredentialStore{},
+		&fakeFlowStore{putErr: errors.New("write failed")},
+		&fakeLaunchpadAuthenticator{
+			requestToken: &lp.RequestToken{Token: "request-token", TokenSecret: "request-secret"},
+		},
+		nil,
+	)
+	svc.newFlowID = func() (string, error) { return "flow-123", nil }
+
+	_, err := svc.BeginLaunchpad(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "storing launchpad auth flow") {
+		t.Fatalf("BeginLaunchpad() error = %v, want storing launchpad auth flow", err)
+	}
+}
+
+func TestFinalizeLaunchpadMapsMissingAndExpiredFlows(t *testing.T) {
+	t.Run("missing flow", func(t *testing.T) {
+		svc := NewService(&fakeCredentialStore{}, &fakeFlowStore{}, &fakeLaunchpadAuthenticator{}, testLogger())
+
+		_, err := svc.FinalizeLaunchpad(context.Background(), "missing")
+		if !errors.Is(err, ErrLaunchpadAuthFlowNotFound) {
+			t.Fatalf("FinalizeLaunchpad() error = %v, want %v", err, ErrLaunchpadAuthFlowNotFound)
+		}
+	})
+
+	t.Run("expired flow", func(t *testing.T) {
+		svc := NewService(
+			&fakeCredentialStore{},
+			&fakeFlowStore{getErr: lp.ErrPendingAuthFlowExpired},
+			&fakeLaunchpadAuthenticator{},
+			testLogger(),
+		)
+
+		_, err := svc.FinalizeLaunchpad(context.Background(), "expired")
+		if !errors.Is(err, ErrLaunchpadAuthFlowExpired) {
+			t.Fatalf("FinalizeLaunchpad() error = %v, want %v", err, ErrLaunchpadAuthFlowExpired)
+		}
+	})
+}
+
+func TestFinalizeLaunchpadReturnsDeleteError(t *testing.T) {
+	svc := NewService(
+		&fakeCredentialStore{},
+		&fakeFlowStore{
+			flows: map[string]lp.PendingAuthFlow{
+				"flow-123": {
+					ID:                 "flow-123",
+					RequestToken:       "request-token",
+					RequestTokenSecret: "request-secret",
+				},
+			},
+			deleteErr: errors.New("delete failed"),
+		},
+		&fakeLaunchpadAuthenticator{
+			creds: &lp.Credentials{
+				ConsumerKey:       "sunbeam-watchtower",
+				AccessToken:       "access-token",
+				AccessTokenSecret: "access-secret",
+			},
+		},
+		testLogger(),
+	)
+
+	_, err := svc.FinalizeLaunchpad(context.Background(), "flow-123")
+	if err == nil || !strings.Contains(err.Error(), "deleting completed launchpad auth flow") {
+		t.Fatalf("FinalizeLaunchpad() error = %v, want deleting completed launchpad auth flow", err)
+	}
+}
+
+func TestLogoutLaunchpadClearsPersistedCredentials(t *testing.T) {
+	store := &fakeCredentialStore{
+		record: &lp.CredentialRecord{
+			Credentials: &lp.Credentials{AccessToken: "token", AccessTokenSecret: "secret"},
+			Source:      lp.CredentialSourceFile,
+			Path:        "/tmp/credentials.json",
+		},
+	}
+	svc := NewService(store, &fakeFlowStore{}, &fakeLaunchpadAuthenticator{}, testLogger())
+
+	result, err := svc.LogoutLaunchpad(context.Background())
+	if err != nil {
+		t.Fatalf("LogoutLaunchpad() error = %v", err)
+	}
+	if !result.Cleared || result.CredentialsPath != "/tmp/credentials.json" {
+		t.Fatalf("LogoutLaunchpad() = %+v, want cleared persisted credentials", result)
+	}
+	if store.record != nil {
+		t.Fatal("store.record should be cleared")
+	}
+}
+
+func TestRandomFlowIDReturnsHexToken(t *testing.T) {
+	id, err := randomFlowID()
+	if err != nil {
+		t.Fatalf("randomFlowID() error = %v", err)
+	}
+	if len(id) != 32 {
+		t.Fatalf("len(randomFlowID()) = %d, want 32", len(id))
+	}
+	if _, err := hex.DecodeString(id); err != nil {
+		t.Fatalf("randomFlowID() = %q, want hex: %v", id, err)
 	}
 }

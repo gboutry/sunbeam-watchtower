@@ -131,6 +131,8 @@ arch-go --color no
 go run ./tools/coverageguard --config .coverage-policy.yaml $(git diff --cached --name-only -- '*.go')
 ```
 
+`.coverage-policy.yaml` carries the per-package coverage floors; raise those thresholds when tests improve, rather than relying on the default floor indefinitely.
+
 ## Debug logging
 
 Watchtower uses Go's `log/slog` for structured logging. All log output goes to stderr.
