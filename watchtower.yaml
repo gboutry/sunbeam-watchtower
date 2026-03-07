@@ -23,6 +23,9 @@ projects:
         project: snap-openstack
       - forge: launchpad
         project: sunbeam-charms
+    release:
+      skip_artifacts:
+        - sunbeam-libs
 
   - name: openstack
     artifact_type: snap
