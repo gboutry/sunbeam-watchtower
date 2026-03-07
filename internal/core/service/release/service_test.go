@@ -39,13 +39,17 @@ func TestServiceSyncListAndShow(t *testing.T) {
 	}}
 	service := NewService(cache, map[dto.ArtifactType]port.ReleaseSource{dto.ArtifactSnap: source}, slog.Default())
 
-	if err := service.SyncCache(context.Background(), []dto.TrackedPublication{{
+	synced, err := service.SyncCache(context.Background(), []dto.TrackedPublication{{
 		Project:      "sunbeam",
 		Name:         "snap-openstack",
 		ArtifactType: dto.ArtifactSnap,
 		Tracks:       []string{"2024.1", "2025.1"},
-	}}); err != nil {
+	}})
+	if err != nil {
 		t.Fatalf("SyncCache() error = %v", err)
+	}
+	if synced != 1 {
+		t.Fatalf("SyncCache() synced = %d, want 1", synced)
 	}
 	if len(cache.snapshots) != 1 {
 		t.Fatalf("snapshots stored = %d, want 1", len(cache.snapshots))

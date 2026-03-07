@@ -40,22 +40,24 @@ func NewService(cache port.ReleaseCache, sources map[dto.ArtifactType]port.Relea
 }
 
 // SyncCache refreshes tracked publication snapshots from their backing stores.
-func (s *Service) SyncCache(ctx context.Context, publications []dto.TrackedPublication) error {
+func (s *Service) SyncCache(ctx context.Context, publications []dto.TrackedPublication) (int, error) {
+	synced := 0
 	for _, publication := range publications {
 		source, ok := s.sources[publication.ArtifactType]
 		if !ok {
-			return fmt.Errorf("no release source configured for %s", publication.ArtifactType)
+			return synced, fmt.Errorf("no release source configured for %s", publication.ArtifactType)
 		}
 		s.logger.Info("syncing published artifact", "project", publication.Project, "name", publication.Name, "type", publication.ArtifactType.String())
 		result, err := source.Fetch(ctx, publication)
 		if err != nil {
-			return fmt.Errorf("fetching %s (%s): %w", publication.Name, publication.ArtifactType.String(), err)
+			return synced, fmt.Errorf("fetching %s (%s): %w", publication.Name, publication.ArtifactType.String(), err)
 		}
 		if err := s.cache.Store(ctx, dto.NormalizePublicationSnapshot(*result)); err != nil {
-			return fmt.Errorf("storing %s (%s): %w", publication.Name, publication.ArtifactType.String(), err)
+			return synced, fmt.Errorf("storing %s (%s): %w", publication.Name, publication.ArtifactType.String(), err)
 		}
+		synced++
 	}
-	return nil
+	return synced, nil
 }
 
 // List returns a flat row-per-channel view of cached publication state.

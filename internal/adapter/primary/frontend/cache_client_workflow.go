@@ -56,7 +56,11 @@ type CacheSyncExcusesResponse struct {
 
 // CacheSyncReleasesResponse contains the outcome of one releases-cache sync.
 type CacheSyncReleasesResponse struct {
-	Status string
+	Status     string
+	Discovered int
+	Synced     int
+	Skipped    int
+	Warnings   []string
 }
 
 // CacheClearRequest describes one cache-clear workflow.
@@ -192,7 +196,13 @@ func (w *CacheClientWorkflow) SyncReleases(ctx context.Context) (*CacheSyncRelea
 	if err != nil {
 		return nil, err
 	}
-	return &CacheSyncReleasesResponse{Status: result.Status}, nil
+	return &CacheSyncReleasesResponse{
+		Status:     result.Status,
+		Discovered: result.Discovered,
+		Synced:     result.Synced,
+		Skipped:    result.Skipped,
+		Warnings:   append([]string(nil), result.Warnings...),
+	}, nil
 }
 
 // Clear clears one cache type.
