@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
-	"github.com/gboutry/sunbeam-watchtower/internal/app"
-	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 	"github.com/spf13/cobra"
@@ -48,79 +46,50 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--async cannot be combined with --wait or --download")
 			}
 
-			triggerOpts := client.BuildsTriggerOptions{
-				Project:   projectName,
-				Artifacts: artifactNames,
-				Wait:      wait,
-				Timeout:   timeout.String(),
-				Owner:     owner,
-				Prefix:    prefix,
-			}
-
+			buildsFrontend := frontend.NewBuildWorkflow(opts.Client, nil)
 			if source == "local" {
-				preparer, err := newLocalBuildPreparer(opts)
-				if err != nil {
-					return err
-				}
-				triggerOpts, err = preparer.PrepareTrigger(cmd.Context(), triggerOpts, localPath)
+				var err error
+				buildsFrontend, err = frontend.NewBuildWorkflowFromApp(opts.Client, opts.App)
 				if err != nil {
 					return err
 				}
 			}
 
-			if async {
-				job, err := opts.Client.BuildsTriggerAsync(cmd.Context(), triggerOpts)
-				if err != nil {
-					return err
-				}
-				return renderOperationJob(opts.Out, opts.Output, job)
-			}
-
-			result, err := opts.Client.BuildsTrigger(cmd.Context(), triggerOpts)
+			response, err := buildsFrontend.Trigger(cmd.Context(), frontend.BuildTriggerRequest{
+				Source:       source,
+				LocalPath:    localPath,
+				Async:        async,
+				Download:     download,
+				ArtifactsDir: artifactsDir,
+				Trigger: client.BuildsTriggerOptions{
+					Project:   projectName,
+					Artifacts: artifactNames,
+					Wait:      wait,
+					Timeout:   timeout.String(),
+					Owner:     owner,
+					Prefix:    prefix,
+				},
+			})
 			if err != nil {
 				return err
 			}
 
-			var builds []dto.Build
-			var requests []dto.BuildRequest
-			var errs []error
-			for _, r := range result.RecipeResults {
-				builds = append(builds, r.Builds...)
-				if r.BuildRequest != nil {
-					requests = append(requests, *r.BuildRequest)
-				}
-				if r.ErrorMessage != "" {
-					errs = append(errs, fmt.Errorf("recipe %s: %s", r.Name, r.ErrorMessage))
-				}
+			if async {
+				return renderOperationJob(opts.Out, opts.Output, response.Job)
 			}
 
-			if len(requests) > 0 {
-				if err := renderBuildRequests(opts.Out, opts.Output, requests); err != nil {
+			if len(response.Requests) > 0 {
+				if err := renderBuildRequests(opts.Out, opts.Output, response.Requests); err != nil {
 					return err
 				}
 			}
-			if len(builds) > 0 {
-				if err := renderBuilds(opts.Out, opts.Output, builds); err != nil {
+			if len(response.Builds) > 0 {
+				if err := renderBuilds(opts.Out, opts.Output, response.Builds); err != nil {
 					return err
 				}
 			}
 
-			// Download succeeded build artifacts when requested.
-			if download && len(builds) > 0 {
-				dlArtifacts := triggerOpts.Artifacts
-				if len(dlArtifacts) == 0 {
-					dlArtifacts = artifactNames
-				}
-				if err := opts.Client.BuildsDownload(cmd.Context(), client.BuildsDownloadOptions{
-					Project:      projectName,
-					Artifacts:    dlArtifacts,
-					ArtifactsDir: artifactsDir,
-				}); err != nil {
-					errs = append(errs, fmt.Errorf("download: %w", err))
-				}
-			}
-
-			return errors.Join(errs...)
+			return errors.Join(response.Errors...)
 		},
 	}
 
@@ -155,32 +124,25 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 				State:    state,
 			}
 
-			if source == "local" {
-				preparer, err := newLocalBuildPreparer(opts)
-				if err != nil {
-					return err
-				}
-				// Default to showing all builds for local source (user
-				// typically wants to see completed results).
-				if !cmd.Flags().Changed("all") {
-					listOpts.All = true
-				}
-				// When a SHA is given, narrow the prefix to match only
-				// that commit (e.g. "tmp-build-9e1ed720-").
-				listPrefix := prefix
-				if sha != "" {
-					listPrefix = prefix + sha + "-"
-				}
-				listOpts, err = preparer.PrepareListByPrefix(cmd.Context(), listOpts, listPrefix)
-				if err != nil {
-					return err
-				}
-			}
 			if owner != "" {
 				listOpts.Owner = owner
 			}
 
-			builds, err := opts.Client.BuildsList(cmd.Context(), listOpts)
+			buildsFrontend := frontend.NewBuildWorkflow(opts.Client, nil)
+			if source == "local" {
+				var err error
+				buildsFrontend, err = frontend.NewBuildWorkflowFromApp(opts.Client, opts.App)
+				if err != nil {
+					return err
+				}
+			}
+			builds, err := buildsFrontend.List(cmd.Context(), frontend.BuildListRequest{
+				Source:     source,
+				SHA:        sha,
+				Prefix:     prefix,
+				DefaultAll: !cmd.Flags().Changed("all"),
+				List:       listOpts,
+			})
 			if err != nil {
 				return err
 			}
@@ -217,25 +179,24 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 				ArtifactsDir: artifactsDir,
 			}
 
-			if source == "local" {
-				preparer, err := newLocalBuildPreparer(opts)
-				if err != nil {
-					return err
-				}
-				listPrefix := prefix
-				if sha != "" {
-					listPrefix = prefix + sha + "-"
-				}
-				dlOpts, err = preparer.PrepareDownloadByPrefix(cmd.Context(), dlOpts, listPrefix)
-				if err != nil {
-					return err
-				}
-			}
 			if owner != "" {
 				dlOpts.Owner = owner
 			}
 
-			return opts.Client.BuildsDownload(cmd.Context(), dlOpts)
+			buildsFrontend := frontend.NewBuildWorkflow(opts.Client, nil)
+			if source == "local" {
+				var err error
+				buildsFrontend, err = frontend.NewBuildWorkflowFromApp(opts.Client, opts.App)
+				if err != nil {
+					return err
+				}
+			}
+			return buildsFrontend.Download(cmd.Context(), frontend.BuildDownloadRequest{
+				Source:   source,
+				SHA:      sha,
+				Prefix:   prefix,
+				Download: dlOpts,
+			})
 		},
 	}
 
@@ -246,23 +207,6 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
 
 	return cmd
-}
-
-func newLocalBuildPreparer(opts *Options) (*frontend.LocalBuildPreparer, error) {
-	repoMgr, err := opts.App.BuildRepoManager()
-	if err != nil {
-		return nil, fmt.Errorf("init repo manager: %w", err)
-	}
-	if repoMgr == nil {
-		return nil, app.ErrLaunchpadAuthRequired
-	}
-
-	builders, err := opts.App.BuildRecipeBuilders()
-	if err != nil {
-		return nil, fmt.Errorf("init recipe builders: %w", err)
-	}
-
-	return frontend.NewLocalBuildPreparer(opts.App.GitClient(), repoMgr, builders), nil
 }
 
 func newBuildCleanupCmd(opts *Options) *cobra.Command {

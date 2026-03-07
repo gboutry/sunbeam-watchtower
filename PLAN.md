@@ -211,6 +211,7 @@ This distinction is important: stateful features must be designed around persist
 - synced `README.md` and `CONTRIBUTING.md` with the current runtime model, split-workflow terminology, and shared frontend preparation layer
 - added an initial local persistent-server lifecycle in the CLI: `server start|status|stop`, Unix-socket local daemon discovery, explicit server/daemon/embedded resolution order, and automatic daemon startup for persistent workflows such as auth and async operations
 - hardened the local daemon lifecycle with metadata persistence, stale socket/pid detection, and cleanup semantics so repeated CLI/agent invocations can reason about local server state more safely
+- moved build command orchestration behind a reusable frontend build workflow so local preparation plus remote trigger/list/download flows are no longer encoded directly in Cobra handlers
 
 ## Validation
 
