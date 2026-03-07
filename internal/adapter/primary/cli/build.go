@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
-
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -61,14 +59,12 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				Async:        async,
 				Download:     download,
 				ArtifactsDir: artifactsDir,
-				Trigger: client.BuildsTriggerOptions{
-					Project:   projectName,
-					Artifacts: artifactNames,
-					Wait:      wait,
-					Timeout:   timeout.String(),
-					Owner:     owner,
-					Prefix:    prefix,
-				},
+				Project:      projectName,
+				Artifacts:    artifactNames,
+				Wait:         wait,
+				Timeout:      timeout,
+				Owner:        owner,
+				Prefix:       prefix,
 			})
 			if err != nil {
 				return err
@@ -118,16 +114,6 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 			// Positional args and --project flag are merged.
 			allProjects := append(projects, args...)
 
-			listOpts := client.BuildsListOptions{
-				Projects: allProjects,
-				All:      all,
-				State:    state,
-			}
-
-			if owner != "" {
-				listOpts.Owner = owner
-			}
-
 			buildsFrontend := frontend.NewBuildWorkflow(opts.Client, nil)
 			if source == "local" {
 				var err error
@@ -141,7 +127,10 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 				SHA:        sha,
 				Prefix:     prefix,
 				DefaultAll: !cmd.Flags().Changed("all"),
-				List:       listOpts,
+				Projects:   allProjects,
+				All:        all,
+				State:      state,
+				Owner:      owner,
 			})
 			if err != nil {
 				return err
@@ -173,16 +162,6 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 			projectName := args[0]
 			artifactNames := args[1:]
 
-			dlOpts := client.BuildsDownloadOptions{
-				Project:      projectName,
-				Artifacts:    artifactNames,
-				ArtifactsDir: artifactsDir,
-			}
-
-			if owner != "" {
-				dlOpts.Owner = owner
-			}
-
 			buildsFrontend := frontend.NewBuildWorkflow(opts.Client, nil)
 			if source == "local" {
 				var err error
@@ -192,10 +171,13 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 				}
 			}
 			return buildsFrontend.Download(cmd.Context(), frontend.BuildDownloadRequest{
-				Source:   source,
-				SHA:      sha,
-				Prefix:   prefix,
-				Download: dlOpts,
+				Source:       source,
+				SHA:          sha,
+				Prefix:       prefix,
+				Project:      projectName,
+				Artifacts:    artifactNames,
+				ArtifactsDir: artifactsDir,
+				Owner:        owner,
 			})
 		},
 	}
@@ -218,12 +200,10 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 		Short: "Delete temporary build recipes",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deleted, err := frontend.NewBuildWorkflow(opts.Client, nil).Cleanup(cmd.Context(), frontend.BuildCleanupRequest{
-				Cleanup: client.BuildsCleanupOptions{
-					Project: project,
-					Owner:   owner,
-					Prefix:  prefix,
-					DryRun:  dryRun,
-				},
+				Project: project,
+				Owner:   owner,
+				Prefix:  prefix,
+				DryRun:  dryRun,
 			})
 			if err != nil {
 				return err

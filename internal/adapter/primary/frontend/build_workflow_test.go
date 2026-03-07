@@ -31,10 +31,8 @@ func TestBuildWorkflowTriggerAsync(t *testing.T) {
 
 	workflow := NewBuildWorkflow(client.NewClient(ts.URL), nil)
 	got, err := workflow.Trigger(context.Background(), BuildTriggerRequest{
-		Async: true,
-		Trigger: client.BuildsTriggerOptions{
-			Project: "demo",
-		},
+		Async:   true,
+		Project: "demo",
 	})
 	if err != nil {
 		t.Fatalf("Trigger() error = %v", err)
@@ -100,10 +98,8 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 		LocalPath:    "/tmp/demo",
 		Download:     true,
 		ArtifactsDir: "/tmp/artifacts",
-		Trigger: client.BuildsTriggerOptions{
-			Project: "demo",
-			Prefix:  "tmp-build",
-		},
+		Project:      "demo",
+		Prefix:       "tmp-build",
 	})
 	if err != nil {
 		t.Fatalf("Trigger() error = %v", err)
@@ -142,9 +138,7 @@ func TestBuildWorkflowListLocal(t *testing.T) {
 		SHA:        "01234567",
 		Prefix:     "tmp-build-",
 		DefaultAll: true,
-		List: client.BuildsListOptions{
-			Projects: []string{"demo"},
-		},
+		Projects:   []string{"demo"},
 	})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
@@ -173,12 +167,10 @@ func TestBuildWorkflowCleanup(t *testing.T) {
 
 	workflow := NewBuildWorkflow(client.NewClient(ts.URL), nil)
 	got, err := workflow.Cleanup(context.Background(), BuildCleanupRequest{
-		Cleanup: client.BuildsCleanupOptions{
-			Project: "keystone",
-			Owner:   "team-a",
-			Prefix:  "tmp-build",
-			DryRun:  true,
-		},
+		Project: "keystone",
+		Owner:   "team-a",
+		Prefix:  "tmp-build",
+		DryRun:  true,
 	})
 	if err != nil {
 		t.Fatalf("Cleanup() error = %v", err)
