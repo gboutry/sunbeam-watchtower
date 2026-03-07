@@ -542,7 +542,7 @@ func renderReleaseList(w io.Writer, format string, releases []dto.ReleaseListEnt
 			return nil
 		}
 		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tTRACK\tRISK\tBRANCH\tTARGETS\tRESOURCES\tUPDATED")
+		fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tTRACK\tRISK\tBRANCH\tTARGETS\tRESOURCES\tRELEASED")
 		for _, release := range releases {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				release.Project,
@@ -553,7 +553,7 @@ func renderReleaseList(w io.Writer, format string, releases []dto.ReleaseListEnt
 				emptyDash(release.Branch),
 				formatReleaseTargets(release.Targets),
 				formatReleaseResources(release.Resources),
-				formatTimestamp(release.UpdatedAt),
+				formatTimestamp(release.ReleasedAt),
 			)
 		}
 		return tw.Flush()

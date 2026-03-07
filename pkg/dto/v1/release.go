@@ -92,7 +92,7 @@ type ReleaseListEntry struct {
 	Channel      string                    `json:"channel" yaml:"channel"`
 	Targets      []ReleaseTargetSnapshot   `json:"targets,omitempty" yaml:"targets,omitempty"`
 	Resources    []ReleaseResourceSnapshot `json:"resources,omitempty" yaml:"resources,omitempty"`
-	UpdatedAt    time.Time                 `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	ReleasedAt   time.Time                 `json:"released_at,omitempty" yaml:"released_at,omitempty"`
 }
 
 // ReleaseShowResult contains the full release matrix for one artifact.

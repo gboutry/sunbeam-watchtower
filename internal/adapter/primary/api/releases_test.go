@@ -48,6 +48,9 @@ func TestReleasesListAndShowEndpoints(t *testing.T) {
 	if len(list.Releases) != 1 {
 		t.Fatalf("releases = %+v, want one row", list.Releases)
 	}
+	if _, ok := list.Releases[0]["released_at"]; !ok {
+		t.Fatalf("releases = %+v, want released_at field", list.Releases)
+	}
 
 	resp2, err := http.Get(base + "/api/v1/releases/snap-openstack")
 	if err != nil {
