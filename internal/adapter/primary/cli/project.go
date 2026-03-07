@@ -6,7 +6,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	"github.com/spf13/cobra"
 )
@@ -33,22 +33,21 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 		Long:  "Iterates over all unique LP projects from bug tracker config entries, ensures each declared series exists (creating if missing), and sets the development focus to the configured series.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Logger.Debug("project sync command started", "dry_run", dryRun)
+			workflow := frontend.NewProjectClientWorkflow(opts.Client)
+			request := frontend.ProjectSyncRequest{
+				Projects: projects,
+				DryRun:   dryRun,
+			}
 
 			if async {
-				job, err := opts.Client.ProjectsSyncAsync(cmd.Context(), client.ProjectsSyncOptions{
-					Projects: projects,
-					DryRun:   dryRun,
-				})
+				job, err := workflow.StartSync(cmd.Context(), request)
 				if err != nil {
 					return err
 				}
 				return renderOperationJob(opts.Out, opts.Output, job)
 			}
 
-			result, err := opts.Client.ProjectsSync(cmd.Context(), client.ProjectsSyncOptions{
-				Projects: projects,
-				DryRun:   dryRun,
-			})
+			result, err := workflow.Sync(cmd.Context(), request)
 			if err != nil {
 				return err
 			}

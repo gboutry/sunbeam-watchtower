@@ -220,6 +220,7 @@ This distinction is important: stateful features must be designed around persist
 - ratcheted `.coverage-policy.yaml` with explicit per-package floors for core packages (`internal/config`, `internal/core/service/auth`, build/operation services, CLI, and durable stores) and raised auth-service test coverage so the policy follows measured quality instead of a single loose default
 - added GitHub Actions CI enforcement for the same contract: repo-wide quality checks run with the coverage hook skipped, then the changed-package coverage hook is applied only to the PR/push Go diff so server-side merges see the same policy as local commits
 - added reusable client-side auth and operation workflows in `internal/adapter/primary/frontend`, and routed the CLI auth/operation commands through them, so future TUI/MCP frontends can reuse the same begin/finalize/logout/list/show/events/cancel/poll logic instead of speaking raw `pkg/client` calls directly
+- added a reusable client-side project workflow in `internal/adapter/primary/frontend` and routed `project sync` through it, so project sync/async/wait behavior is no longer encoded directly in Cobra handlers and can be reused by TUI/MCP frontends too
 
 ## Validation
 
