@@ -3,8 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
-	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +25,7 @@ func newBugShowCmd(opts *Options) *cobra.Command {
 		Short: "Show a bug and its tasks",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := opts.Client.BugsGet(cmd.Context(), args[0])
+			result, err := frontend.NewBugClientWorkflow(opts.Client).Show(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
@@ -51,17 +50,13 @@ func newBugListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List bug tasks across bug trackers",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resolvedSince, err := dto.ResolveSince(since)
-			if err != nil {
-				return err
-			}
-			result, err := opts.Client.BugsList(cmd.Context(), client.BugsListOptions{
+			result, err := frontend.NewBugClientWorkflow(opts.Client).List(cmd.Context(), frontend.BugListRequest{
 				Projects:   projects,
 				Status:     status,
 				Importance: importance,
 				Assignee:   assignee,
 				Tags:       tags,
-				Since:      resolvedSince,
+				Since:      since,
 			})
 			if err != nil {
 				return err
@@ -95,26 +90,18 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 		Short: "Update LP bug statuses from cached commits",
 		Long:  "Scans cached commits for LP bug references and updates bug task statuses to Fix Committed. Also assigns bugs to the appropriate LP series based on which branches contain the fix.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resolvedSince, err := dto.ResolveSince(since)
-			if err != nil {
-				return err
-			}
-			result, err := opts.Client.BugsSync(cmd.Context(), client.BugsSyncOptions{
+			result, err := frontend.NewBugClientWorkflow(opts.Client).Sync(cmd.Context(), frontend.BugSyncRequest{
 				Projects: projects,
 				DryRun:   dryRun,
-				Since:    resolvedSince,
+				Since:    since,
 			})
 			if err != nil {
 				return err
 			}
-			for _, e := range result.Errors {
+			for _, e := range result.Warnings {
 				fmt.Fprintf(opts.ErrOut, "warning: %s\n", e)
 			}
-			syncResult := &dto.BugSyncResult{
-				Actions: result.Actions,
-				Skipped: result.Skipped,
-			}
-			return renderBugSyncResult(opts.Out, opts.Output, syncResult, dryRun)
+			return renderBugSyncResult(opts.Out, opts.Output, result.Result, dryRun)
 		},
 	}
 

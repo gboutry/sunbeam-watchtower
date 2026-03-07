@@ -222,6 +222,7 @@ This distinction is important: stateful features must be designed around persist
 - added reusable client-side auth and operation workflows in `internal/adapter/primary/frontend`, and routed the CLI auth/operation commands through them, so future TUI/MCP frontends can reuse the same begin/finalize/logout/list/show/events/cancel/poll logic instead of speaking raw `pkg/client` calls directly
 - added a reusable client-side project workflow in `internal/adapter/primary/frontend` and routed `project sync` through it, so project sync/async/wait behavior is no longer encoded directly in Cobra handlers and can be reused by TUI/MCP frontends too
 - added reusable client-side cache and packages workflows in `internal/adapter/primary/frontend`, and routed the CLI cache/packages/packages-excuses commands through them, so cache sync/clear/status plus package diff/show/detail/list/dsc/rdepends/excuses behavior is no longer spread across Cobra handlers or raw `pkg/client` calls
+- added reusable client-side bug, review, and commit workflows in `internal/adapter/primary/frontend`, and routed the CLI bug/review/commit commands through them, so `since` parsing, warning handling, and query shaping are now shared frontend behavior instead of command-local HTTP glue
 
 ## Validation
 

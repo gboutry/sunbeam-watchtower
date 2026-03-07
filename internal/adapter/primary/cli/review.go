@@ -3,8 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
-	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +31,7 @@ func newReviewShowCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--project is required for review show")
 			}
 
-			mr, err := opts.Client.ReviewsGet(cmd.Context(), project, args[0])
+			mr, err := frontend.NewReviewClientWorkflow(opts.Client).Show(cmd.Context(), project, args[0])
 			if err != nil {
 				return err
 			}
@@ -59,25 +58,20 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List merge requests across forges",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resolvedSince, err := dto.ResolveSince(since)
-			if err != nil {
-				return err
-			}
-
 			opts.Logger.Debug("review list command started",
 				"projects", projects,
 				"forges", forges,
 				"state", state,
 				"author", author,
-				"since", resolvedSince,
+				"since", since,
 			)
 
-			result, err := opts.Client.ReviewsList(cmd.Context(), client.ReviewsListOptions{
+			result, err := frontend.NewReviewClientWorkflow(opts.Client).List(cmd.Context(), frontend.ReviewListRequest{
 				Projects: projects,
 				Forges:   forges,
 				State:    state,
 				Author:   author,
-				Since:    resolvedSince,
+				Since:    since,
 			})
 			if err != nil {
 				return err

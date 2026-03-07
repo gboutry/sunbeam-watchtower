@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +39,7 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 				"include_mrs", includeMRs,
 			)
 
-			result, err := opts.Client.CommitsList(cmd.Context(), client.CommitsListOptions{
+			result, err := frontend.NewCommitClientWorkflow(opts.Client).Log(cmd.Context(), frontend.CommitLogRequest{
 				Projects:   projects,
 				Forges:     forges,
 				Branch:     branch,
@@ -86,7 +86,7 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--bug-id is required")
 			}
 
-			result, err := opts.Client.CommitsTrack(cmd.Context(), client.CommitsTrackOptions{
+			result, err := frontend.NewCommitClientWorkflow(opts.Client).Track(cmd.Context(), frontend.CommitTrackRequest{
 				BugID:      bugID,
 				Projects:   projects,
 				Forges:     forges,
