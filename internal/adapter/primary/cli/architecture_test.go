@@ -71,3 +71,46 @@ func TestCommandFilesDoNotImportOrCallPkgClientDirectly(t *testing.T) {
 		})
 	}
 }
+
+func TestCommandFilesDoNotInstantiateFrontendWorkflowsDirectly(t *testing.T) {
+	matches, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+
+	fset := token.NewFileSet()
+	for _, path := range matches {
+		base := filepath.Base(path)
+		if strings.HasSuffix(base, "_test.go") || cliBootstrapFiles[base] {
+			continue
+		}
+
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatalf("ParseFile(%q) error = %v", path, err)
+		}
+
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+
+			pkgIdent, ok := selector.X.(*ast.Ident)
+			if !ok || pkgIdent.Name != "frontend" {
+				return true
+			}
+
+			if strings.HasPrefix(selector.Sel.Name, "New") &&
+				(strings.HasSuffix(selector.Sel.Name, "Workflow") || selector.Sel.Name == "NewClientFacade") {
+				t.Fatalf("%s calls frontend.%s directly; command handlers must use opts.Frontend()", path, selector.Sel.Name)
+			}
+			return true
+		})
+	}
+}
