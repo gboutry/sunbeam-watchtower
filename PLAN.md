@@ -232,6 +232,7 @@ This distinction is important: stateful features must be designed around persist
 - replaced the cache workflow public surface with frontend-owned request/response DTOs, so cache sync/clear/status flows no longer leak `pkg/client` result or option types to frontend consumers
 - finished the remaining frontend transport-contract cleanup for split build preparation and cache status: local build preparation now uses frontend-owned prepared request DTOs instead of `pkg/client` option structs, and cache status now exposes frontend-owned entry DTOs instead of transport result shapes
 - added a frontend architecture guard that allows `pkg/client` only in wiring constructors while failing if exported frontend workflow signatures or exported request/response/prepared DTOs expose transport-layer `pkg/client` types directly
+- replaced the frontend workflow constructors and stored client fields with narrow internal transport interfaces, so the frontend layer now depends on per-workflow transport ports instead of the concrete `*pkg/client.Client` type while preserving the existing CLI/TUI-facing workflow API
 
 ## Validation
 

@@ -46,7 +46,7 @@ func TestPackagesClientWorkflowDiff(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewPackagesClientWorkflow(client.NewClient(ts.URL), testPackagesApp())
+	workflow := NewPackagesClientWorkflow(NewClientTransport(client.NewClient(ts.URL)), testPackagesApp())
 	got, err := workflow.Diff(context.Background(), PackagesDiffRequest{
 		Set:         "openstack",
 		Distros:     []string{"ubuntu"},
@@ -93,7 +93,7 @@ func TestPackagesClientWorkflowShowVersion(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewPackagesClientWorkflow(client.NewClient(ts.URL), testPackagesApp())
+	workflow := NewPackagesClientWorkflow(NewClientTransport(client.NewClient(ts.URL)), testPackagesApp())
 	got, err := workflow.ShowVersion(context.Background(), PackagesShowVersionRequest{
 		Package:         "keystone",
 		Distros:         []string{"ubuntu"},
@@ -132,7 +132,7 @@ func TestPackagesClientWorkflowExcusesList(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewPackagesClientWorkflow(client.NewClient(ts.URL), nil)
+	workflow := NewPackagesClientWorkflow(NewClientTransport(client.NewClient(ts.URL)), nil)
 	got, err := workflow.ExcusesList(context.Background(), PackagesExcusesListRequest{
 		Trackers:    []string{"ubuntu-devel"},
 		Team:        "server",

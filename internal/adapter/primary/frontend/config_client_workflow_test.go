@@ -27,7 +27,7 @@ func TestConfigClientWorkflowShow(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewConfigClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewConfigClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Show(context.Background())
 	if err != nil {
 		t.Fatalf("Show() error = %v", err)

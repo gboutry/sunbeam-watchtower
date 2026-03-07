@@ -37,11 +37,11 @@ type CommitListResponse struct {
 
 // CommitClientWorkflow exposes reusable client-side commit workflows for CLI/TUI/MCP frontends.
 type CommitClientWorkflow struct {
-	client *client.Client
+	client *ClientTransport
 }
 
 // NewCommitClientWorkflow creates a client-side commit workflow.
-func NewCommitClientWorkflow(apiClient *client.Client) *CommitClientWorkflow {
+func NewCommitClientWorkflow(apiClient *ClientTransport) *CommitClientWorkflow {
 	return &CommitClientWorkflow{client: apiClient}
 }
 
@@ -93,7 +93,7 @@ func (w *CommitClientWorkflow) Track(ctx context.Context, req CommitTrackRequest
 	}, nil
 }
 
-func (w *CommitClientWorkflow) resolveClient() (*client.Client, error) {
+func (w *CommitClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("commit client workflow requires an API client")
 	}

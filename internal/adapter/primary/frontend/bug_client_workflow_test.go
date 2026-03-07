@@ -39,7 +39,7 @@ func TestBugClientWorkflowList(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewBugClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewBugClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.List(context.Background(), BugListRequest{
 		Projects: []string{"keystone"},
 		Since:    "2025-01-01",
@@ -76,7 +76,7 @@ func TestBugClientWorkflowSync(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewBugClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewBugClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Sync(context.Background(), BugSyncRequest{
 		Projects: []string{"keystone"},
 		DryRun:   true,
@@ -111,7 +111,7 @@ func TestBugClientWorkflowShow(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewBugClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewBugClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Show(context.Background(), "12345")
 	if err != nil {
 		t.Fatalf("Show() error = %v", err)

@@ -39,7 +39,7 @@ type Options struct {
 // Frontend returns the shared client-side frontend facade for the current command execution.
 func (o *Options) Frontend() *frontend.ClientFacade {
 	if o.frontendFacade == nil || o.frontendClient != o.Client || o.frontendApp != o.App {
-		o.frontendFacade = frontend.NewClientFacade(o.Client, o.App)
+		o.frontendFacade = frontend.NewClientFacade(frontend.NewClientTransport(o.Client), o.App)
 		o.frontendClient = o.Client
 		o.frontendApp = o.App
 	}

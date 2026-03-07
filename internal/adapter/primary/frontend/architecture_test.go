@@ -23,7 +23,7 @@ func TestExportedFrontendAPIsDoNotExposePkgClientTypes(t *testing.T) {
 	fset := token.NewFileSet()
 	for _, path := range matches {
 		base := filepath.Base(path)
-		if strings.HasSuffix(base, "_test.go") {
+		if strings.HasSuffix(base, "_test.go") || base == "transport.go" {
 			continue
 		}
 

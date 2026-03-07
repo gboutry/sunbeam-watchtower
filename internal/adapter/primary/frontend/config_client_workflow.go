@@ -7,17 +7,16 @@ import (
 	"context"
 	"errors"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
 // ConfigClientWorkflow exposes reusable client-side config workflows for CLI/TUI/MCP frontends.
 type ConfigClientWorkflow struct {
-	client *client.Client
+	client *ClientTransport
 }
 
 // NewConfigClientWorkflow creates a client-side config workflow.
-func NewConfigClientWorkflow(apiClient *client.Client) *ConfigClientWorkflow {
+func NewConfigClientWorkflow(apiClient *ClientTransport) *ConfigClientWorkflow {
 	return &ConfigClientWorkflow{client: apiClient}
 }
 

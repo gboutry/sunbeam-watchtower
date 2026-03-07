@@ -37,7 +37,7 @@ func TestReviewClientWorkflowList(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewReviewClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewReviewClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.List(context.Background(), ReviewListRequest{
 		Projects: []string{"keystone"},
 		Since:    "2025-01-01",
@@ -66,7 +66,7 @@ func TestReviewClientWorkflowShow(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewReviewClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewReviewClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Show(context.Background(), "keystone", "42")
 	if err != nil {
 		t.Fatalf("Show() error = %v", err)
