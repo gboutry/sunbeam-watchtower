@@ -2,10 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
-	"strings"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
@@ -16,30 +16,20 @@ import (
 
 // Options holds resolved CLI state shared across commands.
 type Options struct {
-	Config     *config.Config
-	ConfigPath string
-	Verbose    bool
-	Output     string // "table", "json", "yaml"
-	NoColor    bool
-	Logger     *slog.Logger
-	Out        io.Writer
-	ErrOut     io.Writer
-	App        *app.App
-	Client     *client.Client
-	ServerAddr string // external server address (--server / WATCHTOWER_SERVER)
+	Config         *config.Config
+	ConfigPath     string
+	Verbose        bool
+	Output         string // "table", "json", "yaml"
+	NoColor        bool
+	Logger         *slog.Logger
+	Out            io.Writer
+	ErrOut         io.Writer
+	App            *app.App
+	Client         *client.Client
+	ServerAddr     string // external server address (--server / WATCHTOWER_SERVER)
+	ExecutablePath string
 
 	embeddedSrv *api.Server // auto-started embedded server
-}
-
-func runtimeModeForCommand(cmd *cobra.Command, opts *Options) app.RuntimeMode {
-	switch {
-	case cmd.Name() == "serve":
-		return app.RuntimeModePersistent
-	case opts.ServerAddr != "":
-		return app.RuntimeModeEphemeral
-	default:
-		return app.RuntimeModeEphemeral
-	}
 }
 
 // envDefaults applies WATCHTOWER_* environment variables as defaults.
@@ -48,13 +38,13 @@ func envDefaults(opts *Options) {
 		opts.ConfigPath = v
 	}
 	if v := os.Getenv("WATCHTOWER_VERBOSE"); v != "" && !opts.Verbose {
-		opts.Verbose = strings.EqualFold(v, "true") || v == "1"
+		opts.Verbose = v == "1" || v == "true" || v == "TRUE" || v == "True"
 	}
 	if v := os.Getenv("WATCHTOWER_OUTPUT"); v != "" && opts.Output == "table" {
 		opts.Output = v
 	}
 	if v := os.Getenv("WATCHTOWER_NO_COLOR"); v != "" && !opts.NoColor {
-		opts.NoColor = strings.EqualFold(v, "true") || v == "1"
+		opts.NoColor = v == "1" || v == "true" || v == "TRUE" || v == "True"
 	}
 	if v := os.Getenv("WATCHTOWER_SERVER"); v != "" && opts.ServerAddr == "" {
 		opts.ServerAddr = v
@@ -79,55 +69,72 @@ func NewRootCmd(opts *Options) *cobra.Command {
 			// Apply env var defaults for flags not explicitly set.
 			envDefaults(opts)
 
-			// Skip config loading for commands that don't need it.
-			if cmd.Name() == "version" {
-				return nil
-			}
-
 			level := slog.LevelInfo
 			if opts.Verbose {
 				level = slog.LevelDebug
 			}
 			opts.Logger = slog.New(slog.NewTextHandler(opts.ErrOut, &slog.HandlerOptions{Level: level}))
 
-			cfg, err := config.Load(opts.ConfigPath)
-			if err != nil {
-				return err
-			}
-			opts.Config = cfg
-			opts.App = app.NewAppWithOptions(cfg, opts.Logger, app.Options{
-				RuntimeMode: runtimeModeForCommand(cmd, opts),
-			})
-
-			// Create HTTP client — either to an external server or an embedded one.
-			if opts.ServerAddr != "" {
-				opts.Client = client.NewClient(opts.ServerAddr)
-			} else if cmd.Name() != "serve" {
-				// Start embedded server for local CLI use.
-				srv := api.NewServer(opts.Logger, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
-				api.RegisterAuthAPI(srv.API(), opts.App)
-				api.RegisterPackagesAPI(srv.API(), opts.App)
-				api.RegisterBugsAPI(srv.API(), opts.App)
-				api.RegisterReviewsAPI(srv.API(), opts.App)
-				api.RegisterCommitsAPI(srv.API(), opts.App)
-				api.RegisterBuildsAPI(srv.API(), opts.App)
-				api.RegisterProjectsAPI(srv.API(), opts.App)
-				api.RegisterOperationsAPI(srv.API(), opts.App)
-				api.RegisterCacheAPI(srv.API(), opts.App)
-				api.RegisterConfigAPI(srv.API(), opts.App)
-				if err := srv.Start(); err != nil {
+			if commandNeedsConfig(cmd) {
+				cfg, err := config.Load(opts.ConfigPath)
+				if err != nil {
 					return err
 				}
-				opts.embeddedSrv = srv
-				opts.Client = client.NewClient("http://" + srv.Addr())
+				opts.Config = cfg
+			}
+
+			if commandNeedsApp(cmd) {
+				opts.App = app.NewAppWithOptions(opts.Config, opts.Logger, app.Options{
+					RuntimeMode: runtimeModeForCommand(cmd, opts),
+				})
+			}
+
+			if commandNeedsClient(cmd) {
+				manager, err := newLocalServerManager(opts)
+				if err != nil {
+					return err
+				}
+				daemonStatus, err := manager.status(cmd.Context())
+				if err != nil {
+					return err
+				}
+
+				switch clientTargetModeForCommand(cmd, opts.ServerAddr, daemonStatus.Running) {
+				case clientTargetExplicit:
+					opts.Client = client.NewClient(opts.ServerAddr)
+				case clientTargetDaemon:
+					opts.ServerAddr = daemonStatus.Address
+					opts.Client = client.NewClient(daemonStatus.Address)
+				case clientTargetEnsureDaemon:
+					status, started, err := manager.ensureRunning(cmd.Context())
+					if err != nil {
+						return err
+					}
+					if started {
+						opts.Logger.Info("started local watchtower server", "address", status.Address, "pid", status.PID, "log_file", status.LogFile)
+					}
+					opts.ServerAddr = status.Address
+					opts.Client = client.NewClient(status.Address)
+				case clientTargetEmbedded:
+					srv := newConfiguredServer(opts.Logger, opts.App, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
+					if err := srv.Start(); err != nil {
+						return err
+					}
+					opts.embeddedSrv = srv
+					opts.Client = client.NewClient("http://" + srv.Addr())
+				}
 			}
 			return nil
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+			var err error
 			if opts.embeddedSrv != nil {
-				return opts.embeddedSrv.Shutdown(context.Background())
+				err = opts.embeddedSrv.Shutdown(context.Background())
 			}
-			return nil
+			if opts.App != nil {
+				err = errors.Join(err, opts.App.Close())
+			}
+			return err
 		},
 	}
 
@@ -149,6 +156,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 	root.AddCommand(newProjectCmd(opts))
 	root.AddCommand(newPackagesCmd(opts))
 	root.AddCommand(newServeCmd(opts))
+	root.AddCommand(newServerCmd(opts))
 
 	return root
 }

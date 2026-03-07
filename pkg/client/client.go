@@ -22,6 +22,10 @@ type Client struct {
 	http    *http.Client
 }
 
+type healthResponse struct {
+	Status string `json:"status"`
+}
+
 // NewClient creates a new Client for the given address.
 // The addr may be a unix socket path prefixed with "unix://" (e.g.
 // "unix:///run/watchtower.sock") or a standard HTTP URL (e.g.
@@ -137,6 +141,18 @@ func (c *Client) do(req *http.Request, result interface{}) error {
 		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
 			return fmt.Errorf("decoding response: %w", err)
 		}
+	}
+	return nil
+}
+
+// Health checks that the API server is reachable and healthy.
+func (c *Client) Health(ctx context.Context) error {
+	var result healthResponse
+	if err := c.get(ctx, "/api/v1/health", nil, &result); err != nil {
+		return err
+	}
+	if result.Status != "ok" {
+		return fmt.Errorf("unexpected health status %q", result.Status)
 	}
 	return nil
 }

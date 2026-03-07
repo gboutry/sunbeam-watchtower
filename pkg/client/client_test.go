@@ -185,6 +185,39 @@ func TestDelete_Success(t *testing.T) {
 	}
 }
 
+func TestHealth_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/health" {
+			t.Fatalf("path = %q, want /api/v1/health", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL)
+	if err := c.Health(context.Background()); err != nil {
+		t.Fatalf("Health() error = %v", err)
+	}
+}
+
+func TestHealth_UnexpectedStatus(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "degraded"})
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL)
+	err := c.Health(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got, want := err.Error(), `unexpected health status "degraded"`; got != want {
+		t.Fatalf("Health() error = %q, want %q", got, want)
+	}
+}
+
 func TestDo_HTTPError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

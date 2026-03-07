@@ -209,6 +209,7 @@ This distinction is important: stateful features must be designed around persist
 - added CLI execution tests for `auth login|status|logout` plus a build-list rendering path backed by a stubbed HTTP API
 - moved split-workflow build triggering onto a first-class `prepared` contract so local preparation no longer leaks raw Launchpad repo/ref/path fields at the top level of the trigger API
 - synced `README.md` and `CONTRIBUTING.md` with the current runtime model, split-workflow terminology, and shared frontend preparation layer
+- added an initial local persistent-server lifecycle in the CLI: `server start|status|stop`, Unix-socket local daemon discovery, explicit server/daemon/embedded resolution order, and automatic daemon startup for persistent workflows such as auth and async operations
 
 ## Validation
 
@@ -230,6 +231,8 @@ The split-workflow build refactor has also started: local Launchpad/git preparat
 Durable server-side state work has started too: pending auth flows and long-running operations are now moving behind bbolt-backed secondary adapters so a persistent Watchtower server can keep coordination state across process lifetimes instead of relying only on in-memory stores.
 
 Runtime mode selection is now being made explicit as well: persistent server mode is the place where durable coordination state lives, while explicitly ephemeral frontend mode continues to use memory-backed state for short-lived embedded workflows.
+
+The runtime resolution model has now started to move from documentation into code as well: the CLI first honors `--server` / `WATCHTOWER_SERVER`, then reuses a discovered local daemon on the default Unix socket, then auto-starts that local daemon for persistent workflows, and only falls back to an embedded one-command server for explicitly ephemeral work.
 
 ## Deferred contract-test plan
 
