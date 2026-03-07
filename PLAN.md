@@ -229,6 +229,7 @@ This distinction is important: stateful features must be designed around persist
 - added a CLI architecture guard test that fails if non-bootstrap command files import `pkg/client` directly or call methods on `opts.Client`, so the frontend-workflow boundary is now mechanically enforced instead of relying on review discipline
 - rewired the CLI command layer to consume the shared client facade through `Options.Frontend()`, so command handlers now depend on one stable frontend entrypoint rather than constructing individual workflows ad hoc
 - tightened the CLI architecture guard so non-bootstrap command files also fail if they instantiate frontend workflows directly; command handlers are now expected to go through `Options.Frontend()` for workflow access
+- replaced the cache workflow public surface with frontend-owned request/response DTOs, so cache sync/clear/status flows no longer leak `pkg/client` result or option types to frontend consumers
 
 ## Validation
 
