@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -39,6 +40,9 @@ func newServerStartCmd(opts *Options) *cobra.Command {
 				fmt.Fprintf(opts.Out, "Local server already running at %s (pid %d)\n", status.Address, status.PID)
 			}
 			fmt.Fprintf(opts.Out, "Log file: %s\n", status.LogFile)
+			if status.ConfigPath != "" {
+				fmt.Fprintf(opts.Out, "Config: %s\n", status.ConfigPath)
+			}
 			return nil
 		},
 	}
@@ -59,10 +63,22 @@ func newServerStatusCmd(opts *Options) *cobra.Command {
 			}
 			if !status.Running {
 				fmt.Fprintf(opts.Out, "Local server not running.\nExpected address: %s\n", status.Address)
+				if status.StaleSocket {
+					fmt.Fprintf(opts.Out, "Stale socket file detected at %s\n", manager.paths.Socket)
+				}
+				if status.StalePIDFile {
+					fmt.Fprintf(opts.Out, "Stale pid file detected at %s\n", manager.paths.PIDFile)
+				}
 				return nil
 			}
 			fmt.Fprintf(opts.Out, "Local server running at %s (pid %d)\n", status.Address, status.PID)
 			fmt.Fprintf(opts.Out, "Log file: %s\n", status.LogFile)
+			if status.ConfigPath != "" {
+				fmt.Fprintf(opts.Out, "Config: %s\n", status.ConfigPath)
+			}
+			if !status.StartedAt.IsZero() {
+				fmt.Fprintf(opts.Out, "Started: %s\n", status.StartedAt.Format(time.RFC3339))
+			}
 			return nil
 		},
 	}
@@ -82,7 +98,7 @@ func newServerStopCmd(opts *Options) *cobra.Command {
 				return err
 			}
 			if !stopped {
-				fmt.Fprintln(opts.Out, "Local server is not running.")
+				fmt.Fprintln(opts.Out, "Local server is not running. Cleaned up any stale local server files.")
 				return nil
 			}
 			fmt.Fprintln(opts.Out, "Stopped local server.")

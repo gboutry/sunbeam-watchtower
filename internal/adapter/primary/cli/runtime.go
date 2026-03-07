@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -32,15 +33,30 @@ type localServerPaths struct {
 	Dir       string
 	Socket    string
 	PIDFile   string
+	Metadata  string
 	LogFile   string
 	SocketURI string
 }
 
+type localServerMetadata struct {
+	PID            int       `json:"pid"`
+	Address        string    `json:"address"`
+	StartedAt      time.Time `json:"started_at"`
+	LogFile        string    `json:"log_file"`
+	ConfigPath     string    `json:"config_path,omitempty"`
+	ExecutablePath string    `json:"executable_path,omitempty"`
+}
+
 type localServerStatus struct {
-	Address string
-	PID     int
-	Running bool
-	LogFile string
+	Address         string
+	PID             int
+	Running         bool
+	LogFile         string
+	ConfigPath      string
+	StartedAt       time.Time
+	StalePIDFile    bool
+	StaleSocket     bool
+	MetadataPresent bool
 }
 
 type localServerManager struct {
@@ -180,6 +196,7 @@ func resolveLocalServerPaths() (localServerPaths, error) {
 		Dir:       dir,
 		Socket:    filepath.Join(dir, "watchtower.sock"),
 		PIDFile:   filepath.Join(dir, "watchtower.pid"),
+		Metadata:  filepath.Join(dir, "watchtower.json"),
 		LogFile:   filepath.Join(dir, "watchtower.log"),
 		SocketURI: "unix://" + filepath.Join(dir, "watchtower.sock"),
 	}, nil
@@ -219,11 +236,33 @@ func (m *localServerManager) status(ctx context.Context) (localServerStatus, err
 		LogFile: m.paths.LogFile,
 	}
 
+	if metadata, err := readLocalServerMetadata(m.paths.Metadata); err == nil {
+		status.MetadataPresent = true
+		if metadata.Address != "" {
+			status.Address = metadata.Address
+		}
+		if metadata.LogFile != "" {
+			status.LogFile = metadata.LogFile
+		}
+		status.ConfigPath = metadata.ConfigPath
+		status.StartedAt = metadata.StartedAt
+		if metadata.PID != 0 {
+			status.PID = metadata.PID
+		}
+	}
+
 	if pid, err := readPIDFile(m.paths.PIDFile); err == nil {
 		status.PID = pid
 	}
 
-	if healthy := client.NewClient(m.paths.SocketURI).Health(ctx) == nil; !healthy {
+	healthy := client.NewClient(m.paths.SocketURI).Health(ctx) == nil
+	if !healthy {
+		if _, err := os.Stat(m.paths.Socket); err == nil {
+			status.StaleSocket = true
+		}
+		if _, err := os.Stat(m.paths.PIDFile); err == nil {
+			status.StalePIDFile = true
+		}
 		return status, nil
 	}
 
@@ -244,7 +283,9 @@ func (m *localServerManager) ensureRunning(ctx context.Context) (localServerStat
 		return localServerStatus{}, false, fmt.Errorf("create runtime dir: %w", err)
 	}
 
-	_ = os.Remove(m.paths.Socket)
+	if err := m.cleanupStaleFiles(status); err != nil {
+		return localServerStatus{}, false, err
+	}
 
 	logFile, err := os.OpenFile(m.paths.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -273,6 +314,18 @@ func (m *localServerManager) ensureRunning(ctx context.Context) (localServerStat
 		_ = cmd.Process.Kill()
 		return localServerStatus{}, false, fmt.Errorf("write server pid file: %w", err)
 	}
+	if err := writeLocalServerMetadata(m.paths.Metadata, localServerMetadata{
+		PID:            cmd.Process.Pid,
+		Address:        m.paths.SocketURI,
+		StartedAt:      time.Now().UTC(),
+		LogFile:        m.paths.LogFile,
+		ConfigPath:     m.configPath,
+		ExecutablePath: m.executablePath,
+	}); err != nil {
+		_ = cmd.Process.Kill()
+		_ = os.Remove(m.paths.PIDFile)
+		return localServerStatus{}, false, fmt.Errorf("write server metadata: %w", err)
+	}
 	_ = cmd.Process.Release()
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -296,7 +349,9 @@ func (m *localServerManager) stop(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	if !status.Running {
-		_ = os.Remove(m.paths.PIDFile)
+		if err := m.cleanupStaleFiles(status); err != nil {
+			return false, err
+		}
 		return false, nil
 	}
 	if status.PID == 0 {
@@ -318,13 +373,30 @@ func (m *localServerManager) stop(ctx context.Context) (bool, error) {
 			return false, err
 		}
 		if !status.Running {
-			_ = os.Remove(m.paths.PIDFile)
+			if err := m.cleanupStaleFiles(status); err != nil {
+				return false, err
+			}
 			return true, nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 
 	return false, fmt.Errorf("local server did not stop within timeout")
+}
+
+func (m *localServerManager) cleanupStaleFiles(status localServerStatus) error {
+	if status.StaleSocket || status.StalePIDFile || status.MetadataPresent {
+		if err := os.Remove(m.paths.Socket); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale server socket: %w", err)
+		}
+		if err := os.Remove(m.paths.PIDFile); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale server pid file: %w", err)
+		}
+		if err := os.Remove(m.paths.Metadata); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale server metadata: %w", err)
+		}
+	}
+	return nil
 }
 
 func readPIDFile(path string) (int, error) {
@@ -337,4 +409,28 @@ func readPIDFile(path string) (int, error) {
 		return 0, fmt.Errorf("parse pid file %s: %w", path, err)
 	}
 	return pid, nil
+}
+
+func readLocalServerMetadata(path string) (*localServerMetadata, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var metadata localServerMetadata
+	if err := json.Unmarshal(content, &metadata); err != nil {
+		return nil, fmt.Errorf("parse server metadata %s: %w", path, err)
+	}
+	return &metadata, nil
+}
+
+func writeLocalServerMetadata(path string, metadata localServerMetadata) error {
+	content, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal server metadata: %w", err)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		return fmt.Errorf("write server metadata %s: %w", path, err)
+	}
+	return nil
 }

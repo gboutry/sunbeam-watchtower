@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
 	"github.com/spf13/cobra"
@@ -101,8 +102,17 @@ func TestLocalServerManagerStatusRunning(t *testing.T) {
 	}
 	defer srv.Shutdown(context.Background())
 
-	if err := os.WriteFile(manager.paths.PIDFile, []byte("1234"), 0o644); err != nil {
+	if err := os.WriteFile(manager.paths.PIDFile, []byte("1234"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
+	}
+	startedAt := time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC)
+	if err := writeLocalServerMetadata(manager.paths.Metadata, localServerMetadata{
+		PID:       1234,
+		Address:   "unix://" + manager.paths.Socket,
+		StartedAt: startedAt,
+		LogFile:   manager.paths.LogFile,
+	}); err != nil {
+		t.Fatalf("writeLocalServerMetadata() error = %v", err)
 	}
 
 	status, err := manager.status(context.Background())
@@ -117,6 +127,81 @@ func TestLocalServerManagerStatusRunning(t *testing.T) {
 	}
 	if status.Address != "unix://"+manager.paths.Socket {
 		t.Fatalf("status.Address = %q, want %q", status.Address, "unix://"+manager.paths.Socket)
+	}
+	if !status.StartedAt.Equal(startedAt) {
+		t.Fatalf("status.StartedAt = %s, want %s", status.StartedAt, startedAt)
+	}
+	if !status.MetadataPresent {
+		t.Fatal("status.MetadataPresent = false, want true")
+	}
+}
+
+func TestLocalServerManagerStatusDetectsStaleFiles(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	manager, err := newLocalServerManager(&Options{Logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))})
+	if err != nil {
+		t.Fatalf("newLocalServerManager() error = %v", err)
+	}
+	if err := os.MkdirAll(manager.paths.Dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(manager.paths.Socket, []byte("stale"), 0o600); err != nil {
+		t.Fatalf("WriteFile(socket) error = %v", err)
+	}
+	if err := os.WriteFile(manager.paths.PIDFile, []byte("9999"), 0o600); err != nil {
+		t.Fatalf("WriteFile(pid) error = %v", err)
+	}
+	if err := writeLocalServerMetadata(manager.paths.Metadata, localServerMetadata{
+		PID:     9999,
+		Address: manager.paths.SocketURI,
+		LogFile: manager.paths.LogFile,
+	}); err != nil {
+		t.Fatalf("writeLocalServerMetadata() error = %v", err)
+	}
+
+	status, err := manager.status(context.Background())
+	if err != nil {
+		t.Fatalf("status() error = %v", err)
+	}
+	if status.Running {
+		t.Fatal("status.Running = true, want false")
+	}
+	if !status.StaleSocket || !status.StalePIDFile {
+		t.Fatalf("status = %+v, want stale socket and pid markers", status)
+	}
+	if !status.MetadataPresent {
+		t.Fatal("status.MetadataPresent = false, want true")
+	}
+}
+
+func TestLocalServerManagerStopCleansStaleFiles(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	manager, err := newLocalServerManager(&Options{Logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))})
+	if err != nil {
+		t.Fatalf("newLocalServerManager() error = %v", err)
+	}
+	if err := os.MkdirAll(manager.paths.Dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	for _, path := range []string{manager.paths.Socket, manager.paths.PIDFile, manager.paths.Metadata} {
+		if err := os.WriteFile(path, []byte("stale"), 0o600); err != nil {
+			t.Fatalf("WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	stopped, err := manager.stop(context.Background())
+	if err != nil {
+		t.Fatalf("stop() error = %v", err)
+	}
+	if stopped {
+		t.Fatal("stop() = true, want false for stale-only cleanup")
+	}
+	for _, path := range []string{manager.paths.Socket, manager.paths.PIDFile, manager.paths.Metadata} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be removed, stat error = %v", path, err)
+		}
 	}
 }
 
@@ -133,5 +218,37 @@ func TestServerLifecycleCommandsDoNotRequireConfig(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Local server not running.") {
 		t.Fatalf("unexpected output: %q", out.String())
+	}
+}
+
+func TestServerStatusCmd_ReportsStaleFiles(t *testing.T) {
+	runtimeDir := t.TempDir()
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+
+	manager, err := newLocalServerManager(&Options{Logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))})
+	if err != nil {
+		t.Fatalf("newLocalServerManager() error = %v", err)
+	}
+	if err := os.MkdirAll(manager.paths.Dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(manager.paths.Socket, []byte("stale"), 0o600); err != nil {
+		t.Fatalf("WriteFile(socket) error = %v", err)
+	}
+	if err := os.WriteFile(manager.paths.PIDFile, []byte("9999"), 0o600); err != nil {
+		t.Fatalf("WriteFile(pid) error = %v", err)
+	}
+
+	var out bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &bytes.Buffer{}}
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"server", "status"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	output := out.String()
+	if !strings.Contains(output, "Stale socket file detected") || !strings.Contains(output, "Stale pid file detected") {
+		t.Fatalf("unexpected output: %q", output)
 	}
 }
