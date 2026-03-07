@@ -93,3 +93,31 @@ func TestBugsList_OmittedOptionalQueryParamsReturns200(t *testing.T) {
 		t.Fatalf("expected no bug tasks, got %d", len(body.Tasks))
 	}
 }
+
+func TestBuildsList_OmittedOptionalQueryParamsReturns200(t *testing.T) {
+	srv, base := startTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	application := app.NewApp(&config.Config{}, discardLogger())
+	RegisterBuildsAPI(srv.API(), application)
+
+	resp, err := http.Get(base + "/api/v1/builds")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Builds []any `json:"builds"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Builds) != 0 {
+		t.Fatalf("expected no builds, got %d", len(body.Builds))
+	}
+}
