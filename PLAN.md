@@ -525,7 +525,7 @@ These are still the main gaps before TUI and MCP work:
 - Launchpad auth now has an application/API surface, but it is still Launchpad-only; future work should extend the same model to GitHub/Gerrit when authenticated workflows are needed
 - the TUI/MCP adapters still need to consume the shared frontend/client facade and persistent-server operation model instead of inventing parallel runtime access patterns
 - `internal/app` still has bootstrap logic that should continue moving into focused modules so the composition root remains easy to evolve in parallel
-- API/request contract hardening is not finished yet; optional-field validation and environment-sensitive test assumptions still need targeted cleanup
+- environment-sensitive test assumptions still need targeted cleanup, especially around loopback-bound API tests and any host-dependent git/runtime behavior
 
 ## Remediation roadmap
 
@@ -534,7 +534,7 @@ The next architecture work should be delivered in the following order.
 ## Current delivery todo
 
 - [x] consolidate the stateful and forge-query HTTP handlers behind a shared server-side frontend facade, and enforce that boundary mechanically in `internal/adapter/primary/api`
-- [x] reduce build/backend coupling by introducing a backend-neutral prepared build contract while keeping Launchpad compatibility for existing clients
+- [x] reduce build/backend coupling by introducing a backend-neutral prepared build contract and removing the temporary Launchpad-specific compatibility aliases from the public request surface
 - [x] replace duplicated adapter AST guards with shared tooling so CLI, frontend, and API boundary checks evolve from one implementation
 
 ### Phase 1: keep runtime/docs in sync
@@ -560,7 +560,7 @@ The next architecture work should be delivered in the following order.
 
 ### Phase 4: harden API and test contracts
 
-- audit Huma request structs so every optional slice/map/bool field is marked `required:"false"`
+- keep the mechanical Huma request-contract guard in place so every optional slice/map/bool field continues to declare `required:"false"`
 - add regression tests for omitted optional query/body fields
 - remove host-environment assumptions from tests, especially loopback listener defaults and inherited git signing settings
 - revalidate the documented baseline commands in a clean local environment
