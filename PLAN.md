@@ -216,6 +216,7 @@ This distinction is important: stateful features must be designed around persist
 - defined initial restart semantics for persisted operations: queued/running jobs are now reconciled to an explicit `interrupted` terminal state on service startup, with deterministic recovery events, instead of remaining misleadingly in-flight forever
 - added dedicated frontend auth and operation workflows so API/frontends stop reaching into `internal/app` for those concerns service-by-service, and the existing async build/project frontend wrapper now layers on top of the operation workflow instead of duplicating that access pattern
 - added real daemon integration coverage for the CLI by re-entering the command surface through a helper subprocess, so `server start/status/stop`, auth persistence, and async operation persistence are verified across separate CLI invocations against an actual background server process
+- added a machine-enforced changed-package coverage guard (`tools/coverageguard` + `.coverage-policy.yaml`) and wired it into `pre-commit`, so package-level coverage floors become part of the merge contract instead of an informal expectation
 
 ## Validation
 
@@ -224,6 +225,7 @@ The intended validation baseline for the refactor is:
 - `go test ./...`
 - `golangci-lint run ./...`
 - `arch-go --color no`
+- `go run ./tools/coverageguard --config .coverage-policy.yaml $(git diff --cached --name-only -- '*.go')`
 - `pre-commit run --all-files`
 
 Architecture boundaries are currently validated by `arch-go` with 100% compliance and coverage.

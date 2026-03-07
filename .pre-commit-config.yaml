@@ -38,6 +38,13 @@ repos:
         pass_filenames: false
         types: [go]
 
+      - id: go-changed-package-coverage
+        name: go changed-package coverage
+        entry: go run ./tools/coverageguard --config .coverage-policy.yaml
+        language: system
+        pass_filenames: true
+        types: [go]
+
       - id: go-mod-tidy
         name: go mod tidy
         entry: bash -c 'go mod tidy && git diff --exit-code go.mod go.sum'

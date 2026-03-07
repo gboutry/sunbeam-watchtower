@@ -461,7 +461,7 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-The hooks run whitespace/YAML checks plus `arch-go`, `golangci-lint`, `go build`, `go test`, and `go mod tidy`.
+The hooks run whitespace/YAML checks plus `arch-go`, `golangci-lint`, `go build`, `go test`, changed-package coverage via `go run ./tools/coverageguard --config .coverage-policy.yaml`, and `go mod tidy`.
 
 ## License
 

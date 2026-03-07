@@ -62,6 +62,12 @@ dependenciesRules:
         - "**.internal.**"
         - "**.cmd.**"
 
+  - package: "**.tools.**"
+    shouldNotDependsOn:
+      internal:
+        - "**.internal.**"
+        - "**.cmd.**"
+
 contentsRules:
   - package: "**.internal.core.port.**"
     shouldOnlyContainInterfaces: true

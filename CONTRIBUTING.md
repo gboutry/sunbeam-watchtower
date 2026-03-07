@@ -128,6 +128,7 @@ pre-commit run --all-files
 # Individual checks
 golangci-lint run ./...
 arch-go --color no
+go run ./tools/coverageguard --config .coverage-policy.yaml $(git diff --cached --name-only -- '*.go')
 ```
 
 ## Debug logging

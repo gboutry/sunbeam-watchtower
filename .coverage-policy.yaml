@@ -1,0 +1,14 @@
+default_threshold: 40
+
+package_thresholds:
+  internal/app: 30
+  internal/adapter/primary/cli: 45
+  internal/adapter/primary/frontend: 45
+  internal/core/service/build: 50
+  internal/core/service/operation: 70
+  internal/adapter/secondary/authflowstore: 75
+  internal/adapter/secondary/operationstore: 75
+  tools/coverageguard: 79
+
+exclude_packages:
+  - cmd/watchtower
