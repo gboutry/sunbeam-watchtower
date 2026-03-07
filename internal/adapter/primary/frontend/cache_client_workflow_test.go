@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
 func TestCacheClientWorkflowSyncGit(t *testing.T) {
@@ -31,7 +32,7 @@ func TestCacheClientWorkflowSyncGit(t *testing.T) {
 	defer ts.Close()
 
 	workflow := NewCacheClientWorkflow(client.NewClient(ts.URL))
-	got, err := workflow.SyncGit(context.Background(), "keystone")
+	got, err := workflow.SyncGit(context.Background(), CacheSyncGitRequest{Project: "keystone"})
 	if err != nil {
 		t.Fatalf("SyncGit() error = %v", err)
 	}
@@ -58,7 +59,11 @@ func TestCacheClientWorkflowSyncPackagesIndex(t *testing.T) {
 	defer ts.Close()
 
 	workflow := NewCacheClientWorkflow(client.NewClient(ts.URL))
-	err := workflow.SyncPackagesIndex(context.Background(), []string{"ubuntu"}, []string{"noble"}, []string{"none"})
+	err := workflow.SyncPackagesIndex(context.Background(), CacheSyncPackagesIndexRequest{
+		Distros:   []string{"ubuntu"},
+		Releases:  []string{"noble"},
+		Backports: []string{"none"},
+	})
 	if err != nil {
 		t.Fatalf("SyncPackagesIndex() error = %v", err)
 	}
@@ -86,7 +91,10 @@ func TestCacheClientWorkflowClearExcuses(t *testing.T) {
 	defer ts.Close()
 
 	workflow := NewCacheClientWorkflow(client.NewClient(ts.URL))
-	if err := workflow.ClearExcuses(context.Background(), []string{"ubuntu-devel", "ubuntu-updates"}); err != nil {
+	if err := workflow.Clear(context.Background(), CacheClearRequest{
+		Type:     "excuses",
+		Trackers: []string{"ubuntu-devel", "ubuntu-updates"},
+	}); err != nil {
 		t.Fatalf("ClearExcuses() error = %v", err)
 	}
 }
@@ -103,6 +111,13 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 			}{
 				Directory: "/tmp/git",
 				Repos:     []client.CacheEntry{{Name: "keystone", Size: "4.0 MiB"}},
+			},
+			Packages: struct {
+				Directory string            `json:"directory"`
+				Sources   []dto.CacheStatus `json:"sources"`
+				Error     string            `json:"error,omitempty"`
+			}{
+				Directory: "/tmp/packages",
 			},
 		})
 	}))
