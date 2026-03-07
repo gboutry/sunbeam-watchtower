@@ -67,6 +67,7 @@ func (s *Service) List(ctx context.Context, query dto.ReleaseListQuery) ([]dto.R
 	projectSet := toStringSet(query.Projects)
 	nameSet := toStringSet(query.Names)
 	trackSet := toStringSet(query.Tracks)
+	branchSet := toStringSet(query.Branches)
 	riskSet := make(map[dto.ReleaseRisk]bool, len(query.Risks))
 	for _, risk := range query.Risks {
 		riskSet[risk] = true
@@ -87,6 +88,9 @@ func (s *Service) List(ctx context.Context, query dto.ReleaseListQuery) ([]dto.R
 			if len(trackSet) > 0 && !trackSet[channel.Track] {
 				continue
 			}
+			if len(branchSet) > 0 && !branchSet[channel.Branch] {
+				continue
+			}
 			if len(riskSet) > 0 && !riskSet[channel.Risk] {
 				continue
 			}
@@ -96,6 +100,7 @@ func (s *Service) List(ctx context.Context, query dto.ReleaseListQuery) ([]dto.R
 				ArtifactType: snapshot.ArtifactType,
 				Track:        channel.Track,
 				Risk:         channel.Risk,
+				Branch:       channel.Branch,
 				Channel:      channel.Channel,
 				Targets:      append([]dto.ReleaseTargetSnapshot(nil), channel.Targets...),
 				Resources:    append([]dto.ReleaseResourceSnapshot(nil), channel.Resources...),
@@ -106,7 +111,10 @@ func (s *Service) List(ctx context.Context, query dto.ReleaseListQuery) ([]dto.R
 	sort.Slice(results, func(i, j int) bool {
 		if results[i].Name == results[j].Name {
 			if results[i].Track == results[j].Track {
-				return riskRank(results[i].Risk) < riskRank(results[j].Risk)
+				if results[i].Branch == results[j].Branch {
+					return riskRank(results[i].Risk) < riskRank(results[j].Risk)
+				}
+				return results[i].Branch < results[j].Branch
 			}
 			return results[i].Track < results[j].Track
 		}
@@ -122,7 +130,7 @@ func (s *Service) List(ctx context.Context, query dto.ReleaseListQuery) ([]dto.R
 }
 
 // Show returns the full cached matrix for one artifact.
-func (s *Service) Show(ctx context.Context, name string, artifactType *dto.ArtifactType, track string) (*dto.ReleaseShowResult, error) {
+func (s *Service) Show(ctx context.Context, name string, artifactType *dto.ArtifactType, track string, branch string) (*dto.ReleaseShowResult, error) {
 	snapshots, err := s.cache.List(ctx)
 	if err != nil {
 		return nil, err
@@ -144,18 +152,21 @@ func (s *Service) Show(ctx context.Context, name string, artifactType *dto.Artif
 		return nil, ErrAmbiguous
 	}
 	result := matches[0]
-	if track != "" {
+	if track != "" || branch != "" {
 		filtered := result.Channels[:0]
-		tracks := make([]string, 0, 1)
+		tracks := make([]string, 0, len(result.Tracks))
 		for _, channel := range result.Channels {
-			if channel.Track != track {
+			if track != "" && channel.Track != track {
+				continue
+			}
+			if branch != "" && channel.Branch != branch {
 				continue
 			}
 			filtered = append(filtered, channel)
 			tracks = append(tracks, channel.Track)
 		}
 		result.Channels = filtered
-		result.Tracks = tracks
+		result.Tracks = uniqueTracks(tracks)
 	}
 	show := &dto.ReleaseShowResult{
 		Project:      result.Project,
@@ -191,4 +202,17 @@ func riskRank(risk dto.ReleaseRisk) int {
 		}
 	}
 	return len(dto.KnownReleaseRisks())
+}
+
+func uniqueTracks(values []string) []string {
+	set := toStringSet(values)
+	if len(set) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(set))
+	for value := range set {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }

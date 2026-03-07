@@ -18,7 +18,7 @@ func newReleasesCmd(opts *Options) *cobra.Command {
 }
 
 func newReleasesListCmd(opts *Options) *cobra.Command {
-	var names, projects, tracks, risks []string
+	var names, projects, tracks, branches, risks []string
 	var artifactType string
 
 	cmd := &cobra.Command{
@@ -31,6 +31,7 @@ func newReleasesListCmd(opts *Options) *cobra.Command {
 				Projects:     projects,
 				ArtifactType: artifactType,
 				Tracks:       tracks,
+				Branches:     branches,
 				Risks:        risks,
 			})
 			if err != nil {
@@ -44,13 +45,14 @@ func newReleasesListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by watchtower project")
 	cmd.Flags().StringVar(&artifactType, "type", "", "filter by artifact type (snap|charm)")
 	cmd.Flags().StringSliceVar(&tracks, "track", nil, "filter by track")
+	cmd.Flags().StringSliceVar(&branches, "branch", nil, "filter by branch")
 	cmd.Flags().StringSliceVar(&risks, "risk", nil, "filter by risk (edge, beta, candidate, stable)")
 
 	return cmd
 }
 
 func newReleasesShowCmd(opts *Options) *cobra.Command {
-	var artifactType, track string
+	var artifactType, track, branch string
 
 	cmd := &cobra.Command{
 		Use:   "show <name>",
@@ -61,6 +63,7 @@ func newReleasesShowCmd(opts *Options) *cobra.Command {
 				Name:         args[0],
 				ArtifactType: artifactType,
 				Track:        track,
+				Branch:       branch,
 			})
 			if err != nil {
 				return err
@@ -71,5 +74,6 @@ func newReleasesShowCmd(opts *Options) *cobra.Command {
 
 	cmd.Flags().StringVar(&artifactType, "type", "", "artifact type to disambiguate duplicate names (snap|charm)")
 	cmd.Flags().StringVar(&track, "track", "", "optional track filter")
+	cmd.Flags().StringVar(&branch, "branch", "", "optional branch filter")
 	return cmd
 }

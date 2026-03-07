@@ -23,6 +23,7 @@ type ReleasesListInput struct {
 	Projects     []string `query:"project" required:"false" doc:"Filter by watchtower project"`
 	ArtifactType string   `query:"type" required:"false" doc:"Filter by artifact type (snap|charm)"`
 	Tracks       []string `query:"track" required:"false" doc:"Filter by track"`
+	Branches     []string `query:"branch" required:"false" doc:"Filter by branch"`
 	Risks        []string `query:"risk" required:"false" doc:"Filter by risk (edge|beta|candidate|stable)"`
 }
 
@@ -38,6 +39,7 @@ type ReleasesShowInput struct {
 	Name         string `path:"name" doc:"Published artifact name"`
 	ArtifactType string `query:"type" required:"false" doc:"Artifact type to disambiguate duplicate names (snap|charm)"`
 	Track        string `query:"track" required:"false" doc:"Optional track filter"`
+	Branch       string `query:"branch" required:"false" doc:"Optional branch filter"`
 }
 
 // ReleasesShowOutput is the response for showing one cached artifact release matrix.
@@ -80,7 +82,7 @@ func RegisterReleasesAPI(api huma.API, application *app.App) {
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid artifact type", err)
 		}
-		result, err := facade.Releases().Show(ctx, input.Name, artifactType, input.Track)
+		result, err := facade.Releases().Show(ctx, input.Name, artifactType, input.Track, input.Branch)
 		if err != nil {
 			switch {
 			case errors.Is(err, releasesvc.ErrNotFound):
@@ -115,6 +117,7 @@ func releaseListQueryFromInput(input *ReleasesListInput) (dto.ReleaseListQuery, 
 		Projects:     input.Projects,
 		ArtifactType: artifactType,
 		Tracks:       input.Tracks,
+		Branches:     input.Branches,
 		Risks:        risks,
 	}, nil
 }

@@ -32,12 +32,12 @@ func (w *ReleaseServerWorkflow) List(ctx context.Context, req dto.ReleaseListQue
 }
 
 // Show returns the cached full matrix for one artifact.
-func (w *ReleaseServerWorkflow) Show(ctx context.Context, name string, artifactType *dto.ArtifactType, track string) (*dto.ReleaseShowResult, error) {
+func (w *ReleaseServerWorkflow) Show(ctx context.Context, name string, artifactType *dto.ArtifactType, track string, branch string) (*dto.ReleaseShowResult, error) {
 	service, err := w.service()
 	if err != nil {
 		return nil, err
 	}
-	return service.Show(ctx, name, artifactType, track)
+	return service.Show(ctx, name, artifactType, track, branch)
 }
 
 // SyncCache refreshes cached publication snapshots.
@@ -46,7 +46,7 @@ func (w *ReleaseServerWorkflow) SyncCache(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	publications, err := w.application.TrackedPublications()
+	publications, err := w.application.TrackedReleases(ctx)
 	if err != nil {
 		return err
 	}

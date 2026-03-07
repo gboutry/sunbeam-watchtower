@@ -17,11 +17,7 @@ import (
 
 func TestReleasesListAndShowEndpoints(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	application := app.NewApp(&config.Config{Projects: []config.ProjectConfig{{
-		Name:         "sunbeam",
-		Code:         config.CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
-		Publications: []config.ProjectPublicationConfig{{Name: "snap-openstack", Type: "snap", Tracks: []string{"2024.1"}}},
-	}}}, discardLogger())
+	application := app.NewApp(&config.Config{}, discardLogger())
 	cache, err := application.ReleaseCache()
 	if err != nil {
 		t.Fatalf("ReleaseCache() error = %v", err)
@@ -35,7 +31,7 @@ func TestReleasesListAndShowEndpoints(t *testing.T) {
 	defer srv.Shutdown(context.Background())
 	RegisterReleasesAPI(srv.API(), application)
 
-	resp, err := http.Get(base + "/api/v1/releases?track=2024.1")
+	resp, err := http.Get(base + "/api/v1/releases?track=2024.1&branch=risc-v")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +68,8 @@ func releaseFixture(project, name, track string) dto.PublishedArtifactSnapshot {
 		Channels: []dto.ReleaseChannelSnapshot{{
 			Track:     track,
 			Risk:      dto.ReleaseRiskStable,
-			Channel:   track + "/stable",
+			Branch:    "risc-v",
+			Channel:   track + "/stable/risc-v",
 			UpdatedAt: time.Now().UTC(),
 			Targets:   []dto.ReleaseTargetSnapshot{{Architecture: "amd64", Revision: 12, Version: "1.2.3"}},
 		}},

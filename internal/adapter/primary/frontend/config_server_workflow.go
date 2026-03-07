@@ -90,13 +90,22 @@ func configToDTO(cfg *config.Config) *dto.Config {
 				Project: bug.Project,
 			}
 		}
-		outProject.Publications = make([]dto.ProjectPublicationConfig, len(project.Publications))
-		for j, publication := range project.Publications {
-			outProject.Publications[j] = dto.ProjectPublicationConfig{
-				Name:      publication.Name,
-				Type:      publication.Type,
-				Tracks:    append([]string(nil), publication.Tracks...),
-				Resources: append([]string(nil), publication.Resources...),
+		if project.Release != nil {
+			outProject.Release = &dto.ProjectReleaseConfig{
+				Tracks:   append([]string(nil), project.Release.Tracks...),
+				TrackMap: make(map[string]string, len(project.Release.TrackMap)),
+				Branches: make([]dto.ProjectReleaseBranchConfig, len(project.Release.Branches)),
+			}
+			for series, track := range project.Release.TrackMap {
+				outProject.Release.TrackMap[series] = track
+			}
+			for j, branch := range project.Release.Branches {
+				outProject.Release.Branches[j] = dto.ProjectReleaseBranchConfig{
+					Series: branch.Series,
+					Track:  branch.Track,
+					Branch: branch.Branch,
+					Risks:  append([]string(nil), branch.Risks...),
+				}
 			}
 		}
 
