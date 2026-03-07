@@ -19,14 +19,15 @@ import (
 // BuildsTriggerInput holds the request body for triggering builds.
 type BuildsTriggerInput struct {
 	Body struct {
-		Project   string                   `json:"project" doc:"Project name"`
-		Artifacts []string                 `json:"artifacts,omitempty" required:"false" doc:"Artifact names to build (empty = all configured)"`
-		Wait      bool                     `json:"wait,omitempty" required:"false" doc:"Wait for builds to complete"`
-		Timeout   string                   `json:"timeout,omitempty" required:"false" doc:"Max wait time as Go duration (e.g. 5h)"`
-		Owner     string                   `json:"owner,omitempty" required:"false" doc:"Override LP owner"`
-		Prefix    string                   `json:"prefix,omitempty" required:"false" doc:"Temp recipe name prefix"`
-		LPProject string                   `json:"lp_project,omitempty" required:"false" doc:"Override LP project name for remote recipe operations"`
-		Prepared  *dto.PreparedBuildSource `json:"prepared,omitempty" required:"false" doc:"Frontend-prepared Launchpad references for split local build workflows"`
+		Project       string                   `json:"project" doc:"Project name"`
+		Artifacts     []string                 `json:"artifacts,omitempty" required:"false" doc:"Artifact names to build (empty = all configured)"`
+		Wait          bool                     `json:"wait,omitempty" required:"false" doc:"Wait for builds to complete"`
+		Timeout       string                   `json:"timeout,omitempty" required:"false" doc:"Max wait time as Go duration (e.g. 5h)"`
+		Owner         string                   `json:"owner,omitempty" required:"false" doc:"Override backend owner"`
+		Prefix        string                   `json:"prefix,omitempty" required:"false" doc:"Temp recipe name prefix"`
+		TargetProject string                   `json:"target_project,omitempty" required:"false" doc:"Override backend target project for recipe operations"`
+		LPProject     string                   `json:"lp_project,omitempty" required:"false" doc:"Deprecated Launchpad-specific alias for target_project"`
+		Prepared      *dto.PreparedBuildSource `json:"prepared,omitempty" required:"false" doc:"Frontend-prepared backend references for split local build workflows"`
 	}
 }
 
@@ -39,13 +40,14 @@ type BuildsTriggerOutput struct {
 
 // BuildsListInput holds query parameters for listing builds.
 type BuildsListInput struct {
-	Projects     []string `query:"project" required:"false" doc:"Filter by project name"`
-	All          bool     `query:"all" required:"false" doc:"Show all builds (not just active)"`
-	State        string   `query:"state" doc:"Filter by state"`
-	Owner        string   `query:"owner" doc:"Override LP owner"`
-	LPProject    string   `query:"lp_project" doc:"Override LP project for recipe lookup"`
-	RecipeNames  []string `query:"recipe" required:"false" doc:"Explicit recipe names (overrides project config)"`
-	RecipePrefix string   `query:"recipe_prefix" doc:"Filter recipes by name prefix"`
+	Projects      []string `query:"project" required:"false" doc:"Filter by project name"`
+	All           bool     `query:"all" required:"false" doc:"Show all builds (not just active)"`
+	State         string   `query:"state" doc:"Filter by state"`
+	Owner         string   `query:"owner" doc:"Override backend owner"`
+	TargetProject string   `query:"target_project" doc:"Override backend target project for recipe lookup"`
+	LPProject     string   `query:"lp_project" doc:"Deprecated Launchpad-specific alias for target_project"`
+	RecipeNames   []string `query:"recipe" required:"false" doc:"Explicit recipe names (overrides project config)"`
+	RecipePrefix  string   `query:"recipe_prefix" doc:"Filter recipes by name prefix"`
 }
 
 // BuildsListOutput is the response for listing builds.
@@ -60,12 +62,13 @@ type BuildsListOutput struct {
 // BuildsDownloadInput holds the request body for downloading build artifacts.
 type BuildsDownloadInput struct {
 	Body struct {
-		Project      string   `json:"project" doc:"Project name"`
-		Artifacts    []string `json:"artifacts,omitempty" required:"false" doc:"Artifact names to download (empty = all)"`
-		RecipePrefix string   `json:"recipe_prefix,omitempty" required:"false" doc:"Filter recipes by name prefix"`
-		Owner        string   `json:"owner,omitempty" required:"false" doc:"Override LP owner"`
-		LPProject    string   `json:"lp_project,omitempty" required:"false" doc:"Override LP project"`
-		ArtifactsDir string   `json:"artifacts_dir,omitempty" required:"false" doc:"Output directory (default from config)"`
+		Project       string   `json:"project" doc:"Project name"`
+		Artifacts     []string `json:"artifacts,omitempty" required:"false" doc:"Artifact names to download (empty = all)"`
+		RecipePrefix  string   `json:"recipe_prefix,omitempty" required:"false" doc:"Filter recipes by name prefix"`
+		Owner         string   `json:"owner,omitempty" required:"false" doc:"Override backend owner"`
+		TargetProject string   `json:"target_project,omitempty" required:"false" doc:"Override backend target project"`
+		LPProject     string   `json:"lp_project,omitempty" required:"false" doc:"Deprecated Launchpad-specific alias for target_project"`
+		ArtifactsDir  string   `json:"artifacts_dir,omitempty" required:"false" doc:"Output directory (default from config)"`
 	}
 }
 
@@ -154,13 +157,14 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsListInput) (*BuildsListOutput, error) {
 		builds, err := facade.Builds().List(ctx, build.ListOpts{
-			Projects:     input.Projects,
-			All:          input.All,
-			State:        input.State,
-			Owner:        input.Owner,
-			LPProject:    input.LPProject,
-			RecipeNames:  input.RecipeNames,
-			RecipePrefix: input.RecipePrefix,
+			Projects:      input.Projects,
+			All:           input.All,
+			State:         input.State,
+			Owner:         input.Owner,
+			TargetProject: targetProject(input.TargetProject, input.LPProject),
+			LPProject:     input.LPProject,
+			RecipeNames:   input.RecipeNames,
+			RecipePrefix:  input.RecipePrefix,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list builds: %v", err))
@@ -193,6 +197,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			ArtifactNames: input.Body.Artifacts,
 			RecipePrefix:  input.Body.RecipePrefix,
 			Owner:         input.Body.Owner,
+			TargetProject: targetProject(input.Body.TargetProject, input.Body.LPProject),
 			LPProject:     input.Body.LPProject,
 			OutputDir:     artifactsDir,
 		}); err != nil {
@@ -243,11 +248,19 @@ func buildTriggerOptionsFromInput(input *BuildsTriggerInput) (build.TriggerOpts,
 	}
 
 	return build.TriggerOpts{
-		Wait:      input.Body.Wait,
-		Timeout:   timeout,
-		Owner:     input.Body.Owner,
-		Prefix:    input.Body.Prefix,
-		LPProject: input.Body.LPProject,
-		Prepared:  input.Body.Prepared,
+		Wait:          input.Body.Wait,
+		Timeout:       timeout,
+		Owner:         input.Body.Owner,
+		Prefix:        input.Body.Prefix,
+		TargetProject: targetProject(input.Body.TargetProject, input.Body.LPProject),
+		LPProject:     input.Body.LPProject,
+		Prepared:      input.Body.Prepared,
 	}, nil
+}
+
+func targetProject(target, legacy string) string {
+	if target != "" {
+		return target
+	}
+	return legacy
 }

@@ -236,6 +236,8 @@ This distinction is important: stateful features must be designed around persist
 - tightened the frontend architecture guard so only `internal/adapter/primary/frontend/transport.go` may mention the concrete `pkg/client.Client` type; workflow/facade code must now consume the transport wrapper instead of reaching for the raw HTTP client directly
 - consolidated the stateful and forge-query HTTP handlers (`auth`, `operations`, `builds`, `projects`, `bugs`, `reviews`, `commits`, `config`) behind a shared server-side frontend facade, and added an API architecture guard so those handler files stop reaching into `app` or constructing workflows directly
 - added API smoke tests for handler error mapping and query validation, and set an explicit `internal/adapter/primary/api: 35` changed-package coverage floor in `.coverage-policy.yaml` so the guard tracks the current breadth of the package without weakening the global default threshold
+- introduced a backend-neutral prepared build contract (`backend`, `target_project`, `repository`, `recipes`) while keeping the legacy Launchpad fields as compatibility aliases, and rewired the build API/client/frontend/service flow to emit the neutral contract by default while still accepting legacy callers
+- added focused build transport tests in `pkg/client` and set an explicit `pkg/client: 21` changed-package coverage floor so transport-shaping changes remain guarded without pretending the entire multi-endpoint client package is already at the default package-wide maturity level
 
 ## Validation
 
@@ -526,7 +528,7 @@ The next architecture work should be delivered in the following order.
 ## Current delivery todo
 
 - [x] consolidate the stateful and forge-query HTTP handlers behind a shared server-side frontend facade, and enforce that boundary mechanically in `internal/adapter/primary/api`
-- [ ] reduce build/backend coupling by introducing a backend-neutral prepared build contract while keeping Launchpad compatibility for existing clients
+- [x] reduce build/backend coupling by introducing a backend-neutral prepared build contract while keeping Launchpad compatibility for existing clients
 - [ ] replace duplicated adapter AST guards with shared tooling so CLI, frontend, and API boundary checks evolve from one implementation
 
 ### Phase 1: declare the runtime contract

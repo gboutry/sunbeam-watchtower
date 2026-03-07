@@ -22,17 +22,18 @@ type BuildWorkflow struct {
 
 // BuildTriggerRequest describes a frontend build trigger workflow.
 type BuildTriggerRequest struct {
-	Source       string
-	LocalPath    string
-	Async        bool
-	Download     bool
-	ArtifactsDir string
-	Project      string
-	Artifacts    []string
-	Wait         bool
-	Timeout      time.Duration
-	Owner        string
-	Prefix       string
+	Source        string
+	LocalPath     string
+	Async         bool
+	Download      bool
+	ArtifactsDir  string
+	Project       string
+	Artifacts     []string
+	Wait          bool
+	Timeout       time.Duration
+	Owner         string
+	Prefix        string
+	TargetProject string
 }
 
 // BuildTriggerResponse contains the remote result plus CLI/TUI-friendly slices.
@@ -46,25 +47,27 @@ type BuildTriggerResponse struct {
 
 // BuildListRequest describes a frontend list-builds workflow.
 type BuildListRequest struct {
-	Source     string
-	SHA        string
-	Prefix     string
-	DefaultAll bool
-	Projects   []string
-	All        bool
-	State      string
-	Owner      string
+	Source        string
+	SHA           string
+	Prefix        string
+	DefaultAll    bool
+	Projects      []string
+	All           bool
+	State         string
+	Owner         string
+	TargetProject string
 }
 
 // BuildDownloadRequest describes a frontend build-download workflow.
 type BuildDownloadRequest struct {
-	Source       string
-	SHA          string
-	Prefix       string
-	Project      string
-	Artifacts    []string
-	ArtifactsDir string
-	Owner        string
+	Source        string
+	SHA           string
+	Prefix        string
+	Project       string
+	Artifacts     []string
+	ArtifactsDir  string
+	Owner         string
+	TargetProject string
 }
 
 // BuildCleanupRequest describes a frontend build-cleanup workflow.
@@ -121,12 +124,13 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 		}
 	}
 	triggerOpts := client.BuildsTriggerOptions{
-		Project:   preparedTrigger.Project,
-		Artifacts: preparedTrigger.Artifacts,
-		Wait:      preparedTrigger.Wait,
-		Owner:     preparedTrigger.Owner,
-		Prefix:    preparedTrigger.Prefix,
-		Prepared:  preparedTrigger.Prepared,
+		Project:       preparedTrigger.Project,
+		Artifacts:     preparedTrigger.Artifacts,
+		Wait:          preparedTrigger.Wait,
+		Owner:         preparedTrigger.Owner,
+		Prefix:        preparedTrigger.Prefix,
+		TargetProject: req.TargetProject,
+		Prepared:      preparedTrigger.Prepared,
 	}
 	if preparedTrigger.Timeout > 0 {
 		triggerOpts.Timeout = preparedTrigger.Timeout.String()
@@ -182,10 +186,11 @@ func (w *BuildWorkflow) List(ctx context.Context, req BuildListRequest) ([]dto.B
 	}
 
 	preparedList := PreparedBuildListRequest{
-		Projects: append([]string(nil), req.Projects...),
-		All:      req.All,
-		State:    req.State,
-		Owner:    req.Owner,
+		Projects:      append([]string(nil), req.Projects...),
+		All:           req.All,
+		State:         req.State,
+		Owner:         req.Owner,
+		TargetProject: req.TargetProject,
 	}
 	if req.Source == "local" {
 		if w.preparer == nil {
@@ -205,12 +210,12 @@ func (w *BuildWorkflow) List(ctx context.Context, req BuildListRequest) ([]dto.B
 		}
 	}
 	listOpts := client.BuildsListOptions{
-		Projects:     preparedList.Projects,
-		All:          preparedList.All,
-		State:        preparedList.State,
-		Owner:        preparedList.Owner,
-		LPProject:    preparedList.LPProject,
-		RecipePrefix: preparedList.RecipePrefix,
+		Projects:      preparedList.Projects,
+		All:           preparedList.All,
+		State:         preparedList.State,
+		Owner:         preparedList.Owner,
+		TargetProject: preparedList.TargetProject,
+		RecipePrefix:  preparedList.RecipePrefix,
 	}
 
 	return w.client.BuildsList(ctx, listOpts)
@@ -223,10 +228,11 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 	}
 
 	preparedDownload := PreparedBuildDownloadRequest{
-		Project:      req.Project,
-		Artifacts:    append([]string(nil), req.Artifacts...),
-		ArtifactsDir: req.ArtifactsDir,
-		Owner:        req.Owner,
+		Project:       req.Project,
+		Artifacts:     append([]string(nil), req.Artifacts...),
+		ArtifactsDir:  req.ArtifactsDir,
+		Owner:         req.Owner,
+		TargetProject: req.TargetProject,
 	}
 	if req.Source == "local" {
 		if w.preparer == nil {
@@ -243,12 +249,12 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 		}
 	}
 	downloadOpts := client.BuildsDownloadOptions{
-		Project:      preparedDownload.Project,
-		Artifacts:    preparedDownload.Artifacts,
-		RecipePrefix: preparedDownload.RecipePrefix,
-		Owner:        preparedDownload.Owner,
-		LPProject:    preparedDownload.LPProject,
-		ArtifactsDir: preparedDownload.ArtifactsDir,
+		Project:       preparedDownload.Project,
+		Artifacts:     preparedDownload.Artifacts,
+		RecipePrefix:  preparedDownload.RecipePrefix,
+		Owner:         preparedDownload.Owner,
+		TargetProject: preparedDownload.TargetProject,
+		ArtifactsDir:  preparedDownload.ArtifactsDir,
 	}
 
 	return w.client.BuildsDownload(ctx, downloadOpts)
