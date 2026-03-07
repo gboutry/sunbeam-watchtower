@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
@@ -26,7 +27,12 @@ type BuildTriggerRequest struct {
 	Async        bool
 	Download     bool
 	ArtifactsDir string
-	Trigger      client.BuildsTriggerOptions
+	Project      string
+	Artifacts    []string
+	Wait         bool
+	Timeout      time.Duration
+	Owner        string
+	Prefix       string
 }
 
 // BuildTriggerResponse contains the remote result plus CLI/TUI-friendly slices.
@@ -44,20 +50,29 @@ type BuildListRequest struct {
 	SHA        string
 	Prefix     string
 	DefaultAll bool
-	List       client.BuildsListOptions
+	Projects   []string
+	All        bool
+	State      string
+	Owner      string
 }
 
 // BuildDownloadRequest describes a frontend build-download workflow.
 type BuildDownloadRequest struct {
-	Source   string
-	SHA      string
-	Prefix   string
-	Download client.BuildsDownloadOptions
+	Source       string
+	SHA          string
+	Prefix       string
+	Project      string
+	Artifacts    []string
+	ArtifactsDir string
+	Owner        string
 }
 
 // BuildCleanupRequest describes a frontend build-cleanup workflow.
 type BuildCleanupRequest struct {
-	Cleanup client.BuildsCleanupOptions
+	Project string
+	Owner   string
+	Prefix  string
+	DryRun  bool
 }
 
 // NewBuildWorkflow creates a reusable frontend build workflow.
@@ -83,7 +98,16 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 		return nil, errors.New("build workflow requires an API client")
 	}
 
-	triggerOpts := req.Trigger
+	triggerOpts := client.BuildsTriggerOptions{
+		Project:   req.Project,
+		Artifacts: append([]string(nil), req.Artifacts...),
+		Wait:      req.Wait,
+		Owner:     req.Owner,
+		Prefix:    req.Prefix,
+	}
+	if req.Timeout > 0 {
+		triggerOpts.Timeout = req.Timeout.String()
+	}
 	requestedArtifacts := append([]string(nil), triggerOpts.Artifacts...)
 
 	if req.Source == "local" {
@@ -129,7 +153,7 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 			downloadArtifacts = requestedArtifacts
 		}
 		if err := w.client.BuildsDownload(ctx, client.BuildsDownloadOptions{
-			Project:      req.Trigger.Project,
+			Project:      req.Project,
 			Artifacts:    downloadArtifacts,
 			ArtifactsDir: req.ArtifactsDir,
 		}); err != nil {
@@ -146,7 +170,12 @@ func (w *BuildWorkflow) List(ctx context.Context, req BuildListRequest) ([]dto.B
 		return nil, errors.New("build workflow requires an API client")
 	}
 
-	listOpts := req.List
+	listOpts := client.BuildsListOptions{
+		Projects: append([]string(nil), req.Projects...),
+		All:      req.All,
+		State:    req.State,
+		Owner:    req.Owner,
+	}
 	if req.Source == "local" {
 		if w.preparer == nil {
 			return nil, errors.New("local build preparation is not configured")
@@ -174,7 +203,12 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 		return errors.New("build workflow requires an API client")
 	}
 
-	downloadOpts := req.Download
+	downloadOpts := client.BuildsDownloadOptions{
+		Project:      req.Project,
+		Artifacts:    append([]string(nil), req.Artifacts...),
+		ArtifactsDir: req.ArtifactsDir,
+		Owner:        req.Owner,
+	}
 	if req.Source == "local" {
 		if w.preparer == nil {
 			return errors.New("local build preparation is not configured")
@@ -198,5 +232,10 @@ func (w *BuildWorkflow) Cleanup(ctx context.Context, req BuildCleanupRequest) ([
 	if w.client == nil {
 		return nil, errors.New("build workflow requires an API client")
 	}
-	return w.client.BuildsCleanup(ctx, req.Cleanup)
+	return w.client.BuildsCleanup(ctx, client.BuildsCleanupOptions{
+		Project: req.Project,
+		Owner:   req.Owner,
+		Prefix:  req.Prefix,
+		DryRun:  req.DryRun,
+	})
 }
