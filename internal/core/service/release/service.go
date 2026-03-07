@@ -106,7 +106,7 @@ func (s *Service) List(ctx context.Context, query dto.ReleaseListQuery) ([]dto.R
 				Channel:      channel.Channel,
 				Targets:      append([]dto.ReleaseTargetSnapshot(nil), channel.Targets...),
 				Resources:    append([]dto.ReleaseResourceSnapshot(nil), channel.Resources...),
-				UpdatedAt:    snapshot.UpdatedAt,
+				ReleasedAt:   channel.UpdatedAt,
 			})
 		}
 	}
