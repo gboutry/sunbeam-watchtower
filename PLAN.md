@@ -1,5 +1,47 @@
 # Sunbeam Watchtower — Plan
 
+## Foreword
+
+You LLM reader, these next section (up to bug correlation included) are the original plan for Watchtower. You are not allowed to edit them, but you can read them for context. The "Current architecture" section and everything below is a summary of the recent refactor outcomes, which you can edit and update as needed.
+
+## Goal of the project
+
+Watchtower is a unified tracking and management tool for Canonical OpenStack (Sunbeam) across its full lifecycle — development, release, and maintenance. It integrates with git repos, bug trackers, build systems, and package archives to provide a single pane of glass for monitoring project health, synchronizing data, and triggering actions.
+
+### Why Watchtower exists
+
+Canonical OpenStack (based on Sunbeam) is a complex ecosystem composed of many build artifacts spread across multiple forges, bug trackers, and git repositories. A single Sunbeam deployment involves:
+
+| Artifact type    | Count | Description                                                        |
+|------------------|-------|--------------------------------------------------------------------|
+| Packages         | many  | APT metadata, source packages, and binary packages                 |
+| Rocks            | 40+   | OCI images built from Ubuntu packages                              |
+| Snaps            | 5+    | Snap packages built from Ubuntu packages                           |
+| Charms           | 40+   | Juju operators that manage the Rocks and Snaps                     |
+| snap-openstack   | 1     | Orchestration layer that ties everything together                  |
+
+This adds up to hundreds of individually tracked items. Without a unified tool, monitoring and managing them requires manual coordination across many separate systems. Watchtower eliminates that burden.
+
+### Scope and design constraints
+
+1. **General-purpose core, Sunbeam-specific adapters.** The API and core services are not Sunbeam-specific. Any software ecosystem with similar complexity (many artifacts, multiple forges, multiple trackers) should be manageable through Watchtower. All Canonical OpenStack–specific logic lives in the adapter layer; core services and ports remain forge-agnostic and reusable.
+
+2. **Forge-pluggable architecture.** Launchpad is the primary forge today (bug tracker, build system). The architecture must allow adding other forges (GitHub, Gerrit, etc.) without changing the core application logic.
+
+3. **Hexagonal architecture.** Ports define interfaces; services implement domain logic; adapters bridge external systems. Primary adapters (API, CLI) and secondary adapters (Launchpad, git, caches) never cross-import.
+
+### Features in scope for the initial implementation
+
+- **Unified query API** — package metadata, bug status, build status, project health, and migration excuses from a single endpoint surface.
+- **Cache synchronization** — local caches synced with upstream data sources (git repos, bug trackers, build systems, package archives, excuses feeds).
+- **Build triggering** — request, monitor, retry, cancel, and download builds via the API and CLI.
+- **CLI** — command-line interface for common operations (sync, build trigger, status checks, cache management).
+- **Authentication and credential management** — OAuth and credential flows for upstream services (Launchpad today; extensible to others).
+
+### Bug correlation (high-priority feature)
+
+The bug correlation system is one of the most important features. Its purpose is to identify where a bug was fixed (which commit, which repo, which artifact) and ensure the fix is properly recorded in the relevant trackers. This is critical for maintaining Canonical OpenStack, where a single upstream fix may need to be tracked across multiple packages, charms, and rocks. The system must be accurate and reliable, as incorrect or missing correlation directly impacts release quality.
+
 ## Current architecture
 
 Sunbeam Watchtower now follows a stricter hexagonal layout:
