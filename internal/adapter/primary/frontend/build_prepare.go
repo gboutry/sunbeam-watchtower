@@ -13,6 +13,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
 // LocalBuildPreparer handles frontend-side local preparation for split build workflows.
@@ -81,19 +82,16 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		buildPaths[tempName] = pb.Strategy.BuildPath(name)
 	}
 	opts.Artifacts = tempNames
-	opts.BuildPaths = buildPaths
 
 	lpProject, err := p.repoManager.GetOrCreateProject(ctx, lpOwner)
 	if err != nil {
 		return opts, fmt.Errorf("get/create LP project: %w", err)
 	}
-	opts.LPProject = lpProject
 
 	repoSelfLink, gitSSHURL, err := p.repoManager.GetOrCreateRepo(ctx, lpOwner, lpProject, opts.Project)
 	if err != nil {
 		return opts, fmt.Errorf("get/create LP repo: %w", err)
 	}
-	opts.RepoSelfLink = repoSelfLink
 
 	if err := pushToLaunchpad(p.gitClient, localPath, gitSSHURL, lpOwner, shortSHA); err != nil {
 		return opts, fmt.Errorf("push to LP: %w", err)
@@ -109,7 +107,12 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	for _, name := range tempNames {
 		gitRefLinks[name] = refLink
 	}
-	opts.GitRefLinks = gitRefLinks
+	opts.Prepared = &dto.PreparedBuildSource{
+		LPProject:    lpProject,
+		RepoSelfLink: repoSelfLink,
+		GitRefLinks:  gitRefLinks,
+		BuildPaths:   buildPaths,
+	}
 
 	return opts, nil
 }

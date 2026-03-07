@@ -12,16 +12,14 @@ import (
 
 // BuildsTriggerOptions holds the request body for triggering builds.
 type BuildsTriggerOptions struct {
-	Project      string            `json:"project"`
-	Artifacts    []string          `json:"artifacts,omitempty"`
-	Wait         bool              `json:"wait,omitempty"`
-	Timeout      string            `json:"timeout,omitempty"`
-	Owner        string            `json:"owner,omitempty"`
-	Prefix       string            `json:"prefix,omitempty"`
-	RepoSelfLink string            `json:"repo_self_link,omitempty"`
-	GitRefLinks  map[string]string `json:"git_ref_links,omitempty"`
-	BuildPaths   map[string]string `json:"build_paths,omitempty"`
-	LPProject    string            `json:"lp_project,omitempty"`
+	Project   string                   `json:"project"`
+	Artifacts []string                 `json:"artifacts,omitempty"`
+	Wait      bool                     `json:"wait,omitempty"`
+	Timeout   string                   `json:"timeout,omitempty"`
+	Owner     string                   `json:"owner,omitempty"`
+	Prefix    string                   `json:"prefix,omitempty"`
+	LPProject string                   `json:"lp_project,omitempty"`
+	Prepared  *dto.PreparedBuildSource `json:"prepared,omitempty"`
 }
 
 // BuildsTrigger triggers builds for a project.

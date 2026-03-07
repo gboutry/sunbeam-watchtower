@@ -146,6 +146,16 @@ type BuildRequest struct {
 	BuildsCollectionLink string `json:"builds_collection_link,omitempty" yaml:"builds_collection_link,omitempty"`
 }
 
+// PreparedBuildSource holds frontend-prepared forge references for split build workflows.
+// It is produced locally and sent to the server so the server can execute the
+// durable build workflow without needing local filesystem access.
+type PreparedBuildSource struct {
+	LPProject    string            `json:"lp_project,omitempty" yaml:"lp_project,omitempty"`
+	RepoSelfLink string            `json:"repo_self_link" yaml:"repo_self_link"`
+	GitRefLinks  map[string]string `json:"git_ref_links" yaml:"git_ref_links"`
+	BuildPaths   map[string]string `json:"build_paths" yaml:"build_paths"`
+}
+
 // CreateRecipeOpts holds parameters for creating a new recipe.
 type CreateRecipeOpts struct {
 	Name        string

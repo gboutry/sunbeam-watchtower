@@ -94,17 +94,17 @@ func TestLocalBuildPreparerPrepareTrigger(t *testing.T) {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
 
-	if got.Owner != "lp-user" || got.LPProject != "lp-project" || got.RepoSelfLink == "" {
+	if got.Owner != "lp-user" || got.Prepared == nil || got.Prepared.LPProject != "lp-project" || got.Prepared.RepoSelfLink == "" {
 		t.Fatalf("unexpected prepared trigger: %+v", got)
 	}
 	if len(got.Artifacts) != 1 || got.Artifacts[0] != "tmp-build-01234567-keystone" {
 		t.Fatalf("Artifacts = %v", got.Artifacts)
 	}
-	if got.BuildPaths[got.Artifacts[0]] != "rocks/keystone" {
-		t.Fatalf("BuildPaths = %+v", got.BuildPaths)
+	if got.Prepared.BuildPaths[got.Artifacts[0]] != "rocks/keystone" {
+		t.Fatalf("BuildPaths = %+v", got.Prepared.BuildPaths)
 	}
-	if got.GitRefLinks[got.Artifacts[0]] == "" {
-		t.Fatalf("GitRefLinks = %+v", got.GitRefLinks)
+	if got.Prepared.GitRefLinks[got.Artifacts[0]] == "" {
+		t.Fatalf("GitRefLinks = %+v", got.Prepared.GitRefLinks)
 	}
 }
 

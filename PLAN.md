@@ -207,6 +207,7 @@ This distinction is important: stateful features must be designed around persist
 - added focused Launchpad snap/charm/rock builder tests covering recipe creation/listing, build requests, build listing, artifact URL lookup, and retry/cancel/delete actions
 - added primary-adapter tests for build/cache/project endpoints covering build-list success, invalid timeout validation, invalid excuses tracker validation, cache-status wiring, and project-sync auth-required handling
 - added CLI execution tests for `auth login|status|logout` plus a build-list rendering path backed by a stubbed HTTP API
+- moved split-workflow build triggering onto a first-class `prepared` contract so local preparation no longer leaks raw Launchpad repo/ref/path fields at the top level of the trigger API
 
 ## Validation
 

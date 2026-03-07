@@ -58,8 +58,12 @@ func (f *Facade) StartBuildTrigger(ctx context.Context, opts BuildTriggerOptions
 	if opts.Trigger.Owner != "" {
 		attributes["owner"] = opts.Trigger.Owner
 	}
-	if opts.Trigger.LPProject != "" {
-		attributes["lp_project"] = opts.Trigger.LPProject
+	lpProject := opts.Trigger.LPProject
+	if opts.Trigger.Prepared != nil && opts.Trigger.Prepared.LPProject != "" {
+		lpProject = opts.Trigger.Prepared.LPProject
+	}
+	if lpProject != "" {
+		attributes["lp_project"] = lpProject
 	}
 	if opts.Trigger.Wait {
 		attributes["wait"] = "true"

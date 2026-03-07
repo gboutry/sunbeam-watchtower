@@ -48,13 +48,8 @@ type TriggerOpts struct {
 	Owner   string // override project owner
 	Prefix  string // temp recipe name prefix
 
-	// Pre-resolved LP resources (set by CLI for local builds).
-	// When RepoSelfLink and GitRefLinks are provided, the service skips
-	// its own repo/ref resolution and uses these directly.
-	RepoSelfLink string            // LP git repo self_link
-	GitRefLinks  map[string]string // recipe name → git ref self_link
-	BuildPaths   map[string]string // recipe name → build path (e.g. "rocks/keystone")
-	LPProject    string            // override LP project for recipe operations
+	LPProject string // override LP project for recipe operations
+	Prepared  *dto.PreparedBuildSource
 
 	Channels      map[string]string
 	Architectures []string
@@ -117,9 +112,9 @@ func NewService(projects map[string]ProjectBuilder, repoManager port.RepoManager
 // Trigger orchestrates the build pipeline for a project. It is re-entrant:
 // calling it multiple times for the same recipes picks up where it left off.
 //
-// When opts.RepoSelfLink and opts.GitRefLinks are provided (e.g. by CLI for
-// local builds), the service uses them directly. Otherwise, it resolves repo
-// and ref information from Launchpad (remote/official mode).
+// When opts.Prepared is provided (e.g. by CLI/TUI local preparation), the
+// service uses those pre-resolved Launchpad references directly. Otherwise, it
+// resolves repo and ref information from Launchpad (remote/official mode).
 func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames []string, opts TriggerOpts) (*TriggerResult, error) {
 	pb, ok := s.projects[projectName]
 	if !ok {
@@ -135,7 +130,9 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	}
 	pb.Owner = owner
 
-	if opts.LPProject != "" {
+	if opts.Prepared != nil && opts.Prepared.LPProject != "" {
+		pb.LPProject = opts.Prepared.LPProject
+	} else if opts.LPProject != "" {
 		pb.LPProject = opts.LPProject
 	}
 
@@ -148,9 +145,14 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	}
 
 	// Resolve LP repo and ref information.
-	repoSelfLink := opts.RepoSelfLink
-	gitRefLinks := opts.GitRefLinks
-	buildPaths := opts.BuildPaths
+	repoSelfLink := ""
+	var gitRefLinks map[string]string
+	var buildPaths map[string]string
+	if opts.Prepared != nil {
+		repoSelfLink = opts.Prepared.RepoSelfLink
+		gitRefLinks = opts.Prepared.GitRefLinks
+		buildPaths = opts.Prepared.BuildPaths
+	}
 	if gitRefLinks == nil {
 		gitRefLinks = make(map[string]string)
 	}

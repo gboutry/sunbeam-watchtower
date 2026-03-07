@@ -19,16 +19,14 @@ import (
 // BuildsTriggerInput holds the request body for triggering builds.
 type BuildsTriggerInput struct {
 	Body struct {
-		Project      string            `json:"project" doc:"Project name"`
-		Artifacts    []string          `json:"artifacts,omitempty" required:"false" doc:"Artifact names to build (empty = all configured)"`
-		Wait         bool              `json:"wait,omitempty" required:"false" doc:"Wait for builds to complete"`
-		Timeout      string            `json:"timeout,omitempty" required:"false" doc:"Max wait time as Go duration (e.g. 5h)"`
-		Owner        string            `json:"owner,omitempty" required:"false" doc:"Override LP owner"`
-		Prefix       string            `json:"prefix,omitempty" required:"false" doc:"Temp recipe name prefix"`
-		RepoSelfLink string            `json:"repo_self_link,omitempty" required:"false" doc:"LP git repo self_link (pre-resolved)"`
-		GitRefLinks  map[string]string `json:"git_ref_links,omitempty" required:"false" doc:"Recipe name → git ref self_link (pre-resolved)"`
-		BuildPaths   map[string]string `json:"build_paths,omitempty" required:"false" doc:"Recipe name → build path (pre-resolved)"`
-		LPProject    string            `json:"lp_project,omitempty" required:"false" doc:"Override LP project name"`
+		Project   string                   `json:"project" doc:"Project name"`
+		Artifacts []string                 `json:"artifacts,omitempty" required:"false" doc:"Artifact names to build (empty = all configured)"`
+		Wait      bool                     `json:"wait,omitempty" required:"false" doc:"Wait for builds to complete"`
+		Timeout   string                   `json:"timeout,omitempty" required:"false" doc:"Max wait time as Go duration (e.g. 5h)"`
+		Owner     string                   `json:"owner,omitempty" required:"false" doc:"Override LP owner"`
+		Prefix    string                   `json:"prefix,omitempty" required:"false" doc:"Temp recipe name prefix"`
+		LPProject string                   `json:"lp_project,omitempty" required:"false" doc:"Override LP project name for remote recipe operations"`
+		Prepared  *dto.PreparedBuildSource `json:"prepared,omitempty" required:"false" doc:"Frontend-prepared Launchpad references for split local build workflows"`
 	}
 }
 
@@ -265,13 +263,11 @@ func buildTriggerOptionsFromInput(input *BuildsTriggerInput) (build.TriggerOpts,
 	}
 
 	return build.TriggerOpts{
-		Wait:         input.Body.Wait,
-		Timeout:      timeout,
-		Owner:        input.Body.Owner,
-		Prefix:       input.Body.Prefix,
-		RepoSelfLink: input.Body.RepoSelfLink,
-		GitRefLinks:  input.Body.GitRefLinks,
-		BuildPaths:   input.Body.BuildPaths,
-		LPProject:    input.Body.LPProject,
+		Wait:      input.Body.Wait,
+		Timeout:   timeout,
+		Owner:     input.Body.Owner,
+		Prefix:    input.Body.Prefix,
+		LPProject: input.Body.LPProject,
+		Prepared:  input.Body.Prepared,
 	}, nil
 }

@@ -362,11 +362,13 @@ func TestTrigger_PreResolvedRefs_FullPipeline(t *testing.T) {
 
 	tempName := "tmp-abc12345-keystone"
 	result, err := svc.Trigger(context.Background(), "sunbeam", []string{tempName}, TriggerOpts{
-		Owner:        "test-user",
-		LPProject:    "test-project",
-		RepoSelfLink: "/repo/sunbeam",
-		GitRefLinks:  map[string]string{tempName: "/ref/abc12345"},
-		BuildPaths:   map[string]string{tempName: "rocks/keystone"},
+		Owner: "test-user",
+		Prepared: &dto.PreparedBuildSource{
+			LPProject:    "test-project",
+			RepoSelfLink: "/repo/sunbeam",
+			GitRefLinks:  map[string]string{tempName: "/ref/abc12345"},
+			BuildPaths:   map[string]string{tempName: "rocks/keystone"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
@@ -635,11 +637,13 @@ func TestTrigger_PreResolved_OwnerOverride(t *testing.T) {
 
 	tempName := "tmp-abc12345-keystone"
 	result, err := svc.Trigger(context.Background(), "sunbeam", []string{tempName}, TriggerOpts{
-		Owner:        "test-user",
-		LPProject:    "test-project",
-		RepoSelfLink: "/repo/sunbeam",
-		GitRefLinks:  map[string]string{tempName: "/ref/abc12345"},
-		BuildPaths:   map[string]string{tempName: "rocks/keystone"},
+		Owner: "test-user",
+		Prepared: &dto.PreparedBuildSource{
+			LPProject:    "test-project",
+			RepoSelfLink: "/repo/sunbeam",
+			GitRefLinks:  map[string]string{tempName: "/ref/abc12345"},
+			BuildPaths:   map[string]string{tempName: "rocks/keystone"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("Trigger() error: %v", err)
