@@ -31,6 +31,17 @@ type Options struct {
 	embeddedSrv *api.Server // auto-started embedded server
 }
 
+func runtimeModeForCommand(cmd *cobra.Command, opts *Options) app.RuntimeMode {
+	switch {
+	case cmd.Name() == "serve":
+		return app.RuntimeModePersistent
+	case opts.ServerAddr != "":
+		return app.RuntimeModeEphemeral
+	default:
+		return app.RuntimeModeEphemeral
+	}
+}
+
 // envDefaults applies WATCHTOWER_* environment variables as defaults.
 func envDefaults(opts *Options) {
 	if v := os.Getenv("WATCHTOWER_CONFIG"); v != "" && opts.ConfigPath == "" {
@@ -84,7 +95,9 @@ func NewRootCmd(opts *Options) *cobra.Command {
 				return err
 			}
 			opts.Config = cfg
-			opts.App = app.NewApp(cfg, opts.Logger)
+			opts.App = app.NewAppWithOptions(cfg, opts.Logger, app.Options{
+				RuntimeMode: runtimeModeForCommand(cmd, opts),
+			})
 
 			// Create HTTP client — either to an external server or an embedded one.
 			if opts.ServerAddr != "" {

@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	"github.com/spf13/cobra"
 )
 
 func TestVersionCommand(t *testing.T) {
@@ -21,6 +24,27 @@ func TestVersionCommand(t *testing.T) {
 	if !strings.Contains(out.String(), "watchtower") {
 		t.Errorf("output = %q, want to contain 'watchtower'", out.String())
 	}
+}
+
+func TestRuntimeModeForCommand(t *testing.T) {
+	t.Run("serve uses persistent mode", func(t *testing.T) {
+		opts := &Options{}
+		cmd := &cobra.Command{Use: "serve"}
+		cmd.SetArgs(nil)
+		cmd.Run = func(*cobra.Command, []string) {}
+		cmd.Use = "serve"
+		if got := runtimeModeForCommand(cmd, opts); got != app.RuntimeModePersistent {
+			t.Fatalf("runtimeModeForCommand() = %q, want %q", got, app.RuntimeModePersistent)
+		}
+	})
+
+	t.Run("external server keeps app ephemeral", func(t *testing.T) {
+		opts := &Options{ServerAddr: "http://127.0.0.1:8472"}
+		cmd := &cobra.Command{Use: "review"}
+		if got := runtimeModeForCommand(cmd, opts); got != app.RuntimeModeEphemeral {
+			t.Fatalf("runtimeModeForCommand() = %q, want %q", got, app.RuntimeModeEphemeral)
+		}
+	})
 }
 
 func TestConfigShowCommand(t *testing.T) {

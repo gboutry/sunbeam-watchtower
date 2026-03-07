@@ -227,6 +227,8 @@ The split-workflow build refactor has also started: local Launchpad/git preparat
 
 Durable server-side state work has started too: pending auth flows and long-running operations are now moving behind bbolt-backed secondary adapters so a persistent Watchtower server can keep coordination state across process lifetimes instead of relying only on in-memory stores.
 
+Runtime mode selection is now being made explicit as well: persistent server mode is the place where durable coordination state lives, while explicitly ephemeral frontend mode continues to use memory-backed state for short-lived embedded workflows.
+
 ## Deferred contract-test plan
 
 We are **not** adopting broad go-vcr coverage now.

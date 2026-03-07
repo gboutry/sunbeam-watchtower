@@ -146,6 +146,18 @@ func TestNewApp(t *testing.T) {
 	if a.Logger != logger {
 		t.Error("NewApp did not set Logger")
 	}
+	if a.runtimeMode != RuntimeModePersistent {
+		t.Errorf("NewApp runtimeMode = %q, want %q", a.runtimeMode, RuntimeModePersistent)
+	}
+}
+
+func TestNewAppWithOptions(t *testing.T) {
+	cfg := &config.Config{}
+	logger := slog.Default()
+	a := NewAppWithOptions(cfg, logger, Options{RuntimeMode: RuntimeModeEphemeral})
+	if a.runtimeMode != RuntimeModeEphemeral {
+		t.Errorf("NewAppWithOptions runtimeMode = %q, want %q", a.runtimeMode, RuntimeModeEphemeral)
+	}
 }
 
 func TestOperationService(t *testing.T) {

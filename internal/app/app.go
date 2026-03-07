@@ -43,11 +43,27 @@ import (
 
 var ErrLaunchpadAuthRequired = errors.New("launchpad authentication required")
 
+// RuntimeMode selects how frontend/server state should be managed.
+type RuntimeMode string
+
+const (
+	// RuntimeModePersistent is intended for long-lived server processes.
+	RuntimeModePersistent RuntimeMode = "persistent"
+	// RuntimeModeEphemeral is intended for short-lived embedded frontends.
+	RuntimeModeEphemeral RuntimeMode = "ephemeral"
+)
+
+// Options configures runtime-specific application behavior.
+type Options struct {
+	RuntimeMode RuntimeMode
+}
+
 // App holds shared application state and provides lazy-initialized factories
 // for services and adapters. Both the CLI and HTTP API use this layer.
 type App struct {
-	Config *config.Config
-	Logger *slog.Logger
+	Config      *config.Config
+	Logger      *slog.Logger
+	runtimeMode RuntimeMode
 
 	distroOnce  sync.Once
 	distroCache *distrocache.Cache
@@ -80,7 +96,16 @@ type App struct {
 
 // NewApp creates a new App instance.
 func NewApp(cfg *config.Config, logger *slog.Logger) *App {
-	return &App{Config: cfg, Logger: logger}
+	return NewAppWithOptions(cfg, logger, Options{RuntimeMode: RuntimeModePersistent})
+}
+
+// NewAppWithOptions creates a new App instance with explicit runtime behavior.
+func NewAppWithOptions(cfg *config.Config, logger *slog.Logger, opts Options) *App {
+	mode := opts.RuntimeMode
+	if mode == "" {
+		mode = RuntimeModePersistent
+	}
+	return &App{Config: cfg, Logger: logger, runtimeMode: mode}
 }
 
 // Close releases resources held by the App (e.g. distro cache).
@@ -261,6 +286,11 @@ func (a *App) LaunchpadCredentialStore() port.LaunchpadCredentialStore {
 // LaunchpadPendingAuthFlowStore returns the shared pending Launchpad auth flow store.
 func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore {
 	a.lpFlowOnce.Do(func() {
+		if a.runtimeMode == RuntimeModeEphemeral {
+			a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
+			return
+		}
+
 		cacheDir, err := ResolveCacheDir()
 		if err != nil {
 			a.Logger.Warn("failed to resolve cache dir for auth flow store, falling back to memory", "error", err)
@@ -282,6 +312,11 @@ func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore
 // OperationStore returns the shared long-running operation store.
 func (a *App) OperationStore() port.OperationStore {
 	a.operationStoreOnce.Do(func() {
+		if a.runtimeMode == RuntimeModeEphemeral {
+			a.operationStore = operationstore.NewMemoryStore()
+			return
+		}
+
 		cacheDir, err := ResolveCacheDir()
 		if err != nil {
 			a.Logger.Warn("failed to resolve cache dir for operation store, falling back to memory", "error", err)
