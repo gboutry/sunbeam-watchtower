@@ -41,12 +41,12 @@ type BuildsTriggerOutput struct {
 
 // BuildsListInput holds query parameters for listing builds.
 type BuildsListInput struct {
-	Projects     []string `query:"project" doc:"Filter by project name"`
-	All          bool     `query:"all" doc:"Show all builds (not just active)"`
+	Projects     []string `query:"project" required:"false" doc:"Filter by project name"`
+	All          bool     `query:"all" required:"false" doc:"Show all builds (not just active)"`
 	State        string   `query:"state" doc:"Filter by state"`
 	Owner        string   `query:"owner" doc:"Override LP owner"`
 	LPProject    string   `query:"lp_project" doc:"Override LP project for recipe lookup"`
-	RecipeNames  []string `query:"recipe" doc:"Explicit recipe names (overrides project config)"`
+	RecipeNames  []string `query:"recipe" required:"false" doc:"Explicit recipe names (overrides project config)"`
 	RecipePrefix string   `query:"recipe_prefix" doc:"Filter recipes by name prefix"`
 }
 
@@ -86,7 +86,7 @@ type BuildsCleanupInput struct {
 		Project string `json:"project,omitempty" doc:"Filter to specific project"`
 		Owner   string `json:"owner,omitempty" doc:"LP owner"`
 		Prefix  string `json:"prefix,omitempty" doc:"Recipe name prefix to match"`
-		DryRun  bool   `json:"dry_run,omitempty" doc:"Show what would be deleted"`
+		DryRun  bool   `json:"dry_run,omitempty" required:"false" doc:"Show what would be deleted"`
 	}
 }
 

@@ -23,13 +23,13 @@ import (
 // PackagesDiffInput holds parameters for the diff endpoint.
 type PackagesDiffInput struct {
 	Set             string   `path:"set" doc:"Package set name" example:"openstack"`
-	Distros         []string `query:"distro" doc:"Filter by distro name"`
-	Releases        []string `query:"release" doc:"Filter by distro release"`
-	Suites          []string `query:"suite" doc:"Filter by suite type (release, updates, proposed)"`
-	Backports       []string `query:"backport" doc:"Backports to include (default: none)"`
-	Merge           bool     `query:"merge" doc:"Merge suites per source into highest version"`
+	Distros         []string `query:"distro" required:"false" doc:"Filter by distro name"`
+	Releases        []string `query:"release" required:"false" doc:"Filter by distro release"`
+	Suites          []string `query:"suite" required:"false" doc:"Filter by suite type (release, updates, proposed)"`
+	Backports       []string `query:"backport" required:"false" doc:"Backports to include (default: none)"`
+	Merge           bool     `query:"merge" required:"false" doc:"Merge suites per source into highest version"`
 	UpstreamRelease string   `query:"upstream_release" doc:"Upstream release to compare against" example:"2025.1"`
-	BehindUpstream  bool     `query:"behind_upstream" doc:"Show only packages behind upstream"`
+	BehindUpstream  bool     `query:"behind_upstream" required:"false" doc:"Show only packages behind upstream"`
 	OnlyIn          string   `query:"only_in" doc:"Show only packages present in the named source"`
 	Constraints     string   `query:"constraints" doc:"Include upper-constraints packages for the given release"`
 }
@@ -42,11 +42,11 @@ type PackagesDiffOutput struct {
 // PackagesShowInput holds parameters for the show endpoint.
 type PackagesShowInput struct {
 	Name            string   `path:"name" doc:"Source package name" example:"nova"`
-	Distros         []string `query:"distro" doc:"Filter by distro name"`
-	Releases        []string `query:"release" doc:"Filter by distro release"`
-	Suites          []string `query:"suite" doc:"Filter by suite type"`
-	Backports       []string `query:"backport" doc:"Backports to include (default: none)"`
-	Merge           bool     `query:"merge" doc:"Merge suites per source into highest version"`
+	Distros         []string `query:"distro" required:"false" doc:"Filter by distro name"`
+	Releases        []string `query:"release" required:"false" doc:"Filter by distro release"`
+	Suites          []string `query:"suite" required:"false" doc:"Filter by suite type"`
+	Backports       []string `query:"backport" required:"false" doc:"Backports to include (default: none)"`
+	Merge           bool     `query:"merge" required:"false" doc:"Merge suites per source into highest version"`
 	UpstreamRelease string   `query:"upstream_release" doc:"Upstream release to compare against" example:"2025.1"`
 }
 
@@ -73,10 +73,10 @@ type PackagesDetailOutput struct {
 // PackagesListInput holds parameters for the list endpoint.
 type PackagesListInput struct {
 	Distros    []string `query:"distro" required:"true" doc:"Distro(s) to list packages from"`
-	Releases   []string `query:"release" doc:"Filter by distro release"`
-	Suites     []string `query:"suite" doc:"Filter by suite type"`
-	Components []string `query:"component" doc:"Filter by component"`
-	Backports  []string `query:"backport" doc:"Backports to include (default: none)"`
+	Releases   []string `query:"release" required:"false" doc:"Filter by distro release"`
+	Suites     []string `query:"suite" required:"false" doc:"Filter by suite type"`
+	Components []string `query:"component" required:"false" doc:"Filter by component"`
+	Backports  []string `query:"backport" required:"false" doc:"Backports to include (default: none)"`
 }
 
 // PackagesListOutput is the response for the list endpoint.
@@ -87,10 +87,10 @@ type PackagesListOutput struct {
 // PackagesRdependsInput holds parameters for the rdepends endpoint.
 type PackagesRdependsInput struct {
 	Name      string   `path:"name" doc:"Source package name to find reverse build-dependencies for" example:"oslo.config"`
-	Distros   []string `query:"distro" doc:"Filter by distro name"`
-	Releases  []string `query:"release" doc:"Filter by distro release"`
-	Suites    []string `query:"suite" doc:"Filter by suite type"`
-	Backports []string `query:"backport" doc:"Backports to include (default: none)"`
+	Distros   []string `query:"distro" required:"false" doc:"Filter by distro name"`
+	Releases  []string `query:"release" required:"false" doc:"Filter by distro release"`
+	Suites    []string `query:"suite" required:"false" doc:"Filter by suite type"`
+	Backports []string `query:"backport" required:"false" doc:"Backports to include (default: none)"`
 }
 
 // PackagesRdependsOutput is the response for the rdepends endpoint.
@@ -101,9 +101,9 @@ type PackagesRdependsOutput struct {
 // PackagesDscInput holds parameters for the dsc endpoint.
 type PackagesDscInput struct {
 	Packages  []string `query:"packages" required:"true" doc:"Package/version pairs in name=version format" example:"nova=2025.1-0ubuntu1"`
-	Distros   []string `query:"distro" doc:"Filter by distro name"`
-	Releases  []string `query:"release" doc:"Filter by distro release"`
-	Backports []string `query:"backport" doc:"Backports to include (default: none)"`
+	Distros   []string `query:"distro" required:"false" doc:"Filter by distro name"`
+	Releases  []string `query:"release" required:"false" doc:"Filter by distro release"`
+	Backports []string `query:"backport" required:"false" doc:"Backports to include (default: none)"`
 }
 
 // PackagesDscOutput is the response for the dsc endpoint.

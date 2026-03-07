@@ -20,11 +20,11 @@ import (
 
 // BugsListInput holds query parameters for listing bug tasks.
 type BugsListInput struct {
-	Projects   []string `query:"project" doc:"Filter by project name"`
-	Status     []string `query:"status" doc:"Filter by status"`
-	Importance []string `query:"importance" doc:"Filter by importance"`
+	Projects   []string `query:"project" required:"false" doc:"Filter by project name"`
+	Status     []string `query:"status" required:"false" doc:"Filter by status"`
+	Importance []string `query:"importance" required:"false" doc:"Filter by importance"`
 	Assignee   string   `query:"assignee" doc:"Filter by assignee"`
-	Tags       []string `query:"tag" doc:"Filter by tag"`
+	Tags       []string `query:"tag" required:"false" doc:"Filter by tag"`
 	Since      string   `query:"since" doc:"Return bugs created/modified since this date (ISO 8601)"`
 }
 

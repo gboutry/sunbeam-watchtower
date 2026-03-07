@@ -17,8 +17,8 @@ import (
 
 // ReviewsListInput holds query parameters for listing merge requests.
 type ReviewsListInput struct {
-	Projects []string `query:"project" doc:"Filter by project name"`
-	Forges   []string `query:"forge" doc:"Filter by forge type: github, launchpad, gerrit"`
+	Projects []string `query:"project" required:"false" doc:"Filter by project name"`
+	Forges   []string `query:"forge" required:"false" doc:"Filter by forge type: github, launchpad, gerrit"`
 	State    string   `query:"state" doc:"Filter by state: open, merged, closed, wip, abandoned"`
 	Author   string   `query:"author" doc:"Filter by author"`
 	Since    string   `query:"since" doc:"Show only MRs updated since (RFC 3339 timestamp)"`

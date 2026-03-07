@@ -16,11 +16,11 @@ import (
 
 // CommitsListInput holds query parameters for listing commits.
 type CommitsListInput struct {
-	Projects   []string `query:"project" doc:"Filter by project name"`
-	Forges     []string `query:"forge" doc:"Filter by forge type: github, launchpad, gerrit"`
+	Projects   []string `query:"project" required:"false" doc:"Filter by project name"`
+	Forges     []string `query:"forge" required:"false" doc:"Filter by forge type: github, launchpad, gerrit"`
 	Branch     string   `query:"branch" doc:"Branch to list commits from"`
 	Author     string   `query:"author" doc:"Filter by author"`
-	IncludeMRs bool     `query:"include_mrs" doc:"Include commits from merge request refs"`
+	IncludeMRs bool     `query:"include_mrs" required:"false" doc:"Include commits from merge request refs"`
 }
 
 // CommitsListOutput is the response for listing commits.
@@ -36,10 +36,10 @@ type CommitsListOutput struct {
 // CommitsTrackInput holds query parameters for tracking commits by bug ID.
 type CommitsTrackInput struct {
 	BugID      string   `query:"bug_id" required:"true" doc:"Bug ID to track"`
-	Projects   []string `query:"project" doc:"Filter by project name"`
-	Forges     []string `query:"forge" doc:"Filter by forge type: github, launchpad, gerrit"`
+	Projects   []string `query:"project" required:"false" doc:"Filter by project name"`
+	Forges     []string `query:"forge" required:"false" doc:"Filter by forge type: github, launchpad, gerrit"`
 	Branch     string   `query:"branch" doc:"Branch to list commits from"`
-	IncludeMRs bool     `query:"include_mrs" doc:"Include commits from merge request refs"`
+	IncludeMRs bool     `query:"include_mrs" required:"false" doc:"Include commits from merge request refs"`
 }
 
 // CommitsTrackOutput is the response for tracking commits by bug ID.

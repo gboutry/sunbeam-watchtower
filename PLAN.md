@@ -221,6 +221,8 @@ Architecture boundaries are currently validated by `arch-go` with 100% complianc
 
 Some local test runs may still depend on host/runtime conditions (for example loopback listener availability or inherited git signing configuration). Those cases should be treated as test-environment hardening work, not as architecture-boundary failures.
 
+The Huma request-contract hardening pass has started: optional query/body slice and bool fields are now being normalized with explicit `required:"false"` tags, with regression tests added for omitted-parameter behavior so frontend/API contracts do not drift again.
+
 ## Deferred contract-test plan
 
 We are **not** adopting broad go-vcr coverage now.
