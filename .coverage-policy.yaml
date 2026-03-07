@@ -3,6 +3,7 @@ default_threshold: 40
 package_thresholds:
   internal/app: 30
   internal/config: 85
+  internal/adapter/primary/api: 35
   internal/adapter/primary/cli: 46
   internal/adapter/primary/frontend: 45
   internal/core/service/auth: 80

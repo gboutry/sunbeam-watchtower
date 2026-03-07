@@ -4,18 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
-	"github.com/gboutry/sunbeam-watchtower/internal/core/service/review"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
-// --- List reviews ---
-
-// ReviewsListInput holds query parameters for listing merge requests.
 type ReviewsListInput struct {
 	Projects []string `query:"project" required:"false" doc:"Filter by project name"`
 	Forges   []string `query:"forge" required:"false" doc:"Filter by forge type: github, launchpad, gerrit"`
@@ -24,7 +20,6 @@ type ReviewsListInput struct {
 	Since    string   `query:"since" doc:"Show only MRs updated since (RFC 3339 timestamp)"`
 }
 
-// ReviewsListOutput is the response for listing merge requests.
 type ReviewsListOutput struct {
 	Body struct {
 		MergeRequests []forge.MergeRequest `json:"merge_requests" doc:"Merge requests matching filters"`
@@ -32,21 +27,18 @@ type ReviewsListOutput struct {
 	}
 }
 
-// --- Get review ---
-
-// ReviewGetInput holds path parameters for getting a single merge request.
 type ReviewGetInput struct {
 	Project string `path:"project" doc:"Project name"`
 	ID      string `path:"id" doc:"Merge request ID"`
 }
 
-// ReviewGetOutput is the response for getting a single merge request.
 type ReviewGetOutput struct {
 	Body *forge.MergeRequest
 }
 
-// RegisterReviewsAPI registers the /api/v1/reviews endpoints on the given huma API.
 func RegisterReviewsAPI(api huma.API, application *app.App) {
+	facade := frontend.NewServerFacade(application)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "list-reviews",
 		Method:      http.MethodGet,
@@ -55,47 +47,23 @@ func RegisterReviewsAPI(api huma.API, application *app.App) {
 		Description: "List merge requests across all configured forges, with optional filters.",
 		Tags:        []string{"reviews"},
 	}, func(ctx context.Context, input *ReviewsListInput) (*ReviewsListOutput, error) {
-		clients, err := application.BuildForgeClients()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build forge clients: %v", err))
-		}
-
-		svc := review.NewService(clients, application.Logger)
-
-		listOpts := review.ListOptions{
+		result, err := facade.Reviews().List(ctx, frontend.ReviewListRequest{
 			Projects: input.Projects,
+			Forges:   input.Forges,
+			State:    input.State,
 			Author:   input.Author,
 			Since:    input.Since,
-		}
-
-		if input.State != "" {
-			s, err := parseAPIMergeState(input.State)
-			if err != nil {
-				return nil, huma.Error422UnprocessableEntity(err.Error())
-			}
-			listOpts.State = s
-		}
-
-		for _, f := range input.Forges {
-			ft, err := parseAPIForgeType(f)
-			if err != nil {
-				return nil, huma.Error422UnprocessableEntity(err.Error())
-			}
-			listOpts.Forges = append(listOpts.Forges, ft)
-		}
-
-		mrs, results, err := svc.List(ctx, listOpts)
+		})
 		if err != nil {
+			if isFrontendValidationError(err) {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list reviews: %v", err))
 		}
 
 		out := &ReviewsListOutput{}
-		out.Body.MergeRequests = mrs
-		for _, r := range results {
-			if r.Err != nil {
-				out.Body.Warnings = append(out.Body.Warnings, r.Err.Error())
-			}
-		}
+		out.Body.MergeRequests = result.MergeRequests
+		out.Body.Warnings = result.Warnings
 		return out, nil
 	})
 
@@ -107,14 +75,7 @@ func RegisterReviewsAPI(api huma.API, application *app.App) {
 		Description: "Retrieve a single merge request by project name and ID.",
 		Tags:        []string{"reviews"},
 	}, func(ctx context.Context, input *ReviewGetInput) (*ReviewGetOutput, error) {
-		clients, err := application.BuildForgeClients()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build forge clients: %v", err))
-		}
-
-		svc := review.NewService(clients, application.Logger)
-
-		mr, err := svc.Get(ctx, input.Project, input.ID)
+		mr, err := facade.Reviews().Show(ctx, input.Project, input.ID)
 		if err != nil {
 			return nil, huma.Error404NotFound(fmt.Sprintf("review %s/%s not found", input.Project, input.ID), err)
 		}
@@ -123,34 +84,4 @@ func RegisterReviewsAPI(api huma.API, application *app.App) {
 		out.Body = mr
 		return out, nil
 	})
-}
-
-func parseAPIMergeState(s string) (forge.MergeState, error) {
-	switch strings.ToLower(s) {
-	case "open":
-		return forge.MergeStateOpen, nil
-	case "merged":
-		return forge.MergeStateMerged, nil
-	case "closed":
-		return forge.MergeStateClosed, nil
-	case "wip":
-		return forge.MergeStateWIP, nil
-	case "abandoned":
-		return forge.MergeStateAbandoned, nil
-	default:
-		return 0, fmt.Errorf("invalid state %q (valid: open, merged, closed, wip, abandoned)", s)
-	}
-}
-
-func parseAPIForgeType(s string) (forge.ForgeType, error) {
-	switch strings.ToLower(s) {
-	case "github":
-		return forge.ForgeGitHub, nil
-	case "launchpad":
-		return forge.ForgeLaunchpad, nil
-	case "gerrit":
-		return forge.ForgeGerrit, nil
-	default:
-		return 0, fmt.Errorf("invalid forge %q (valid: github, launchpad, gerrit)", s)
-	}
 }

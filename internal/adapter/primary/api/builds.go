@@ -97,7 +97,7 @@ type BuildsCleanupOutput struct {
 
 // RegisterBuildsAPI registers the /api/v1/builds endpoints on the given huma API.
 func RegisterBuildsAPI(api huma.API, application *app.App) {
-	operationFacade := frontend.NewFacade(application)
+	facade := frontend.NewServerFacade(application)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "trigger-builds",
@@ -107,17 +107,12 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "Trigger builds for a project's artifacts, optionally from a local git repo.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsTriggerInput) (*BuildsTriggerOutput, error) {
-		svc, err := application.BuildService()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
-		}
-
 		triggerOpts, err := buildTriggerOptionsFromInput(input)
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid timeout duration", err)
 		}
 
-		result, err := svc.Trigger(ctx, input.Body.Project, input.Body.Artifacts, triggerOpts)
+		result, err := facade.Builds().Trigger(ctx, input.Body.Project, input.Body.Artifacts, triggerOpts)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("trigger failed: %v", err))
 		}
@@ -140,11 +135,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			return nil, huma.Error422UnprocessableEntity("invalid timeout duration", err)
 		}
 
-		job, err := operationFacade.StartBuildTrigger(ctx, frontend.BuildTriggerOptions{
-			Project:   input.Body.Project,
-			Artifacts: input.Body.Artifacts,
-			Trigger:   triggerOpts,
-		})
+		job, err := facade.Builds().StartTrigger(ctx, input.Body.Project, input.Body.Artifacts, triggerOpts)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("async trigger failed: %v", err))
 		}
@@ -162,12 +153,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "List builds across all configured projects, with optional filters.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsListInput) (*BuildsListOutput, error) {
-		svc, err := application.BuildService()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
-		}
-
-		builds, _, err := svc.List(ctx, build.ListOpts{
+		builds, err := facade.Builds().List(ctx, build.ListOpts{
 			Projects:     input.Projects,
 			All:          input.All,
 			State:        input.State,
@@ -193,17 +179,16 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "Download build artifacts for succeeded builds of the given artifacts.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsDownloadInput) (*BuildsDownloadOutput, error) {
-		svc, err := application.BuildService()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
-		}
-
 		artifactsDir := input.Body.ArtifactsDir
 		if artifactsDir == "" {
-			artifactsDir = application.Config.Build.ArtifactsDir
+			var err error
+			artifactsDir, err = facade.Builds().DefaultArtifactsDir()
+			if err != nil {
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("download failed: %v", err))
+			}
 		}
 
-		if err := svc.Download(ctx, build.DownloadOpts{
+		if err := facade.Builds().Download(ctx, build.DownloadOpts{
 			Projects:      []string{input.Body.Project},
 			ArtifactNames: input.Body.Artifacts,
 			RecipePrefix:  input.Body.RecipePrefix,
@@ -227,11 +212,6 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "Delete temporary build recipes matching a prefix.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsCleanupInput) (*BuildsCleanupOutput, error) {
-		svc, err := application.BuildService()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
-		}
-
 		cleanupOpts := build.CleanupOpts{
 			Owner:  input.Body.Owner,
 			Prefix: input.Body.Prefix,
@@ -241,7 +221,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			cleanupOpts.Projects = []string{input.Body.Project}
 		}
 
-		deleted, err := svc.Cleanup(ctx, cleanupOpts)
+		deleted, err := facade.Builds().Cleanup(ctx, cleanupOpts)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("cleanup failed: %v", err))
 		}
