@@ -41,16 +41,26 @@ func (w *ReleaseServerWorkflow) Show(ctx context.Context, name string, artifactT
 }
 
 // SyncCache refreshes cached publication snapshots.
-func (w *ReleaseServerWorkflow) SyncCache(ctx context.Context) error {
+func (w *ReleaseServerWorkflow) SyncCache(ctx context.Context) (*dto.ReleaseSyncResult, error) {
 	service, err := w.service()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	publications, err := w.application.TrackedReleases(ctx)
+	discovery, err := w.application.DiscoverTrackedReleases(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return service.SyncCache(ctx, publications)
+	synced, err := service.SyncCache(ctx, discovery.Publications)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.ReleaseSyncResult{
+		Status:     "ok",
+		Discovered: len(discovery.Publications),
+		Synced:     synced,
+		Skipped:    len(discovery.Warnings),
+		Warnings:   append([]string(nil), discovery.Warnings...),
+	}, nil
 }
 
 // CacheStatus returns cached publication metadata.

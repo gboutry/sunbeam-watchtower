@@ -115,4 +115,18 @@ func TestCacheSyncReleases_WithConfiguredPublicationReturns200(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
+
+	var body struct {
+		Status     string   `json:"status"`
+		Discovered int      `json:"discovered"`
+		Synced     int      `json:"synced"`
+		Skipped    int      `json:"skipped"`
+		Warnings   []string `json:"warnings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Status != "ok" || body.Discovered != 0 || body.Synced != 0 || body.Skipped != 0 {
+		t.Fatalf("body = %+v, want zero-count ok result", body)
+	}
 }

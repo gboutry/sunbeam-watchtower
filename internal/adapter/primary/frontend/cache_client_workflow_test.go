@@ -149,7 +149,13 @@ func TestCacheClientWorkflowSyncReleases(t *testing.T) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/cache/sync/releases" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
 		}
-		_ = json.NewEncoder(w).Encode(client.CacheSyncReleasesResult{Status: "ok"})
+		_ = json.NewEncoder(w).Encode(client.CacheSyncReleasesResult{
+			Status:     "ok",
+			Discovered: 4,
+			Synced:     3,
+			Skipped:    1,
+			Warnings:   []string{"sunbeam: skipped (no series, release.tracks, or release.branches configured)"},
+		})
 	}))
 	defer ts.Close()
 
@@ -158,7 +164,7 @@ func TestCacheClientWorkflowSyncReleases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SyncReleases() error = %v", err)
 	}
-	if got.Status != "ok" {
-		t.Fatalf("SyncReleases() = %+v, want ok", got)
+	if got.Status != "ok" || got.Discovered != 4 || got.Synced != 3 || got.Skipped != 1 || len(got.Warnings) != 1 {
+		t.Fatalf("SyncReleases() = %+v, want counted result", got)
 	}
 }

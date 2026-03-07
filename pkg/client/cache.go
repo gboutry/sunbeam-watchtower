@@ -75,9 +75,7 @@ func (c *Client) CacheSyncExcuses(ctx context.Context, opts CacheSyncExcusesOpti
 }
 
 // CacheSyncReleasesResult is the response returned by CacheSyncReleases.
-type CacheSyncReleasesResult struct {
-	Status string `json:"status"`
-}
+type CacheSyncReleasesResult = dto.ReleaseSyncResult
 
 // CacheSyncReleases syncs cached published snap/charm release state.
 func (c *Client) CacheSyncReleases(ctx context.Context) (*CacheSyncReleasesResult, error) {
