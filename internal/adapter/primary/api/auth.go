@@ -46,6 +46,8 @@ type AuthLaunchpadLogoutOutput struct {
 
 // RegisterAuthAPI registers authentication endpoints on the given huma API.
 func RegisterAuthAPI(api huma.API, application *app.App) {
+	facade := frontend.NewServerFacade(application)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "auth-status",
 		Method:      http.MethodGet,
@@ -53,8 +55,7 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Summary:     "Show authentication status",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, _ *struct{}) (*AuthStatusOutput, error) {
-		authWorkflow := frontend.NewAuthWorkflow(application)
-		status, err := authWorkflow.Status(ctx)
+		status, err := facade.Auth().Status(ctx)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to read auth status: %v", err))
 		}
@@ -72,8 +73,7 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Description: "Starts a Launchpad OAuth flow and returns an authorization URL plus an opaque flow ID.",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, _ *struct{}) (*AuthLaunchpadBeginOutput, error) {
-		authWorkflow := frontend.NewAuthWorkflow(application)
-		result, err := authWorkflow.BeginLaunchpad(ctx)
+		result, err := facade.Auth().BeginLaunchpad(ctx)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to begin Launchpad auth: %v", err))
 		}
@@ -91,8 +91,7 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Description: "Completes a Launchpad OAuth flow using the opaque flow ID returned by begin.",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, input *AuthLaunchpadFinalizeInput) (*AuthLaunchpadFinalizeOutput, error) {
-		authWorkflow := frontend.NewAuthWorkflow(application)
-		result, err := authWorkflow.FinalizeLaunchpad(ctx, input.Body.FlowID)
+		result, err := facade.Auth().FinalizeLaunchpad(ctx, input.Body.FlowID)
 		if err != nil {
 			switch {
 			case errors.Is(err, authsvc.ErrLaunchpadAuthFlowNotFound):
@@ -117,8 +116,7 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Description: "Clears persisted Launchpad credentials when they are file-backed.",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, _ *struct{}) (*AuthLaunchpadLogoutOutput, error) {
-		authWorkflow := frontend.NewAuthWorkflow(application)
-		result, err := authWorkflow.LogoutLaunchpad(ctx)
+		result, err := facade.Auth().LogoutLaunchpad(ctx)
 		if err != nil {
 			if errors.Is(err, authsvc.ErrLaunchpadEnvironmentCredentials) {
 				return nil, huma.Error400BadRequest(err.Error())

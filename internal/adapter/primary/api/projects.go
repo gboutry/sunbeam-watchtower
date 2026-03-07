@@ -10,7 +10,6 @@ import (
 
 	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
-	projectsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/project"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
@@ -34,7 +33,7 @@ type ProjectsSyncOutput struct {
 
 // RegisterProjectsAPI registers the /api/v1/projects endpoints on the given huma API.
 func RegisterProjectsAPI(api huma.API, application *app.App) {
-	operationFacade := frontend.NewFacade(application)
+	facade := frontend.NewServerFacade(application)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "sync-projects",
@@ -44,27 +43,20 @@ func RegisterProjectsAPI(api huma.API, application *app.App) {
 		Description: "Ensure LP projects have declared series and set the development focus.",
 		Tags:        []string{"projects"},
 	}, func(ctx context.Context, input *ProjectsSyncInput) (*ProjectsSyncOutput, error) {
-		svc, err := application.ProjectService()
-		if err != nil {
-			if errors.Is(err, app.ErrLaunchpadAuthRequired) {
-				return nil, huma.Error422UnprocessableEntity(err.Error())
-			}
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build project service: %v", err))
-		}
-
-		result, err := svc.Sync(ctx, projectsvc.SyncOptions{
+		result, err := facade.Projects().Sync(ctx, frontend.ProjectSyncRequest{
 			Projects: input.Body.Projects,
 			DryRun:   input.Body.DryRun,
 		})
 		if err != nil {
+			if errors.Is(err, app.ErrLaunchpadAuthRequired) {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("sync failed: %v", err))
 		}
 
 		out := &ProjectsSyncOutput{}
 		out.Body.Actions = result.Actions
-		for _, e := range result.Errors {
-			out.Body.Errors = append(out.Body.Errors, e.Error())
-		}
+		out.Body.Errors = result.Errors
 		return out, nil
 	})
 
@@ -76,7 +68,7 @@ func RegisterProjectsAPI(api huma.API, application *app.App) {
 		Description: "Queue project metadata sync as a long-running operation job.",
 		Tags:        []string{"projects", "operations"},
 	}, func(ctx context.Context, input *ProjectsSyncInput) (*OperationOutput, error) {
-		job, err := operationFacade.StartProjectSync(ctx, frontend.ProjectSyncOptions{
+		job, err := facade.Projects().StartSync(ctx, frontend.ProjectSyncRequest{
 			Projects: input.Body.Projects,
 			DryRun:   input.Body.DryRun,
 		})

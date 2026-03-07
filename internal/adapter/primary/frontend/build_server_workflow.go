@@ -1,0 +1,81 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
+package frontend
+
+import (
+	"context"
+	"errors"
+
+	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+)
+
+// BuildServerWorkflow exposes reusable server-side build workflows for the HTTP API.
+type BuildServerWorkflow struct {
+	application *app.App
+	async       *Facade
+}
+
+// NewBuildServerWorkflow creates a server-side build workflow.
+func NewBuildServerWorkflow(application *app.App, async *Facade) *BuildServerWorkflow {
+	return &BuildServerWorkflow{
+		application: application,
+		async:       async,
+	}
+}
+
+// Trigger runs one synchronous build trigger.
+func (w *BuildServerWorkflow) Trigger(ctx context.Context, project string, artifacts []string, opts build.TriggerOpts) (*dto.BuildTriggerResult, error) {
+	service, err := w.application.BuildService()
+	if err != nil {
+		return nil, err
+	}
+	return service.Trigger(ctx, project, artifacts, opts)
+}
+
+// StartTrigger queues one asynchronous build trigger.
+func (w *BuildServerWorkflow) StartTrigger(ctx context.Context, project string, artifacts []string, opts build.TriggerOpts) (*dto.OperationJob, error) {
+	return w.async.StartBuildTrigger(ctx, BuildTriggerOptions{
+		Project:   project,
+		Artifacts: artifacts,
+		Trigger:   opts,
+	})
+}
+
+// List returns build records matching the requested filters.
+func (w *BuildServerWorkflow) List(ctx context.Context, opts build.ListOpts) ([]dto.Build, error) {
+	service, err := w.application.BuildService()
+	if err != nil {
+		return nil, err
+	}
+	builds, _, err := service.List(ctx, opts)
+	return builds, err
+}
+
+// Download downloads build artifacts for the requested filters.
+func (w *BuildServerWorkflow) Download(ctx context.Context, opts build.DownloadOpts) error {
+	service, err := w.application.BuildService()
+	if err != nil {
+		return err
+	}
+	return service.Download(ctx, opts)
+}
+
+// Cleanup removes temporary build recipes.
+func (w *BuildServerWorkflow) Cleanup(ctx context.Context, opts build.CleanupOpts) ([]string, error) {
+	service, err := w.application.BuildService()
+	if err != nil {
+		return nil, err
+	}
+	return service.Cleanup(ctx, opts)
+}
+
+// DefaultArtifactsDir returns the configured build artifact output directory.
+func (w *BuildServerWorkflow) DefaultArtifactsDir() (string, error) {
+	if w.application == nil || w.application.Config == nil {
+		return "", errors.New("no configuration loaded")
+	}
+	return w.application.Config.Build.ArtifactsDir, nil
+}
