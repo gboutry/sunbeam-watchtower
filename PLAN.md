@@ -228,6 +228,7 @@ This distinction is important: stateful features must be designed around persist
 - added a stable client-side frontend facade that wires auth, operations, project, build, packages, cache, bug, review, commit, and config workflows behind a single constructor, so future TUI/MCP consumers can depend on one entrypoint instead of reproducing workflow assembly logic
 - added a CLI architecture guard test that fails if non-bootstrap command files import `pkg/client` directly or call methods on `opts.Client`, so the frontend-workflow boundary is now mechanically enforced instead of relying on review discipline
 - rewired the CLI command layer to consume the shared client facade through `Options.Frontend()`, so command handlers now depend on one stable frontend entrypoint rather than constructing individual workflows ad hoc
+- tightened the CLI architecture guard so non-bootstrap command files also fail if they instantiate frontend workflows directly; command handlers are now expected to go through `Options.Frontend()` for workflow access
 
 ## Validation
 
