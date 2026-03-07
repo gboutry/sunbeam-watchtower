@@ -34,7 +34,7 @@ func TestCommitClientWorkflowLog(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewCommitClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewCommitClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Log(context.Background(), CommitLogRequest{
 		Projects:   []string{"keystone"},
 		Branch:     "main",
@@ -70,7 +70,7 @@ func TestCommitClientWorkflowTrack(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewCommitClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewCommitClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Track(context.Background(), CommitTrackRequest{BugID: "12345"})
 	if err != nil {
 		t.Fatalf("Track() error = %v", err)

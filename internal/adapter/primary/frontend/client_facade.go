@@ -5,7 +5,6 @@ package frontend
 
 import (
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 )
 
 // ClientFacade exposes the reusable client-side frontend workflows behind one stable entrypoint.
@@ -25,7 +24,7 @@ type ClientFacade struct {
 }
 
 // NewClientFacade creates a client-side frontend facade.
-func NewClientFacade(apiClient *client.Client, application *app.App) *ClientFacade {
+func NewClientFacade(apiClient *ClientTransport, application *app.App) *ClientFacade {
 	builds := NewBuildWorkflow(apiClient, nil)
 	var localBuildPreparationErr error
 	if application != nil {

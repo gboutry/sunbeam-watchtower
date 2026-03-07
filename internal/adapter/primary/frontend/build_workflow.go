@@ -16,7 +16,7 @@ import (
 
 // BuildWorkflow coordinates frontend-side build preparation and API calls.
 type BuildWorkflow struct {
-	client   *client.Client
+	client   *ClientTransport
 	preparer *LocalBuildPreparer
 }
 
@@ -76,7 +76,7 @@ type BuildCleanupRequest struct {
 }
 
 // NewBuildWorkflow creates a reusable frontend build workflow.
-func NewBuildWorkflow(apiClient *client.Client, preparer *LocalBuildPreparer) *BuildWorkflow {
+func NewBuildWorkflow(apiClient *ClientTransport, preparer *LocalBuildPreparer) *BuildWorkflow {
 	return &BuildWorkflow{
 		client:   apiClient,
 		preparer: preparer,
@@ -84,7 +84,7 @@ func NewBuildWorkflow(apiClient *client.Client, preparer *LocalBuildPreparer) *B
 }
 
 // NewBuildWorkflowFromApp creates a frontend build workflow wired from the application.
-func NewBuildWorkflowFromApp(apiClient *client.Client, application *app.App) (*BuildWorkflow, error) {
+func NewBuildWorkflowFromApp(apiClient *ClientTransport, application *app.App) (*BuildWorkflow, error) {
 	preparer, err := NewLocalBuildPreparerFromApp(application)
 	if err != nil {
 		return nil, err

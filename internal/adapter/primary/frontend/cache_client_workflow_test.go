@@ -31,7 +31,7 @@ func TestCacheClientWorkflowSyncGit(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewCacheClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.SyncGit(context.Background(), CacheSyncGitRequest{Project: "keystone"})
 	if err != nil {
 		t.Fatalf("SyncGit() error = %v", err)
@@ -58,7 +58,7 @@ func TestCacheClientWorkflowSyncPackagesIndex(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewCacheClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	err := workflow.SyncPackagesIndex(context.Background(), CacheSyncPackagesIndexRequest{
 		Distros:   []string{"ubuntu"},
 		Releases:  []string{"noble"},
@@ -90,7 +90,7 @@ func TestCacheClientWorkflowClearExcuses(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewCacheClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	if err := workflow.Clear(context.Background(), CacheClearRequest{
 		Type:     "excuses",
 		Trackers: []string{"ubuntu-devel", "ubuntu-updates"},
@@ -123,7 +123,7 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewCacheClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.Status(context.Background())
 	if err != nil {
 		t.Fatalf("Status() error = %v", err)

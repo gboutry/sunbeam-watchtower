@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
@@ -22,11 +21,11 @@ type AuthLoginResult struct {
 
 // AuthClientWorkflow exposes reusable client-side auth workflows for CLI/TUI/MCP frontends.
 type AuthClientWorkflow struct {
-	client *client.Client
+	client *ClientTransport
 }
 
 // NewAuthClientWorkflow creates a client-side auth workflow.
-func NewAuthClientWorkflow(apiClient *client.Client) *AuthClientWorkflow {
+func NewAuthClientWorkflow(apiClient *ClientTransport) *AuthClientWorkflow {
 	return &AuthClientWorkflow{client: apiClient}
 }
 
@@ -93,7 +92,7 @@ func (w *AuthClientWorkflow) LogoutLaunchpad(ctx context.Context) (*dto.Launchpa
 	return apiClient.AuthLaunchpadLogout(ctx)
 }
 
-func (w *AuthClientWorkflow) resolveClient() (*client.Client, error) {
+func (w *AuthClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("auth client workflow requires an API client")
 	}

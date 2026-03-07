@@ -48,7 +48,7 @@ func TestOperationClientWorkflowListGetEventsCancel(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewOperationClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewOperationClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	jobs, err := workflow.List(context.Background())
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
@@ -102,7 +102,7 @@ func TestOperationClientWorkflowWaitForTerminalState(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	workflow := NewOperationClientWorkflow(client.NewClient(ts.URL))
+	workflow := NewOperationClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 

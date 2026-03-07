@@ -114,12 +114,12 @@ type PackagesExcusesShowRequest struct {
 
 // PackagesClientWorkflow exposes reusable client-side package workflows for CLI/TUI/MCP frontends.
 type PackagesClientWorkflow struct {
-	client      *client.Client
+	client      *ClientTransport
 	application *app.App
 }
 
 // NewPackagesClientWorkflow creates a client-side packages workflow.
-func NewPackagesClientWorkflow(apiClient *client.Client, application *app.App) *PackagesClientWorkflow {
+func NewPackagesClientWorkflow(apiClient *ClientTransport, application *app.App) *PackagesClientWorkflow {
 	return &PackagesClientWorkflow{
 		client:      apiClient,
 		application: application,
@@ -275,7 +275,7 @@ func (w *PackagesClientWorkflow) ExcusesShow(ctx context.Context, req PackagesEx
 	})
 }
 
-func (w *PackagesClientWorkflow) resolveClient() (*client.Client, error) {
+func (w *PackagesClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("packages client workflow requires an API client")
 	}

@@ -26,12 +26,12 @@ type ProjectSyncResponse struct {
 
 // ProjectClientWorkflow exposes reusable client-side project workflows for CLI/TUI/MCP frontends.
 type ProjectClientWorkflow struct {
-	client     *client.Client
+	client     *ClientTransport
 	operations *OperationClientWorkflow
 }
 
 // NewProjectClientWorkflow creates a client-side project workflow.
-func NewProjectClientWorkflow(apiClient *client.Client) *ProjectClientWorkflow {
+func NewProjectClientWorkflow(apiClient *ClientTransport) *ProjectClientWorkflow {
 	return &ProjectClientWorkflow{
 		client:     apiClient,
 		operations: NewOperationClientWorkflow(apiClient),
@@ -80,7 +80,7 @@ func (w *ProjectClientWorkflow) WaitForSyncCompletion(ctx context.Context, opera
 	return w.operations.WaitForTerminalState(ctx, operationID, pollInterval)
 }
 
-func (w *ProjectClientWorkflow) resolveClient() (*client.Client, error) {
+func (w *ProjectClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("project client workflow requires an API client")
 	}
