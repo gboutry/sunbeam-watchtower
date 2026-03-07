@@ -2,23 +2,20 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
-	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
-	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bug"
-	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bugsync"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
 // --- List bugs ---
 
-// BugsListInput holds query parameters for listing bug tasks.
 type BugsListInput struct {
 	Projects   []string `query:"project" required:"false" doc:"Filter by project name"`
 	Status     []string `query:"status" required:"false" doc:"Filter by status"`
@@ -28,7 +25,6 @@ type BugsListInput struct {
 	Since      string   `query:"since" doc:"Return bugs created/modified since this date (ISO 8601)"`
 }
 
-// BugsListOutput is the response for listing bug tasks.
 type BugsListOutput struct {
 	Body struct {
 		Tasks    []forge.BugTask `json:"tasks" doc:"Bug tasks matching filters"`
@@ -36,21 +32,14 @@ type BugsListOutput struct {
 	}
 }
 
-// --- Get bug ---
-
-// BugGetInput holds the path parameter for getting a single bug.
 type BugGetInput struct {
 	ID string `path:"id" doc:"Bug ID (e.g. Launchpad bug number)"`
 }
 
-// BugGetOutput is the response for getting a single bug.
 type BugGetOutput struct {
 	Body *forge.Bug
 }
 
-// --- Sync bugs ---
-
-// BugSyncInput holds the request body for triggering a bug sync.
 type BugSyncInput struct {
 	Body struct {
 		Projects []string `json:"projects,omitempty" required:"false" doc:"Filter to these project names (empty = all)"`
@@ -59,7 +48,6 @@ type BugSyncInput struct {
 	}
 }
 
-// BugSyncOutput is the response for a bug sync operation.
 type BugSyncOutput struct {
 	Body struct {
 		Actions []dto.BugSyncAction `json:"actions" doc:"Actions taken or planned"`
@@ -68,8 +56,9 @@ type BugSyncOutput struct {
 	}
 }
 
-// RegisterBugsAPI registers the /api/v1/bugs endpoints on the given huma API.
 func RegisterBugsAPI(api huma.API, application *app.App) {
+	facade := frontend.NewServerFacade(application)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "list-bugs",
 		Method:      http.MethodGet,
@@ -77,14 +66,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 		Summary:     "List bug tasks",
 		Description: "List bug tasks across all configured bug trackers, with optional filters.",
 	}, func(ctx context.Context, input *BugsListInput) (*BugsListOutput, error) {
-		trackers, projectMap, err := application.BuildBugTrackers()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build bug trackers: %v", err))
-		}
-
-		svc := bug.NewService(trackers, projectMap, application.Logger)
-
-		tasks, results, err := svc.List(ctx, bug.ListOptions{
+		result, err := facade.Bugs().List(ctx, frontend.BugListRequest{
 			Projects:   input.Projects,
 			Status:     input.Status,
 			Importance: input.Importance,
@@ -97,12 +79,8 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 		}
 
 		out := &BugsListOutput{}
-		out.Body.Tasks = tasks
-		for _, r := range results {
-			if r.Err != nil {
-				out.Body.Warnings = append(out.Body.Warnings, r.Err.Error())
-			}
-		}
+		out.Body.Tasks = result.Tasks
+		out.Body.Warnings = result.Warnings
 		return out, nil
 	})
 
@@ -113,20 +91,13 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 		Summary:     "Get a bug",
 		Description: "Retrieve a single bug and its tasks by ID.",
 	}, func(ctx context.Context, input *BugGetInput) (*BugGetOutput, error) {
-		trackers, projectMap, err := application.BuildBugTrackers()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build bug trackers: %v", err))
-		}
-
-		svc := bug.NewService(trackers, projectMap, application.Logger)
-
-		b, err := svc.Get(ctx, input.ID)
+		bug, err := facade.Bugs().Show(ctx, input.ID)
 		if err != nil {
 			return nil, huma.Error404NotFound(fmt.Sprintf("bug %s not found", input.ID), err)
 		}
 
 		out := &BugGetOutput{}
-		out.Body = b
+		out.Body = bug
 		return out, nil
 	})
 
@@ -137,63 +108,26 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 		Summary:     "Sync bug statuses",
 		Description: "Scan cached commits for bug references and update bug task statuses. Also assigns bugs to the appropriate series.",
 	}, func(ctx context.Context, input *BugSyncInput) (*BugSyncOutput, error) {
-		sources, err := application.BuildCommitSources()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build commit sources: %v", err))
-		}
-
-		trackers, _, err := application.BuildBugTrackers()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build bug trackers: %v", err))
-		}
-
-		// Use the first available bug tracker and collect LP project names.
-		var tracker port.BugTracker
-		var lpProjects []string
-		for _, pt := range trackers {
-			if tracker == nil {
-				tracker = pt.Tracker
-			}
-			lpProjects = append(lpProjects, pt.ProjectID)
-		}
-		if tracker == nil {
-			return nil, huma.Error422UnprocessableEntity("no bug tracker configured")
-		}
-
-		// Build watchtower project → LP bug project mapping.
-		lpProjectMap := make(map[string][]string)
-		for _, proj := range application.Config.Projects {
-			for _, b := range proj.Bugs {
-				if b.Forge == "launchpad" {
-					lpProjectMap[proj.Name] = append(lpProjectMap[proj.Name], b.Project)
-				}
-			}
-		}
-
-		svc := bugsync.NewService(sources, tracker, lpProjects, lpProjectMap, application.Logger)
-		syncOpts := bugsync.SyncOptions{
+		result, err := facade.Bugs().Sync(ctx, frontend.BugSyncRequest{
 			Projects: input.Body.Projects,
 			DryRun:   input.Body.DryRun,
-		}
-		if input.Body.Since != "" {
-			since, pErr := time.Parse(time.RFC3339, input.Body.Since)
-			if pErr != nil {
-				return nil, huma.Error400BadRequest("invalid since value: expected RFC 3339 timestamp")
-			}
-			syncOpts.Since = &since
-		}
-
-		result, err := svc.Sync(ctx, syncOpts)
+			Since:    input.Body.Since,
+		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("sync failed: %v", err))
+			switch {
+			case errors.Is(err, frontend.ErrNoBugTrackerConfigured):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, frontend.ErrInvalidBugSyncSince):
+				return nil, huma.Error400BadRequest(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("sync failed: %v", err))
+			}
 		}
 
 		out := &BugSyncOutput{}
-		out.Body.Actions = result.Actions
-		out.Body.Skipped = result.Skipped
-		for _, e := range result.Errors {
-			out.Body.Errors = append(out.Body.Errors, e.Error())
-		}
+		out.Body.Actions = result.Result.Actions
+		out.Body.Skipped = result.Result.Skipped
+		out.Body.Errors = result.Warnings
 		return out, nil
 	})
 }

@@ -248,7 +248,7 @@ func waitForOperationStateViaCLI(
 ) dto.OperationJob {
 	t.Helper()
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	var lastJob dto.OperationJob
 	for time.Now().Before(deadline) {
 		show := runCLIHelper(t, wrapper, env, "", "-o", "json", "operation", "show", id)

@@ -38,7 +38,7 @@ type OperationEventsOutput struct {
 
 // RegisterOperationsAPI registers the /api/v1/operations endpoints.
 func RegisterOperationsAPI(api huma.API, application *app.App) {
-	operations := frontend.NewOperationWorkflow(application)
+	facade := frontend.NewServerFacade(application)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "list-operations",
@@ -47,7 +47,7 @@ func RegisterOperationsAPI(api huma.API, application *app.App) {
 		Summary:     "List long-running operations",
 		Tags:        []string{"operations"},
 	}, func(ctx context.Context, _ *struct{}) (*OperationsListOutput, error) {
-		jobs, err := operations.List(ctx)
+		jobs, err := facade.Operations().List(ctx)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list operations: %v", err))
 		}
@@ -64,7 +64,7 @@ func RegisterOperationsAPI(api huma.API, application *app.App) {
 		Summary:     "Get one operation",
 		Tags:        []string{"operations"},
 	}, func(ctx context.Context, input *OperationInput) (*OperationOutput, error) {
-		job, err := operations.Get(ctx, input.ID)
+		job, err := facade.Operations().Get(ctx, input.ID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to load operation: %v", err))
 		}
@@ -84,7 +84,7 @@ func RegisterOperationsAPI(api huma.API, application *app.App) {
 		Summary:     "List operation events",
 		Tags:        []string{"operations"},
 	}, func(ctx context.Context, input *OperationInput) (*OperationEventsOutput, error) {
-		job, err := operations.Get(ctx, input.ID)
+		job, err := facade.Operations().Get(ctx, input.ID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to load operation: %v", err))
 		}
@@ -92,7 +92,7 @@ func RegisterOperationsAPI(api huma.API, application *app.App) {
 			return nil, huma.Error404NotFound(fmt.Sprintf("operation %q not found", input.ID))
 		}
 
-		events, err := operations.Events(ctx, input.ID)
+		events, err := facade.Operations().Events(ctx, input.ID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to load operation events: %v", err))
 		}
@@ -109,7 +109,7 @@ func RegisterOperationsAPI(api huma.API, application *app.App) {
 		Summary:     "Cancel one operation",
 		Tags:        []string{"operations"},
 	}, func(ctx context.Context, input *OperationInput) (*OperationOutput, error) {
-		job, err := operations.Get(ctx, input.ID)
+		job, err := facade.Operations().Get(ctx, input.ID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to load operation: %v", err))
 		}
@@ -117,11 +117,11 @@ func RegisterOperationsAPI(api huma.API, application *app.App) {
 			return nil, huma.Error404NotFound(fmt.Sprintf("operation %q not found", input.ID))
 		}
 
-		if err := operations.Cancel(ctx, input.ID); err != nil {
+		if err := facade.Operations().Cancel(ctx, input.ID); err != nil {
 			return nil, huma.Error409Conflict(fmt.Sprintf("failed to cancel operation: %v", err))
 		}
 
-		job, err = operations.Get(ctx, input.ID)
+		job, err = facade.Operations().Get(ctx, input.ID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to reload operation: %v", err))
 		}
