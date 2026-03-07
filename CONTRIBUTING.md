@@ -76,6 +76,7 @@ Watchtower has two runtime modes:
 
 1. `persistent server` mode
    - used by `watchtower serve`
+   - also used by the local daemon started through `watchtower server start`
    - owns durable auth-flow and async-operation state
    - is the intended target for multi-client usage such as future TUI and MCP frontends
 2. `ephemeral embedded` mode
@@ -90,6 +91,25 @@ Workflow design should also distinguish:
 3. `split` workflows where local preparation happens in a shared frontend layer and the server executes the durable remote part
 
 For split workflows, do not push raw filesystem concepts into the server. The frontend should produce a stable prepared contract and send that over the API.
+
+### CLI runtime resolution
+
+When a command needs an API target, the CLI resolves it in this order:
+
+1. `--server`
+2. `WATCHTOWER_SERVER`
+3. discovered local daemon on the default Unix socket
+4. auto-started local daemon for persistent workflows
+5. one-command embedded server
+
+Persistent workflows currently include:
+
+- `auth *`
+- `operation *`
+- `build trigger --async`
+- `project sync --async`
+
+Contributors should preserve this behavior: stateful workflows must prefer persistent-server semantics, while ephemeral mode remains available for stateless work and local convenience.
 
 ## Building
 
