@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	authsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/auth"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -52,12 +53,8 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Summary:     "Show authentication status",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, _ *struct{}) (*AuthStatusOutput, error) {
-		svc, err := application.AuthService()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build auth service: %v", err))
-		}
-
-		status, err := svc.Status(ctx)
+		authWorkflow := frontend.NewAuthWorkflow(application)
+		status, err := authWorkflow.Status(ctx)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to read auth status: %v", err))
 		}
@@ -75,12 +72,8 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Description: "Starts a Launchpad OAuth flow and returns an authorization URL plus an opaque flow ID.",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, _ *struct{}) (*AuthLaunchpadBeginOutput, error) {
-		svc, err := application.AuthService()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build auth service: %v", err))
-		}
-
-		result, err := svc.BeginLaunchpad(ctx)
+		authWorkflow := frontend.NewAuthWorkflow(application)
+		result, err := authWorkflow.BeginLaunchpad(ctx)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to begin Launchpad auth: %v", err))
 		}
@@ -98,12 +91,8 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Description: "Completes a Launchpad OAuth flow using the opaque flow ID returned by begin.",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, input *AuthLaunchpadFinalizeInput) (*AuthLaunchpadFinalizeOutput, error) {
-		svc, err := application.AuthService()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build auth service: %v", err))
-		}
-
-		result, err := svc.FinalizeLaunchpad(ctx, input.Body.FlowID)
+		authWorkflow := frontend.NewAuthWorkflow(application)
+		result, err := authWorkflow.FinalizeLaunchpad(ctx, input.Body.FlowID)
 		if err != nil {
 			switch {
 			case errors.Is(err, authsvc.ErrLaunchpadAuthFlowNotFound):
@@ -128,12 +117,8 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Description: "Clears persisted Launchpad credentials when they are file-backed.",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, _ *struct{}) (*AuthLaunchpadLogoutOutput, error) {
-		svc, err := application.AuthService()
-		if err != nil {
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build auth service: %v", err))
-		}
-
-		result, err := svc.LogoutLaunchpad(ctx)
+		authWorkflow := frontend.NewAuthWorkflow(application)
+		result, err := authWorkflow.LogoutLaunchpad(ctx)
 		if err != nil {
 			if errors.Is(err, authsvc.ErrLaunchpadEnvironmentCredentials) {
 				return nil, huma.Error400BadRequest(err.Error())

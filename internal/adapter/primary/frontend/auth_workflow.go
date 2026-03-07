@@ -1,0 +1,71 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
+package frontend
+
+import (
+	"context"
+
+	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	authsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/auth"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+)
+
+// AuthWorkflow exposes frontend-facing authentication workflows.
+type AuthWorkflow struct {
+	application *app.App
+	authService *authsvc.Service
+}
+
+// NewAuthWorkflow creates a frontend auth workflow.
+func NewAuthWorkflow(application *app.App) *AuthWorkflow {
+	return &AuthWorkflow{application: application}
+}
+
+// NewAuthWorkflowFromService creates a frontend auth workflow from a concrete service.
+func NewAuthWorkflowFromService(service *authsvc.Service) *AuthWorkflow {
+	return &AuthWorkflow{authService: service}
+}
+
+func (w *AuthWorkflow) resolveService() (*authsvc.Service, error) {
+	if w.authService != nil {
+		return w.authService, nil
+	}
+	return w.application.AuthService()
+}
+
+// Status returns the current authentication state.
+func (w *AuthWorkflow) Status(ctx context.Context) (*dto.AuthStatus, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.Status(ctx)
+}
+
+// BeginLaunchpad starts a Launchpad authentication flow.
+func (w *AuthWorkflow) BeginLaunchpad(ctx context.Context) (*dto.LaunchpadAuthBeginResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.BeginLaunchpad(ctx)
+}
+
+// FinalizeLaunchpad completes a pending Launchpad authentication flow.
+func (w *AuthWorkflow) FinalizeLaunchpad(ctx context.Context, flowID string) (*dto.LaunchpadAuthFinalizeResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.FinalizeLaunchpad(ctx, flowID)
+}
+
+// LogoutLaunchpad clears persisted Launchpad credentials.
+func (w *AuthWorkflow) LogoutLaunchpad(ctx context.Context) (*dto.LaunchpadAuthLogoutResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.LogoutLaunchpad(ctx)
+}

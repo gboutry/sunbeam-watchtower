@@ -18,6 +18,7 @@ import (
 // Facade exposes frontend-oriented wrappers on top of the generic operation service.
 type Facade struct {
 	application *app.App
+	operations  *OperationWorkflow
 }
 
 // BuildTriggerOptions holds the inputs for starting an async build trigger operation.
@@ -35,16 +36,15 @@ type ProjectSyncOptions struct {
 
 // NewFacade creates a frontend-oriented facade on top of the application wiring.
 func NewFacade(application *app.App) *Facade {
-	return &Facade{application: application}
+	return &Facade{
+		application: application,
+		operations:  NewOperationWorkflow(application),
+	}
 }
 
 // StartBuildTrigger starts an async build-trigger workflow.
 func (f *Facade) StartBuildTrigger(ctx context.Context, opts BuildTriggerOptions) (*dto.OperationJob, error) {
 	buildService, err := f.application.BuildService()
-	if err != nil {
-		return nil, err
-	}
-	operationService, err := f.application.OperationService()
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (f *Facade) StartBuildTrigger(ctx context.Context, opts BuildTriggerOptions
 		attributes["wait"] = "true"
 	}
 
-	return operationService.Start(ctx, dto.OperationKindBuildTrigger, attributes, func(runCtx context.Context, reporter *opsvc.Reporter) (string, error) {
+	return f.operations.Start(ctx, dto.OperationKindBuildTrigger, attributes, func(runCtx context.Context, reporter *opsvc.Reporter) (string, error) {
 		reporter.Event(fmt.Sprintf("starting build trigger for project %q", opts.Project))
 		reporter.Progress(dto.OperationProgress{
 			Phase:         "triggering",
@@ -112,10 +112,6 @@ func (f *Facade) StartProjectSync(ctx context.Context, opts ProjectSyncOptions) 
 	if err != nil {
 		return nil, err
 	}
-	operationService, err := f.application.OperationService()
-	if err != nil {
-		return nil, err
-	}
 
 	attributes := map[string]string{}
 	if opts.DryRun {
@@ -125,7 +121,7 @@ func (f *Facade) StartProjectSync(ctx context.Context, opts ProjectSyncOptions) 
 		attributes["projects"] = fmt.Sprintf("%d", len(opts.Projects))
 	}
 
-	return operationService.Start(ctx, dto.OperationKindProjectSync, attributes, func(runCtx context.Context, reporter *opsvc.Reporter) (string, error) {
+	return f.operations.Start(ctx, dto.OperationKindProjectSync, attributes, func(runCtx context.Context, reporter *opsvc.Reporter) (string, error) {
 		reporter.Event("starting Launchpad project sync")
 		reporter.Progress(dto.OperationProgress{
 			Phase:         "syncing",
@@ -157,42 +153,6 @@ func (f *Facade) StartProjectSync(ctx context.Context, opts ProjectSyncOptions) 
 		})
 		return summary, nil
 	})
-}
-
-// ListOperations returns all known operations.
-func (f *Facade) ListOperations(ctx context.Context) ([]dto.OperationJob, error) {
-	operationService, err := f.application.OperationService()
-	if err != nil {
-		return nil, err
-	}
-	return operationService.List(ctx)
-}
-
-// GetOperation returns one operation snapshot.
-func (f *Facade) GetOperation(ctx context.Context, id string) (*dto.OperationJob, error) {
-	operationService, err := f.application.OperationService()
-	if err != nil {
-		return nil, err
-	}
-	return operationService.Get(ctx, id)
-}
-
-// OperationEvents returns the event history for one operation.
-func (f *Facade) OperationEvents(ctx context.Context, id string) ([]dto.OperationEvent, error) {
-	operationService, err := f.application.OperationService()
-	if err != nil {
-		return nil, err
-	}
-	return operationService.Events(ctx, id)
-}
-
-// CancelOperation requests cancellation for a running operation.
-func (f *Facade) CancelOperation(ctx context.Context, id string) error {
-	operationService, err := f.application.OperationService()
-	if err != nil {
-		return err
-	}
-	return operationService.Cancel(ctx, id)
 }
 
 func buildTriggerSummary(result *dto.BuildTriggerResult) string {
