@@ -225,6 +225,7 @@ This distinction is important: stateful features must be designed around persist
 - added reusable client-side bug, review, and commit workflows in `internal/adapter/primary/frontend`, and routed the CLI bug/review/commit commands through them, so `since` parsing, warning handling, and query shaping are now shared frontend behavior instead of command-local HTTP glue
 - extended the shared frontend client layer to cover `config show` and build cleanup as well, so the remaining CLI command handlers no longer need to issue raw config/build-management client calls directly
 - replaced the build workflow request surface with frontend-native request DTOs, so CLI build commands no longer depend on `pkg/client` transport option structs for trigger/list/download/cleanup orchestration
+- added a stable client-side frontend facade that wires auth, operations, project, build, packages, cache, bug, review, commit, and config workflows behind a single constructor, so future TUI/MCP consumers can depend on one entrypoint instead of reproducing workflow assembly logic
 
 ## Validation
 
