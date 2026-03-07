@@ -62,6 +62,9 @@ func TestServiceSyncListAndShow(t *testing.T) {
 	if len(list) != 1 || list[0].Track != "2024.1" || list[0].Risk != dto.ReleaseRiskStable {
 		t.Fatalf("List() = %+v, want 2024.1/stable row", list)
 	}
+	if list[0].ReleasedAt.IsZero() {
+		t.Fatalf("List() released_at = %v, want per-channel release timestamp", list[0].ReleasedAt)
+	}
 
 	branchList, err := service.List(context.Background(), dto.ReleaseListQuery{Branches: []string{"risc-v"}})
 	if err != nil {

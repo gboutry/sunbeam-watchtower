@@ -256,6 +256,7 @@ This distinction is important: stateful features must be designed around persist
 - exposed those lightweight release overrides through the public config DTO, while keeping artifact names and charm resources repo-discovered instead of duplicating them in config
 - improved the release cache sync UX so `cache sync releases` now reports discovered/synced/skipped counts and surfaces skip reasons, instead of returning a bare `ok` when no projects qualified for release tracking
 - added `project.release.skip_artifacts` so mono repos can explicitly exclude discovered snap/charm artifacts that are not published upstream, preventing known no-op artifacts from turning release-cache syncs into hard failures
+- corrected the releases list timestamp semantics so flat release rows now expose per-channel `released_at` data from the store, while artifact-level snapshot timestamps remain cache-sync metadata instead of being mislabeled as publication times
 - documented a concrete `project.release` example in `README.md`, including `track_map` and cross-artifact branch tracking, so the repo-driven release model is described with an actual user-facing config snippet instead of only code-level types and tests
 
 ## Next small step
