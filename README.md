@@ -84,15 +84,40 @@ Watchtower currently supports three workflow shapes:
 Examples:
 
 ```bash
-# Persistent server mode for auth, async operations, and multi-client usage
-watchtower serve --listen 127.0.0.1:8472
+# Explicit external server
+watchtower --server http://127.0.0.1:8472 operation list
 WATCHTOWER_SERVER=http://127.0.0.1:8472 watchtower operation list
+
+# Local persistent daemon managed by the CLI
+watchtower server start
+watchtower server status
+watchtower operation list
+watchtower server stop
 
 # Split workflow: local checkout stays local, prepared LP refs go to the server
 watchtower build trigger demo --source local --local-path .
 ```
 
 For split workflows, the server never reads raw local paths. Frontends prepare a stable `prepared` build source payload and send that to the server.
+
+### Runtime resolution order
+
+When a command needs the API, the CLI resolves the target in this order:
+
+1. `--server`
+2. `WATCHTOWER_SERVER`
+3. discovered local daemon on the default Unix socket
+4. auto-started local daemon for persistent workflows
+5. one-command embedded server for explicitly ephemeral work
+
+Persistent workflows currently include:
+
+- `auth *`
+- `operation *`
+- `build trigger --async`
+- `project sync --async`
+
+Stateless queries and one-shot commands can still run against the embedded server when no persistent target is configured.
 
 ## Configuration
 
