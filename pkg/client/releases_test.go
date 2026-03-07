@@ -19,12 +19,15 @@ func TestReleasesList(t *testing.T) {
 		if got := r.URL.Query().Get("track"); got != "2024.1" {
 			t.Fatalf("track query = %q, want 2024.1", got)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"releases": []map[string]any{{"name": "snap-openstack", "track": "2024.1", "risk": "stable"}}})
+		if got := r.URL.Query().Get("branch"); got != "risc-v" {
+			t.Fatalf("branch query = %q, want risc-v", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"releases": []map[string]any{{"name": "snap-openstack", "track": "2024.1", "risk": "stable", "branch": "risc-v"}}})
 	}))
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	got, err := client.ReleasesList(context.Background(), ReleasesListOptions{Tracks: []string{"2024.1"}})
+	got, err := client.ReleasesList(context.Background(), ReleasesListOptions{Tracks: []string{"2024.1"}, Branches: []string{"risc-v"}})
 	if err != nil {
 		t.Fatalf("ReleasesList() error = %v", err)
 	}
@@ -37,6 +40,9 @@ func TestReleasesShowAndCacheSyncReleases(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/releases/snap-openstack":
+			if got := r.URL.Query().Get("branch"); got != "risc-v" {
+				t.Fatalf("show branch query = %q, want risc-v", got)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"name": "snap-openstack", "artifact_type": 2})
 		case "/api/v1/cache/sync/releases":
 			if r.Method != http.MethodPost {
@@ -50,7 +56,7 @@ func TestReleasesShowAndCacheSyncReleases(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	show, err := client.ReleasesShow(context.Background(), "snap-openstack", ReleasesShowOptions{})
+	show, err := client.ReleasesShow(context.Background(), "snap-openstack", ReleasesShowOptions{Branch: "risc-v"})
 	if err != nil {
 		t.Fatalf("ReleasesShow() error = %v", err)
 	}

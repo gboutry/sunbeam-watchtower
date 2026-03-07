@@ -542,14 +542,15 @@ func renderReleaseList(w io.Writer, format string, releases []dto.ReleaseListEnt
 			return nil
 		}
 		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tTRACK\tRISK\tTARGETS\tRESOURCES\tUPDATED")
+		fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tTRACK\tRISK\tBRANCH\tTARGETS\tRESOURCES\tUPDATED")
 		for _, release := range releases {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				release.Project,
 				release.ArtifactType.String(),
 				release.Name,
 				release.Track,
 				release.Risk,
+				emptyDash(release.Branch),
 				formatReleaseTargets(release.Targets),
 				formatReleaseResources(release.Resources),
 				formatTimestamp(release.UpdatedAt),
@@ -576,11 +577,12 @@ func renderReleaseShow(w io.Writer, format string, release *dto.ReleaseShowResul
 		}
 		fmt.Fprintln(w)
 		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "TRACK\tRISK\tTARGETS\tRESOURCES")
+		fmt.Fprintln(tw, "TRACK\tRISK\tBRANCH\tTARGETS\tRESOURCES")
 		for _, channel := range release.Channels {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
 				channel.Track,
 				channel.Risk,
+				emptyDash(channel.Branch),
 				formatReleaseTargets(channel.Targets),
 				formatReleaseResources(channel.Resources),
 			)
@@ -633,6 +635,13 @@ func formatReleaseResources(resources []dto.ReleaseResourceSnapshot) string {
 		}
 	}
 	return strings.Join(parts, ", ")
+}
+
+func emptyDash(value string) string {
+	if value == "" {
+		return "-"
+	}
+	return value
 }
 
 type cacheEntry struct {

@@ -25,7 +25,7 @@ func TestSourceFetch(t *testing.T) {
 			"channel-map": []map[string]any{
 				{"channel": map[string]any{"architecture": "amd64", "name": "2024.1/stable", "released-at": "2026-03-01T10:00:00Z", "risk": "stable", "track": "2024.1"}, "revision": 41, "version": "1.2.3"},
 				{"channel": map[string]any{"architecture": "arm64", "name": "2024.1/stable", "released-at": "2026-03-01T11:00:00Z", "risk": "stable", "track": "2024.1"}, "revision": 42, "version": "1.2.3"},
-				{"channel": map[string]any{"architecture": "amd64", "name": "2025.1/edge", "released-at": "2026-03-02T10:00:00Z", "risk": "edge", "track": "2025.1"}, "revision": 50, "version": "1.3.0"},
+				{"channel": map[string]any{"architecture": "amd64", "name": "2024.1/edge/risc-v", "released-at": "2026-03-02T10:00:00Z", "risk": "edge", "track": "2024.1"}, "revision": 50, "version": "1.3.0"},
 			},
 		})
 	}))
@@ -38,11 +38,25 @@ func TestSourceFetch(t *testing.T) {
 		Name:         "snap-openstack",
 		ArtifactType: dto.ArtifactSnap,
 		Tracks:       []string{"2024.1"},
+		Branches: []dto.TrackedReleaseBranch{{
+			Track:  "2024.1",
+			Branch: "risc-v",
+			Risks:  []dto.ReleaseRisk{dto.ReleaseRiskEdge},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("Fetch() error = %v", err)
 	}
-	if got.Name != "snap-openstack" || len(got.Channels) != 1 || len(got.Channels[0].Targets) != 2 {
-		t.Fatalf("Fetch() = %+v, want one filtered channel with two targets", got)
+	if got.Name != "snap-openstack" || len(got.Channels) != 2 {
+		t.Fatalf("Fetch() = %+v, want base and branch channels", got)
+	}
+	var foundBranch bool
+	for _, channel := range got.Channels {
+		if channel.Branch == "risc-v" {
+			foundBranch = true
+		}
+	}
+	if !foundBranch {
+		t.Fatalf("Fetch() channels = %+v, want risc-v branch", got.Channels)
 	}
 }

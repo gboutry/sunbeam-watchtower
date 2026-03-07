@@ -249,9 +249,10 @@ This distinction is important: stateful features must be designed around persist
 - extracted cache/excuses bootstrap wiring and runtime/auth-operation store wiring out of `internal/app/app.go` into focused bootstrap modules, with direct tests around the new cache/runtime seams, so `App` is closer to a thin composition root instead of carrying every lazy factory itself
 - reconciled `README.md`, `CONTRIBUTING.md`, and the runtime roadmap with the implemented CLI behavior: explicit server resolution order, local daemon lifecycle, and the current set of persistent workflows are now documented consistently
 - completed a targeted Huma request-contract audit on API input structs and added a mechanical API test that fails if any optional slice/map/bool request field is introduced without an explicit `required:` tag, so the contract hardening no longer relies on manual review alone
-- added a new cache-first `releases` domain for published snaps and charms: config-declared tracked publications, public Snap Store and Charmhub secondary adapters, a dedicated release cache, and a core release service now power `watchtower releases list|show` plus `/api/v1/releases`
+- added a new cache-first `releases` domain for published snaps and charms: repo-discovered artifact metadata (`snapcraft.yaml` / `charmcraft.yaml`), public Snap Store and Charmhub secondary adapters, a dedicated release cache, and a core release service now power `watchtower releases list|show` plus `/api/v1/releases`
 - extended the cache surface to manage published release snapshots as a first-class cache type, so `cache sync releases`, `cache clear releases`, and `cache status` follow the same frontend/API patterns as the other read-heavy domains
-- exposed tracked publications through the public config DTO, so `config show` reflects the same snap/charm release-tracking configuration that the new cache and query flows consume
+- refined release tracking so project `series` map to store tracks by default, `project.release.track_map` / `project.release.tracks` provide light overrides, and `project.release.branches` explicitly tracks maintained `track/risk/branch` channels for both snaps and charms
+- exposed those lightweight release overrides through the public config DTO, while keeping artifact names and charm resources repo-discovered instead of duplicating them in config
 
 ## Validation
 

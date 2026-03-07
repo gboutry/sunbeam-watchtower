@@ -20,9 +20,9 @@ func TestReleasesCommandsRenderListAndShow(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/releases":
-			_ = json.NewEncoder(w).Encode(map[string]any{"releases": []dto.ReleaseListEntry{{Project: "sunbeam", ArtifactType: dto.ArtifactSnap, Name: "snap-openstack", Track: "2024.1", Risk: dto.ReleaseRiskStable}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"releases": []dto.ReleaseListEntry{{Project: "sunbeam", ArtifactType: dto.ArtifactSnap, Name: "snap-openstack", Track: "2024.1", Risk: dto.ReleaseRiskStable, Branch: "risc-v"}}})
 		case "/api/v1/releases/snap-openstack":
-			_ = json.NewEncoder(w).Encode(dto.ReleaseShowResult{Project: "sunbeam", ArtifactType: dto.ArtifactSnap, Name: "snap-openstack", Tracks: []string{"2024.1"}, Channels: []dto.ReleaseChannelSnapshot{{Track: "2024.1", Risk: dto.ReleaseRiskStable}}})
+			_ = json.NewEncoder(w).Encode(dto.ReleaseShowResult{Project: "sunbeam", ArtifactType: dto.ArtifactSnap, Name: "snap-openstack", Tracks: []string{"2024.1"}, Channels: []dto.ReleaseChannelSnapshot{{Track: "2024.1", Risk: dto.ReleaseRiskStable, Branch: "risc-v"}}})
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -36,7 +36,7 @@ func TestReleasesCommandsRenderListAndShow(t *testing.T) {
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("list Execute() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "snap-openstack") || !strings.Contains(out.String(), "2024.1") {
+	if !strings.Contains(out.String(), "snap-openstack") || !strings.Contains(out.String(), "risc-v") {
 		t.Fatalf("unexpected list output: %q", out.String())
 	}
 

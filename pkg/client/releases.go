@@ -16,6 +16,7 @@ type ReleasesListOptions struct {
 	Projects     []string
 	ArtifactType string
 	Tracks       []string
+	Branches     []string
 	Risks        []string
 }
 
@@ -34,6 +35,9 @@ func (c *Client) ReleasesList(ctx context.Context, opts ReleasesListOptions) ([]
 	for _, value := range opts.Tracks {
 		q.Add("track", value)
 	}
+	for _, value := range opts.Branches {
+		q.Add("branch", value)
+	}
 	for _, value := range opts.Risks {
 		q.Add("risk", value)
 	}
@@ -48,6 +52,7 @@ func (c *Client) ReleasesList(ctx context.Context, opts ReleasesListOptions) ([]
 type ReleasesShowOptions struct {
 	ArtifactType string
 	Track        string
+	Branch       string
 }
 
 // ReleasesShow fetches the cached full matrix for one published artifact.
@@ -58,6 +63,9 @@ func (c *Client) ReleasesShow(ctx context.Context, name string, opts ReleasesSho
 	}
 	if opts.Track != "" {
 		q.Set("track", opts.Track)
+	}
+	if opts.Branch != "" {
+		q.Set("branch", opts.Branch)
 	}
 	var result dto.ReleaseShowResult
 	err := c.get(ctx, "/api/v1/releases/"+url.PathEscape(name), q, &result)

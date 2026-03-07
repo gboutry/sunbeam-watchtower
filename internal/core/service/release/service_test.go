@@ -30,7 +30,8 @@ func TestServiceSyncListAndShow(t *testing.T) {
 		}, {
 			Track:     "2025.1",
 			Risk:      dto.ReleaseRiskEdge,
-			Channel:   "2025.1/edge",
+			Branch:    "risc-v",
+			Channel:   "2025.1/edge/risc-v",
 			UpdatedAt: time.Now().UTC(),
 			Targets:   []dto.ReleaseTargetSnapshot{{Architecture: "amd64", Revision: 18, Version: "1.2.4"}},
 		}},
@@ -58,7 +59,15 @@ func TestServiceSyncListAndShow(t *testing.T) {
 		t.Fatalf("List() = %+v, want 2024.1/stable row", list)
 	}
 
-	show, err := service.Show(context.Background(), "snap-openstack", &[]dto.ArtifactType{dto.ArtifactSnap}[0], "")
+	branchList, err := service.List(context.Background(), dto.ReleaseListQuery{Branches: []string{"risc-v"}})
+	if err != nil {
+		t.Fatalf("List(branch) error = %v", err)
+	}
+	if len(branchList) != 1 || branchList[0].Branch != "risc-v" {
+		t.Fatalf("List(branch) = %+v, want one branch row", branchList)
+	}
+
+	show, err := service.Show(context.Background(), "snap-openstack", &[]dto.ArtifactType{dto.ArtifactSnap}[0], "", "")
 	if err != nil {
 		t.Fatalf("Show() error = %v", err)
 	}
@@ -79,7 +88,7 @@ func TestServiceShowAmbiguous(t *testing.T) {
 	}}}
 	service := NewService(cache, nil, slog.Default())
 
-	_, err := service.Show(context.Background(), "keystone", nil, "")
+	_, err := service.Show(context.Background(), "keystone", nil, "", "")
 	if !errors.Is(err, ErrAmbiguous) {
 		t.Fatalf("Show() error = %v, want ErrAmbiguous", err)
 	}
