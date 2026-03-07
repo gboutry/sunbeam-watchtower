@@ -31,7 +31,7 @@ func newReviewShowCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--project is required for review show")
 			}
 
-			mr, err := frontend.NewReviewClientWorkflow(opts.Client).Show(cmd.Context(), project, args[0])
+			mr, err := opts.Frontend().Reviews().Show(cmd.Context(), project, args[0])
 			if err != nil {
 				return err
 			}
@@ -66,7 +66,7 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 				"since", since,
 			)
 
-			result, err := frontend.NewReviewClientWorkflow(opts.Client).List(cmd.Context(), frontend.ReviewListRequest{
+			result, err := opts.Frontend().Reviews().List(cmd.Context(), frontend.ReviewListRequest{
 				Projects: projects,
 				Forges:   forges,
 				State:    state,

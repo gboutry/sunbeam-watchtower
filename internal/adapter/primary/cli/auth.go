@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 
-	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +26,7 @@ func newAuthLoginCmd(opts *Options) *cobra.Command {
 		Short: "Authenticate with Launchpad (interactive browser flow)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Fprintln(opts.Out, "Starting Launchpad OAuth flow...")
-			workflow := frontend.NewAuthClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Auth()
 			login, err := workflow.LoginLaunchpad(cmd.Context(), func(ctx context.Context, begin *dto.LaunchpadAuthBeginResult) error {
 				fmt.Fprintf(opts.Out, "\nOpen this URL in your browser to authorize:\n\n  %s\n\n", begin.AuthorizeURL)
 				fmt.Fprint(opts.Out, "Press Enter after authorizing in the browser...")
@@ -65,7 +64,7 @@ func newAuthStatusCmd(opts *Options) *cobra.Command {
 		Use:   "status",
 		Short: "Show authentication status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workflow := frontend.NewAuthClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Auth()
 			status, err := workflow.Status(cmd.Context())
 			if err != nil {
 				return err
@@ -93,7 +92,7 @@ func newAuthLogoutCmd(opts *Options) *cobra.Command {
 		Use:   "logout",
 		Short: "Clear persisted Launchpad credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workflow := frontend.NewAuthClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Auth()
 			result, err := workflow.LogoutLaunchpad(cmd.Context())
 			if err != nil {
 				return err

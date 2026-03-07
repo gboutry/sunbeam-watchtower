@@ -39,7 +39,7 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 				"include_mrs", includeMRs,
 			)
 
-			result, err := frontend.NewCommitClientWorkflow(opts.Client).Log(cmd.Context(), frontend.CommitLogRequest{
+			result, err := opts.Frontend().Commits().Log(cmd.Context(), frontend.CommitLogRequest{
 				Projects:   projects,
 				Forges:     forges,
 				Branch:     branch,
@@ -86,7 +86,7 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--bug-id is required")
 			}
 
-			result, err := frontend.NewCommitClientWorkflow(opts.Client).Track(cmd.Context(), frontend.CommitTrackRequest{
+			result, err := opts.Frontend().Commits().Track(cmd.Context(), frontend.CommitTrackRequest{
 				BugID:      bugID,
 				Projects:   projects,
 				Forges:     forges,
