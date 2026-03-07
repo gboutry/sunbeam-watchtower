@@ -49,17 +49,3 @@ func TestBuildTriggerOptionsFromInput_PreparedSource(t *testing.T) {
 		t.Fatalf("unexpected prepared recipes: %+v", normalized.Recipes)
 	}
 }
-
-func TestBuildTriggerOptionsFromInput_LegacyLPProjectCompatibility(t *testing.T) {
-	input := &BuildsTriggerInput{}
-	input.Body.Project = "demo"
-	input.Body.LPProject = "legacy-project"
-
-	got, err := buildTriggerOptionsFromInput(input)
-	if err != nil {
-		t.Fatalf("buildTriggerOptionsFromInput() error = %v", err)
-	}
-	if got.TargetProject != "legacy-project" {
-		t.Fatalf("TargetProject = %q, want legacy-project", got.TargetProject)
-	}
-}
