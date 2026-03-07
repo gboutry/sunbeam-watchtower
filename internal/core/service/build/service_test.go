@@ -393,37 +393,6 @@ func TestTrigger_PreResolvedRefs_FullPipeline(t *testing.T) {
 	}
 }
 
-func TestTrigger_PreResolvedRefs_LegacyPreparedCompatibility(t *testing.T) {
-	builder := &mockRecipeBuilder{
-		recipes: map[string]*dto.Recipe{},
-	}
-
-	svc := NewService(
-		map[string]ProjectBuilder{
-			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
-		},
-		nil, testLogger(),
-	)
-
-	tempName := "tmp-abc12345-keystone"
-	_, err := svc.Trigger(context.Background(), "sunbeam", []string{tempName}, TriggerOpts{
-		Owner: "test-user",
-		Prepared: &dto.PreparedBuildSource{
-			LPProject:    "legacy-project",
-			RepoSelfLink: "/repo/sunbeam",
-			GitRefLinks:  map[string]string{tempName: "/ref/abc12345"},
-			BuildPaths:   map[string]string{tempName: "rocks/keystone"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Trigger() error: %v", err)
-	}
-
-	if _, ok := builder.recipes[tempName]; !ok {
-		t.Fatalf("expected recipe %q to be created", tempName)
-	}
-}
-
 func TestTrigger_MultipleRecipes(t *testing.T) {
 	rKeystone := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
 	rNova := &dto.Recipe{Name: "nova", SelfLink: "/recipe/nova"}

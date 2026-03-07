@@ -19,33 +19,20 @@ type BuildsTriggerOptions struct {
 	Owner         string                   `json:"owner,omitempty"`
 	Prefix        string                   `json:"prefix,omitempty"`
 	TargetProject string                   `json:"target_project,omitempty"`
-	LPProject     string                   `json:"lp_project,omitempty"`
-	Prepared      *dto.PreparedBuildSource `json:"prepared,omitempty"`
-}
-
-type buildsTriggerRequest struct {
-	Project       string                   `json:"project"`
-	Artifacts     []string                 `json:"artifacts,omitempty"`
-	Wait          bool                     `json:"wait,omitempty"`
-	Timeout       string                   `json:"timeout,omitempty"`
-	Owner         string                   `json:"owner,omitempty"`
-	Prefix        string                   `json:"prefix,omitempty"`
-	TargetProject string                   `json:"target_project,omitempty"`
-	LPProject     string                   `json:"lp_project,omitempty"`
 	Prepared      *dto.PreparedBuildSource `json:"prepared,omitempty"`
 }
 
 // BuildsTrigger triggers builds for a project.
 func (c *Client) BuildsTrigger(ctx context.Context, opts BuildsTriggerOptions) (*dto.BuildTriggerResult, error) {
 	var result dto.BuildTriggerResult
-	err := c.post(ctx, "/api/v1/builds/trigger", canonicalBuildsTriggerRequest(opts), &result)
+	err := c.post(ctx, "/api/v1/builds/trigger", opts, &result)
 	return &result, err
 }
 
 // BuildsTriggerAsync triggers builds as a background operation.
 func (c *Client) BuildsTriggerAsync(ctx context.Context, opts BuildsTriggerOptions) (*dto.OperationJob, error) {
 	var result dto.OperationJob
-	err := c.post(ctx, "/api/v1/builds/trigger/async", canonicalBuildsTriggerRequest(opts), &result)
+	err := c.post(ctx, "/api/v1/builds/trigger/async", opts, &result)
 	return &result, err
 }
 
@@ -56,7 +43,6 @@ type BuildsListOptions struct {
 	State         string
 	Owner         string
 	TargetProject string
-	LPProject     string
 	RecipeNames   []string
 	RecipePrefix  string
 }
@@ -83,8 +69,6 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 	}
 	if opts.TargetProject != "" {
 		q.Set("target_project", opts.TargetProject)
-	} else if opts.LPProject != "" {
-		q.Set("lp_project", opts.LPProject)
 	}
 	for _, v := range opts.RecipeNames {
 		q.Add("recipe", v)
@@ -105,23 +89,12 @@ type BuildsDownloadOptions struct {
 	RecipePrefix  string   `json:"recipe_prefix,omitempty"`
 	Owner         string   `json:"owner,omitempty"`
 	TargetProject string   `json:"target_project,omitempty"`
-	LPProject     string   `json:"lp_project,omitempty"`
-	ArtifactsDir  string   `json:"artifacts_dir,omitempty"`
-}
-
-type buildsDownloadRequest struct {
-	Project       string   `json:"project"`
-	Artifacts     []string `json:"artifacts,omitempty"`
-	RecipePrefix  string   `json:"recipe_prefix,omitempty"`
-	Owner         string   `json:"owner,omitempty"`
-	TargetProject string   `json:"target_project,omitempty"`
-	LPProject     string   `json:"lp_project,omitempty"`
 	ArtifactsDir  string   `json:"artifacts_dir,omitempty"`
 }
 
 // BuildsDownload downloads build artifacts.
 func (c *Client) BuildsDownload(ctx context.Context, opts BuildsDownloadOptions) error {
-	return c.post(ctx, "/api/v1/builds/download", canonicalBuildsDownloadRequest(opts), nil)
+	return c.post(ctx, "/api/v1/builds/download", opts, nil)
 }
 
 // BuildsCleanupOptions holds the request body for cleaning up temporary recipes.
@@ -142,42 +115,4 @@ func (c *Client) BuildsCleanup(ctx context.Context, opts BuildsCleanupOptions) (
 	var result BuildsCleanupResult
 	err := c.post(ctx, "/api/v1/builds/cleanup", opts, &result)
 	return result.Deleted, err
-}
-
-func canonicalBuildsTriggerRequest(opts BuildsTriggerOptions) buildsTriggerRequest {
-	targetProject := opts.TargetProject
-	lpProject := ""
-	if targetProject == "" {
-		lpProject = opts.LPProject
-	}
-
-	return buildsTriggerRequest{
-		Project:       opts.Project,
-		Artifacts:     opts.Artifacts,
-		Wait:          opts.Wait,
-		Timeout:       opts.Timeout,
-		Owner:         opts.Owner,
-		Prefix:        opts.Prefix,
-		TargetProject: targetProject,
-		LPProject:     lpProject,
-		Prepared:      opts.Prepared,
-	}
-}
-
-func canonicalBuildsDownloadRequest(opts BuildsDownloadOptions) buildsDownloadRequest {
-	targetProject := opts.TargetProject
-	lpProject := ""
-	if targetProject == "" {
-		lpProject = opts.LPProject
-	}
-
-	return buildsDownloadRequest{
-		Project:       opts.Project,
-		Artifacts:     opts.Artifacts,
-		RecipePrefix:  opts.RecipePrefix,
-		Owner:         opts.Owner,
-		TargetProject: targetProject,
-		LPProject:     lpProject,
-		ArtifactsDir:  opts.ArtifactsDir,
-	}
 }

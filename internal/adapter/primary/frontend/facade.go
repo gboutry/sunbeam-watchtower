@@ -59,9 +59,6 @@ func (f *Facade) StartBuildTrigger(ctx context.Context, opts BuildTriggerOptions
 		attributes["owner"] = opts.Trigger.Owner
 	}
 	targetProject := opts.Trigger.TargetProject
-	if targetProject == "" {
-		targetProject = opts.Trigger.LPProject
-	}
 	if prepared := opts.Trigger.Prepared.Normalize(); prepared != nil && prepared.TargetProject != "" {
 		targetProject = prepared.TargetProject
 	}

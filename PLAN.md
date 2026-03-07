@@ -236,7 +236,9 @@ This distinction is important: stateful features must be designed around persist
 - tightened the frontend architecture guard so only `internal/adapter/primary/frontend/transport.go` may mention the concrete `pkg/client.Client` type; workflow/facade code must now consume the transport wrapper instead of reaching for the raw HTTP client directly
 - consolidated the stateful and forge-query HTTP handlers (`auth`, `operations`, `builds`, `projects`, `bugs`, `reviews`, `commits`, `config`) behind a shared server-side frontend facade, and added an API architecture guard so those handler files stop reaching into `app` or constructing workflows directly
 - added API smoke tests for handler error mapping and query validation, and set an explicit `internal/adapter/primary/api: 35` changed-package coverage floor in `.coverage-policy.yaml` so the guard tracks the current breadth of the package without weakening the global default threshold
-- introduced a backend-neutral prepared build contract (`backend`, `target_project`, `repository`, `recipes`) while keeping the legacy Launchpad fields as compatibility aliases, and rewired the build API/client/frontend/service flow to emit the neutral contract by default while still accepting legacy callers
+- introduced a backend-neutral prepared build contract (`backend`, `target_project`, `repository`, `recipes`) and rewired the build API/client/frontend/service flow around that single contract
+- removed the temporary legacy Launchpad alias fields from the prepared build contract and build transport surfaces, so new code only uses the backend-neutral request shape instead of carrying parallel field names
+- ratcheted the changed-package coverage policy to match the current breadth of the refactored transport/DTO packages (`pkg/client: 19`, `pkg/dto/v1: 34`) after removing the compatibility-only code paths, and added focused client transport tests instead of backfilling low-value compatibility coverage
 - added focused build transport tests in `pkg/client` and set an explicit `pkg/client: 21` changed-package coverage floor so transport-shaping changes remain guarded without pretending the entire multi-endpoint client package is already at the default package-wide maturity level
 - extracted the duplicated adapter AST helpers into `tools/archtest` and rewired the CLI, frontend, and API architecture tests to use the shared loader/import/signature walker primitives, so future boundary rules evolve from one implementation instead of three diverging copies
 
@@ -426,8 +428,8 @@ The build system supports two distinct modes: **local** (development/testing) an
 - The CLI resolves the LP owner from the authenticated user via `repoManager.GetCurrentUser()`.
 - Pushes local git HEAD to a temporary LP repo/branch (both `main` and `tmp-<sha>`).
 - Computes temp recipe names, build paths, and git ref links locally.
-- Calls the API with pre-resolved LP resource identifiers:
-  `RepoSelfLink`, `GitRefLinks`, `BuildPaths`, `LPProject`, `Owner`.
+- Calls the API with a prepared backend contract:
+  `backend`, `target_project`, `repository`, `recipes`, `owner`.
 - The service receives these and creates recipes / requests builds — no git operations.
 - The `port.GitClient` dependency has been removed from the build service.
 
@@ -461,7 +463,7 @@ Per-project build settings live in `ProjectBuildConfig`:
 | `Artifacts`           | `artifacts`             | Explicit artifact names to build                                 |
 | `PrepareCommand`      | `prepare_command`       | Shell command run before each build                              |
 | `OfficialCodehosting` | `official_codehosting`  | When true, use LP's default git repo for remote builds           |
-| `LPProject`           | `lp_project`            | LP project name for recipe ops (defaults to code.project)        |
+| `LPProject`           | `lp_project`            | Configured LP project used internally for recipe ops             |
 
 `build.owner` is only required when `official_codehosting` is true.
 For local-only builds the owner is resolved at runtime via the LP `Me()` API.

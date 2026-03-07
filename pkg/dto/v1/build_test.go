@@ -5,12 +5,13 @@ package dto
 
 import "testing"
 
-func TestPreparedBuildSourceNormalizeLegacyLaunchpadFields(t *testing.T) {
+func TestPreparedBuildSourceNormalizeDefaultsBackend(t *testing.T) {
 	source := (&PreparedBuildSource{
-		LPProject:    "lp-project",
-		RepoSelfLink: "/repo/demo",
-		GitRefLinks:  map[string]string{"tmp-keystone": "/ref/tmp-keystone"},
-		BuildPaths:   map[string]string{"tmp-keystone": "rocks/keystone"},
+		TargetProject: "lp-project",
+		Repository:    "/repo/demo",
+		Recipes: map[string]PreparedBuildRecipe{
+			"tmp-keystone": {SourceRef: "/ref/tmp-keystone", BuildPath: "rocks/keystone"},
+		},
 	}).Normalize()
 
 	if source == nil {
@@ -36,8 +37,6 @@ func TestPreparedBuildSourceNormalizePreservesGenericFields(t *testing.T) {
 		Recipes: map[string]PreparedBuildRecipe{
 			"tmp-keystone": {SourceRef: "/ref/generic", BuildPath: "rocks/keystone"},
 		},
-		LPProject:    "legacy-project",
-		RepoSelfLink: "/repo/legacy",
 	}).Normalize()
 
 	if source.TargetProject != "generic-project" || source.Repository != "/repo/generic" {

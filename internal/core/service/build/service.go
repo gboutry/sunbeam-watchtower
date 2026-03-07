@@ -49,7 +49,6 @@ type TriggerOpts struct {
 	Prefix  string // temp recipe name prefix
 
 	TargetProject string // override backend target project for recipe operations
-	LPProject     string // deprecated Launchpad-specific alias for TargetProject
 	Prepared      *dto.PreparedBuildSource
 
 	Channels      map[string]string
@@ -72,7 +71,6 @@ type ListOpts struct {
 	State         string   // filter by state
 	Owner         string   // override project owner
 	TargetProject string   // override backend target project for recipe lookup
-	LPProject     string   // deprecated Launchpad-specific alias for TargetProject
 	RecipeNames   []string // explicit recipe names (overrides project config)
 	RecipePrefix  string   // filter recipes by name prefix (used with ListRecipesByOwner)
 }
@@ -135,9 +133,6 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	prepared := opts.Prepared.Normalize()
 
 	targetProject := opts.TargetProject
-	if targetProject == "" {
-		targetProject = opts.LPProject
-	}
 	if prepared != nil && prepared.TargetProject != "" {
 		targetProject = prepared.TargetProject
 	}
@@ -457,8 +452,6 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 		targetProject := pb.RecipeProject()
 		if opts.TargetProject != "" {
 			targetProject = opts.TargetProject
-		} else if opts.LPProject != "" {
-			targetProject = opts.LPProject
 		}
 
 		recipeNames := pb.Artifacts
@@ -553,7 +546,6 @@ type DownloadOpts struct {
 	RecipePrefix  string   // discover recipes by prefix
 	Owner         string   // override LP owner
 	TargetProject string   // override backend target project
-	LPProject     string   // deprecated Launchpad-specific alias for TargetProject
 	OutputDir     string   // output directory
 }
 
@@ -577,8 +569,6 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 		targetProject := pb.RecipeProject()
 		if opts.TargetProject != "" {
 			targetProject = opts.TargetProject
-		} else if opts.LPProject != "" {
-			targetProject = opts.LPProject
 		}
 
 		recipeNames := opts.ArtifactNames

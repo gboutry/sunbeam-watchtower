@@ -162,54 +162,23 @@ type PreparedBuildRecipe struct {
 // PreparedBuildSource holds frontend-prepared backend references for split build workflows.
 // It is produced locally and sent to the server so the server can execute the
 // durable build workflow without needing local filesystem access.
-//
-// The generic fields are the preferred contract. The Launchpad-specific fields
-// are kept as compatibility aliases for existing clients and are normalized into
-// the generic view by helper methods on this type.
 type PreparedBuildSource struct {
 	Backend       PreparedBuildBackend           `json:"backend,omitempty" yaml:"backend,omitempty"`
 	TargetProject string                         `json:"target_project,omitempty" yaml:"target_project,omitempty"`
 	Repository    string                         `json:"repository,omitempty" yaml:"repository,omitempty"`
 	Recipes       map[string]PreparedBuildRecipe `json:"recipes,omitempty" yaml:"recipes,omitempty"`
-
-	LPProject    string            `json:"lp_project,omitempty" yaml:"lp_project,omitempty"`
-	RepoSelfLink string            `json:"repo_self_link,omitempty" yaml:"repo_self_link,omitempty"`
-	GitRefLinks  map[string]string `json:"git_ref_links,omitempty" yaml:"git_ref_links,omitempty"`
-	BuildPaths   map[string]string `json:"build_paths,omitempty" yaml:"build_paths,omitempty"`
 }
 
-// Normalize returns a copy with compatibility aliases folded into the generic fields.
+// Normalize returns a copy with default backend inference applied.
 func (p *PreparedBuildSource) Normalize() *PreparedBuildSource {
 	if p == nil {
 		return nil
 	}
 
 	normalized := *p
-	if normalized.Backend == "" && (normalized.LPProject != "" || normalized.RepoSelfLink != "" || len(normalized.GitRefLinks) > 0) {
+	if normalized.Backend == "" && (normalized.TargetProject != "" || normalized.Repository != "" || len(normalized.Recipes) > 0) {
 		normalized.Backend = PreparedBuildBackendLaunchpad
 	}
-	if normalized.TargetProject == "" {
-		normalized.TargetProject = normalized.LPProject
-	}
-	if normalized.Repository == "" {
-		normalized.Repository = normalized.RepoSelfLink
-	}
-	if len(normalized.Recipes) == 0 && (len(normalized.GitRefLinks) > 0 || len(normalized.BuildPaths) > 0) {
-		normalized.Recipes = make(map[string]PreparedBuildRecipe, len(normalized.GitRefLinks))
-		for recipeName, sourceRef := range normalized.GitRefLinks {
-			normalized.Recipes[recipeName] = PreparedBuildRecipe{
-				SourceRef: sourceRef,
-				BuildPath: normalized.BuildPaths[recipeName],
-			}
-		}
-		for recipeName, buildPath := range normalized.BuildPaths {
-			if _, ok := normalized.Recipes[recipeName]; ok {
-				continue
-			}
-			normalized.Recipes[recipeName] = PreparedBuildRecipe{BuildPath: buildPath}
-		}
-	}
-
 	return &normalized
 }
 
