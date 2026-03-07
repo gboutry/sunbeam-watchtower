@@ -238,6 +238,7 @@ This distinction is important: stateful features must be designed around persist
 - added API smoke tests for handler error mapping and query validation, and set an explicit `internal/adapter/primary/api: 35` changed-package coverage floor in `.coverage-policy.yaml` so the guard tracks the current breadth of the package without weakening the global default threshold
 - introduced a backend-neutral prepared build contract (`backend`, `target_project`, `repository`, `recipes`) while keeping the legacy Launchpad fields as compatibility aliases, and rewired the build API/client/frontend/service flow to emit the neutral contract by default while still accepting legacy callers
 - added focused build transport tests in `pkg/client` and set an explicit `pkg/client: 21` changed-package coverage floor so transport-shaping changes remain guarded without pretending the entire multi-endpoint client package is already at the default package-wide maturity level
+- extracted the duplicated adapter AST helpers into `tools/archtest` and rewired the CLI, frontend, and API architecture tests to use the shared loader/import/signature walker primitives, so future boundary rules evolve from one implementation instead of three diverging copies
 
 ## Validation
 
@@ -529,7 +530,7 @@ The next architecture work should be delivered in the following order.
 
 - [x] consolidate the stateful and forge-query HTTP handlers behind a shared server-side frontend facade, and enforce that boundary mechanically in `internal/adapter/primary/api`
 - [x] reduce build/backend coupling by introducing a backend-neutral prepared build contract while keeping Launchpad compatibility for existing clients
-- [ ] replace duplicated adapter AST guards with shared tooling so CLI, frontend, and API boundary checks evolve from one implementation
+- [x] replace duplicated adapter AST guards with shared tooling so CLI, frontend, and API boundary checks evolve from one implementation
 
 ### Phase 1: declare the runtime contract
 

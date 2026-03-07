@@ -5,11 +5,10 @@ package api
 
 import (
 	"go/ast"
-	"go/parser"
-	"go/token"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gboutry/sunbeam-watchtower/tools/archtest"
 )
 
 var apiFacadeExemptFiles = map[string]bool{
@@ -21,76 +20,42 @@ var apiFacadeExemptFiles = map[string]bool{
 }
 
 func TestAPIHandlersUseServerFacadeInsteadOfAppSelectors(t *testing.T) {
-	matches, err := filepath.Glob("*.go")
+	files, err := archtest.LoadGoFiles("*.go", apiFacadeExemptFiles)
 	if err != nil {
-		t.Fatalf("Glob() error = %v", err)
+		t.Fatalf("LoadGoFiles() error = %v", err)
 	}
 
-	fset := token.NewFileSet()
-	for _, path := range matches {
-		base := filepath.Base(path)
-		if strings.HasSuffix(base, "_test.go") || apiFacadeExemptFiles[base] {
-			continue
-		}
-
-		file, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Fatalf("ParseFile(%q) error = %v", path, err)
-		}
-
-		ast.Inspect(file, func(node ast.Node) bool {
-			selector, ok := node.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-
+	for _, file := range files {
+		archtest.Visit[*ast.SelectorExpr](file.AST, func(selector *ast.SelectorExpr) {
 			ident, ok := selector.X.(*ast.Ident)
 			if ok && ident.Name == "application" {
-				t.Fatalf("%s uses application.%s directly; route API handler logic through frontend.NewServerFacade()", path, selector.Sel.Name)
+				t.Fatalf("%s uses application.%s directly; route API handler logic through frontend.NewServerFacade()", file.Path, selector.Sel.Name)
 			}
-			return true
 		})
 	}
 }
 
 func TestAPIHandlersDoNotInstantiateWorkflowsDirectly(t *testing.T) {
-	matches, err := filepath.Glob("*.go")
+	files, err := archtest.LoadGoFiles("*.go", apiFacadeExemptFiles)
 	if err != nil {
-		t.Fatalf("Glob() error = %v", err)
+		t.Fatalf("LoadGoFiles() error = %v", err)
 	}
 
-	fset := token.NewFileSet()
-	for _, path := range matches {
-		base := filepath.Base(path)
-		if strings.HasSuffix(base, "_test.go") || apiFacadeExemptFiles[base] {
-			continue
-		}
-
-		file, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Fatalf("ParseFile(%q) error = %v", path, err)
-		}
-
-		ast.Inspect(file, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-
+	for _, file := range files {
+		archtest.Visit[*ast.CallExpr](file.AST, func(call *ast.CallExpr) {
 			selector, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok {
-				return true
+				return
 			}
 
 			pkgIdent, ok := selector.X.(*ast.Ident)
 			if !ok || pkgIdent.Name != "frontend" {
-				return true
+				return
 			}
 
 			if strings.HasPrefix(selector.Sel.Name, "New") && selector.Sel.Name != "NewServerFacade" {
-				t.Fatalf("%s calls frontend.%s directly; API handlers must use frontend.NewServerFacade()", path, selector.Sel.Name)
+				t.Fatalf("%s calls frontend.%s directly; API handlers must use frontend.NewServerFacade()", file.Path, selector.Sel.Name)
 			}
-			return true
 		})
 	}
 }
