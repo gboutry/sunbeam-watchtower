@@ -68,9 +68,10 @@ type ProjectReleaseBranchConfig struct {
 
 // ProjectReleaseConfig holds per-project release tracking overrides.
 type ProjectReleaseConfig struct {
-	Tracks   []string                     `mapstructure:"tracks" yaml:"tracks,omitempty"`
-	TrackMap map[string]string            `mapstructure:"track_map" yaml:"track_map,omitempty"`
-	Branches []ProjectReleaseBranchConfig `mapstructure:"branches" yaml:"branches,omitempty"`
+	Tracks        []string                     `mapstructure:"tracks" yaml:"tracks,omitempty"`
+	TrackMap      map[string]string            `mapstructure:"track_map" yaml:"track_map,omitempty"`
+	Branches      []ProjectReleaseBranchConfig `mapstructure:"branches" yaml:"branches,omitempty"`
+	SkipArtifacts []string                     `mapstructure:"skip_artifacts" yaml:"skip_artifacts,omitempty"`
 }
 
 // ProjectConfig defines a project tracked across forges.
@@ -289,6 +290,16 @@ func (c *Config) Validate() error {
 					return fmt.Errorf("projects[%d] (%s): release.tracks contains duplicate %q", i, p.Name, track)
 				}
 				seenTracks[track] = true
+			}
+			seenArtifacts := make(map[string]bool, len(p.Release.SkipArtifacts))
+			for _, name := range p.Release.SkipArtifacts {
+				if name == "" {
+					return fmt.Errorf("projects[%d] (%s): release.skip_artifacts cannot contain empty values", i, p.Name)
+				}
+				if seenArtifacts[name] {
+					return fmt.Errorf("projects[%d] (%s): release.skip_artifacts contains duplicate %q", i, p.Name, name)
+				}
+				seenArtifacts[name] = true
 			}
 			for series, track := range p.Release.TrackMap {
 				if series == "" {
