@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func TestBuildsTriggerPrefersTargetProject(t *testing.T) {
+func TestBuildsTriggerUsesTargetProject(t *testing.T) {
 	var body map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -25,7 +25,6 @@ func TestBuildsTriggerPrefersTargetProject(t *testing.T) {
 	_, err := NewClient(ts.URL).BuildsTrigger(context.Background(), BuildsTriggerOptions{
 		Project:       "demo",
 		TargetProject: "target-project",
-		LPProject:     "legacy-project",
 	})
 	if err != nil {
 		t.Fatalf("BuildsTrigger() error = %v", err)
@@ -33,12 +32,9 @@ func TestBuildsTriggerPrefersTargetProject(t *testing.T) {
 	if body["target_project"] != "target-project" {
 		t.Fatalf("target_project = %v, want target-project", body["target_project"])
 	}
-	if _, ok := body["lp_project"]; ok {
-		t.Fatalf("lp_project should not be sent when target_project is set: %+v", body)
-	}
 }
 
-func TestBuildsListFallsBackToLegacyLPProjectQuery(t *testing.T) {
+func TestBuildsListUsesTargetProjectQuery(t *testing.T) {
 	var rawQuery string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rawQuery = r.URL.RawQuery
@@ -47,17 +43,17 @@ func TestBuildsListFallsBackToLegacyLPProjectQuery(t *testing.T) {
 	defer ts.Close()
 
 	_, err := NewClient(ts.URL).BuildsList(context.Background(), BuildsListOptions{
-		LPProject: "legacy-project",
+		TargetProject: "target-project",
 	})
 	if err != nil {
 		t.Fatalf("BuildsList() error = %v", err)
 	}
-	if !strings.Contains(rawQuery, "lp_project=legacy-project") {
-		t.Fatalf("query = %q, want legacy lp_project", rawQuery)
+	if !strings.Contains(rawQuery, "target_project=target-project") {
+		t.Fatalf("query = %q, want target_project", rawQuery)
 	}
 }
 
-func TestBuildsDownloadPrefersTargetProject(t *testing.T) {
+func TestBuildsDownloadUsesTargetProject(t *testing.T) {
 	var body map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -70,7 +66,6 @@ func TestBuildsDownloadPrefersTargetProject(t *testing.T) {
 	err := NewClient(ts.URL).BuildsDownload(context.Background(), BuildsDownloadOptions{
 		Project:       "demo",
 		TargetProject: "target-project",
-		LPProject:     "legacy-project",
 	})
 	if err != nil {
 		t.Fatalf("BuildsDownload() error = %v", err)
@@ -78,7 +73,29 @@ func TestBuildsDownloadPrefersTargetProject(t *testing.T) {
 	if body["target_project"] != "target-project" {
 		t.Fatalf("target_project = %v, want target-project", body["target_project"])
 	}
-	if _, ok := body["lp_project"]; ok {
-		t.Fatalf("lp_project should not be sent when target_project is set: %+v", body)
+}
+
+func TestBuildsTriggerAsyncUsesTargetProject(t *testing.T) {
+	var body map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		_, _ = w.Write([]byte(`{"id":"op-1","kind":"build.trigger","state":"queued"}`))
+	}))
+	defer ts.Close()
+
+	got, err := NewClient(ts.URL).BuildsTriggerAsync(context.Background(), BuildsTriggerOptions{
+		Project:       "demo",
+		TargetProject: "target-project",
+	})
+	if err != nil {
+		t.Fatalf("BuildsTriggerAsync() error = %v", err)
+	}
+	if got.ID != "op-1" {
+		t.Fatalf("job = %+v, want op-1", got)
+	}
+	if body["target_project"] != "target-project" {
+		t.Fatalf("target_project = %v, want target-project", body["target_project"])
 	}
 }

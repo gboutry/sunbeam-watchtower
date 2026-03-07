@@ -26,7 +26,6 @@ type BuildsTriggerInput struct {
 		Owner         string                   `json:"owner,omitempty" required:"false" doc:"Override backend owner"`
 		Prefix        string                   `json:"prefix,omitempty" required:"false" doc:"Temp recipe name prefix"`
 		TargetProject string                   `json:"target_project,omitempty" required:"false" doc:"Override backend target project for recipe operations"`
-		LPProject     string                   `json:"lp_project,omitempty" required:"false" doc:"Deprecated Launchpad-specific alias for target_project"`
 		Prepared      *dto.PreparedBuildSource `json:"prepared,omitempty" required:"false" doc:"Frontend-prepared backend references for split local build workflows"`
 	}
 }
@@ -45,7 +44,6 @@ type BuildsListInput struct {
 	State         string   `query:"state" doc:"Filter by state"`
 	Owner         string   `query:"owner" doc:"Override backend owner"`
 	TargetProject string   `query:"target_project" doc:"Override backend target project for recipe lookup"`
-	LPProject     string   `query:"lp_project" doc:"Deprecated Launchpad-specific alias for target_project"`
 	RecipeNames   []string `query:"recipe" required:"false" doc:"Explicit recipe names (overrides project config)"`
 	RecipePrefix  string   `query:"recipe_prefix" doc:"Filter recipes by name prefix"`
 }
@@ -67,7 +65,6 @@ type BuildsDownloadInput struct {
 		RecipePrefix  string   `json:"recipe_prefix,omitempty" required:"false" doc:"Filter recipes by name prefix"`
 		Owner         string   `json:"owner,omitempty" required:"false" doc:"Override backend owner"`
 		TargetProject string   `json:"target_project,omitempty" required:"false" doc:"Override backend target project"`
-		LPProject     string   `json:"lp_project,omitempty" required:"false" doc:"Deprecated Launchpad-specific alias for target_project"`
 		ArtifactsDir  string   `json:"artifacts_dir,omitempty" required:"false" doc:"Output directory (default from config)"`
 	}
 }
@@ -161,8 +158,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			All:           input.All,
 			State:         input.State,
 			Owner:         input.Owner,
-			TargetProject: targetProject(input.TargetProject, input.LPProject),
-			LPProject:     input.LPProject,
+			TargetProject: input.TargetProject,
 			RecipeNames:   input.RecipeNames,
 			RecipePrefix:  input.RecipePrefix,
 		})
@@ -197,8 +193,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			ArtifactNames: input.Body.Artifacts,
 			RecipePrefix:  input.Body.RecipePrefix,
 			Owner:         input.Body.Owner,
-			TargetProject: targetProject(input.Body.TargetProject, input.Body.LPProject),
-			LPProject:     input.Body.LPProject,
+			TargetProject: input.Body.TargetProject,
 			OutputDir:     artifactsDir,
 		}); err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("download failed: %v", err))
@@ -252,15 +247,7 @@ func buildTriggerOptionsFromInput(input *BuildsTriggerInput) (build.TriggerOpts,
 		Timeout:       timeout,
 		Owner:         input.Body.Owner,
 		Prefix:        input.Body.Prefix,
-		TargetProject: targetProject(input.Body.TargetProject, input.Body.LPProject),
-		LPProject:     input.Body.LPProject,
+		TargetProject: input.Body.TargetProject,
 		Prepared:      input.Body.Prepared,
 	}, nil
-}
-
-func targetProject(target, legacy string) string {
-	if target != "" {
-		return target
-	}
-	return legacy
 }
