@@ -3,10 +3,10 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
+	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
@@ -58,7 +58,12 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			}
 
 			if source == "local" {
-				if err := prepareLocalTrigger(cmd, opts, projectName, artifactNames, localPath, prefix, &triggerOpts); err != nil {
+				preparer, err := newLocalBuildPreparer(opts)
+				if err != nil {
+					return err
+				}
+				triggerOpts, err = preparer.PrepareTrigger(cmd.Context(), triggerOpts, localPath)
+				if err != nil {
 					return err
 				}
 			}
@@ -132,156 +137,6 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	return cmd
 }
 
-// prepareLocalTrigger resolves local git + LP resources and populates triggerOpts.
-func prepareLocalTrigger(cmd *cobra.Command, opts *Options, projectName string, artifactNames []string, localPath, prefix string, triggerOpts *client.BuildsTriggerOptions) error {
-	ctx := cmd.Context()
-	app := opts.App
-
-	gitClient := app.GitClient()
-	repoMgr, err := app.BuildRepoManager()
-	if err != nil {
-		return fmt.Errorf("init repo manager: %w", err)
-	}
-	builders, err := app.BuildRecipeBuilders()
-	if err != nil {
-		return fmt.Errorf("init recipe builders: %w", err)
-	}
-	pb, ok := builders[projectName]
-	if !ok {
-		return fmt.Errorf("unknown project %q", projectName)
-	}
-
-	// Resolve owner.
-	lpOwner := triggerOpts.Owner
-	if lpOwner == "" {
-		lpOwner, err = repoMgr.GetCurrentUser(ctx)
-		if err != nil {
-			return fmt.Errorf("get current LP user: %w", err)
-		}
-	}
-	triggerOpts.Owner = lpOwner
-
-	// Resolve HEAD SHA.
-	sha, err := gitClient.HeadSHA(localPath)
-	if err != nil {
-		return fmt.Errorf("resolve HEAD SHA: %w", err)
-	}
-	shortSHA := sha[:8]
-
-	// Discover artifacts if not specified.
-	if len(artifactNames) == 0 {
-		artifactNames, err = pb.Strategy.DiscoverRecipes(localPath)
-		if err != nil {
-			return fmt.Errorf("discover artifacts: %w", err)
-		}
-	}
-
-	// Compute temp recipe names, build paths.
-	tempNames := make([]string, 0, len(artifactNames))
-	buildPaths := make(map[string]string, len(artifactNames))
-	for _, name := range artifactNames {
-		tempName := pb.Strategy.TempRecipeName(name, sha, prefix)
-		tempNames = append(tempNames, tempName)
-		buildPaths[tempName] = pb.Strategy.BuildPath(name)
-	}
-	triggerOpts.Artifacts = tempNames
-	triggerOpts.BuildPaths = buildPaths
-
-	// Ensure LP project + repo exist.
-	lpProject, err := repoMgr.GetOrCreateProject(ctx, lpOwner)
-	if err != nil {
-		return fmt.Errorf("get/create LP project: %w", err)
-	}
-	triggerOpts.LPProject = lpProject
-
-	repoSelfLink, gitSSHURL, err := repoMgr.GetOrCreateRepo(ctx, lpOwner, lpProject, projectName)
-	if err != nil {
-		return fmt.Errorf("get/create LP repo: %w", err)
-	}
-	triggerOpts.RepoSelfLink = repoSelfLink
-
-	// Push code to LP repo.
-	if err := pushToLP(gitClient, localPath, gitSSHURL, lpOwner, shortSHA); err != nil {
-		return fmt.Errorf("push to LP: %w", err)
-	}
-
-	// Wait for the git ref to appear on LP.
-	tmpBranch := "refs/heads/tmp-" + shortSHA
-	refLink, err := repoMgr.WaitForGitRef(ctx, repoSelfLink, tmpBranch, 2*time.Minute)
-	if err != nil {
-		return fmt.Errorf("wait for git ref: %w", err)
-	}
-
-	// All temp recipes point to the same ref.
-	gitRefLinks := make(map[string]string, len(tempNames))
-	for _, name := range tempNames {
-		gitRefLinks[name] = refLink
-	}
-	triggerOpts.GitRefLinks = gitRefLinks
-
-	return nil
-}
-
-// pushToLP pushes the current HEAD to a Launchpad git repo as both the main
-// branch and a tmp-<sha> branch. The remote is added/removed automatically.
-func pushToLP(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, shortSHA string) error {
-	// Fixup git+ssh:// → ssh:// and inject username.
-	sshURL := strings.Replace(gitSSHURL, "git+ssh://", "ssh://", 1)
-	if !strings.Contains(sshURL, "@") {
-		sshURL = strings.Replace(sshURL, "ssh://", "ssh://"+lpOwner+"@", 1)
-	}
-
-	const remoteName = "watchtower-tmp"
-	_ = gitClient.RemoveRemote(localPath, remoteName)
-	if err := gitClient.AddRemote(localPath, remoteName, sshURL); err != nil {
-		return fmt.Errorf("add remote: %w", err)
-	}
-	defer func() { _ = gitClient.RemoveRemote(localPath, remoteName) }()
-
-	// Push HEAD to both the main branch and a tmp branch.
-	tmpBranch := "refs/heads/tmp-" + shortSHA
-	if err := gitClient.Push(localPath, remoteName, "HEAD", "refs/heads/main", true); err != nil {
-		return fmt.Errorf("push main: %w", err)
-	}
-	if err := gitClient.Push(localPath, remoteName, "HEAD", tmpBranch, true); err != nil {
-		return fmt.Errorf("push tmp branch: %w", err)
-	}
-
-	return nil
-}
-
-// prepareLocalListByPrefix resolves owner and LP project, then sets
-// RecipePrefix so the service discovers recipes via ListRecipesByOwner.
-func prepareLocalListByPrefix(cmd *cobra.Command, opts *Options, prefix string, listOpts *client.BuildsListOptions) error {
-	ctx := cmd.Context()
-	app := opts.App
-
-	repoMgr, err := app.BuildRepoManager()
-	if err != nil {
-		return fmt.Errorf("init repo manager: %w", err)
-	}
-
-	// Resolve owner.
-	lpOwner := listOpts.Owner
-	if lpOwner == "" {
-		lpOwner, err = repoMgr.GetCurrentUser(ctx)
-		if err != nil {
-			return fmt.Errorf("get current LP user: %w", err)
-		}
-		listOpts.Owner = lpOwner
-	}
-
-	// Resolve LP project for local builds.
-	lpProject, err := repoMgr.GetOrCreateProject(ctx, lpOwner)
-	if err != nil {
-		return fmt.Errorf("get LP project: %w", err)
-	}
-	listOpts.LPProject = lpProject
-	listOpts.RecipePrefix = prefix
-
-	return nil
-}
-
 func newBuildListCmd(opts *Options) *cobra.Command {
 	var projects []string
 	var all bool
@@ -301,6 +156,10 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 			}
 
 			if source == "local" {
+				preparer, err := newLocalBuildPreparer(opts)
+				if err != nil {
+					return err
+				}
 				// Default to showing all builds for local source (user
 				// typically wants to see completed results).
 				if !cmd.Flags().Changed("all") {
@@ -312,7 +171,8 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 				if sha != "" {
 					listPrefix = prefix + sha + "-"
 				}
-				if err := prepareLocalListByPrefix(cmd, opts, listPrefix, &listOpts); err != nil {
+				listOpts, err = preparer.PrepareListByPrefix(cmd.Context(), listOpts, listPrefix)
+				if err != nil {
 					return err
 				}
 			}
@@ -358,32 +218,18 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 			}
 
 			if source == "local" {
+				preparer, err := newLocalBuildPreparer(opts)
+				if err != nil {
+					return err
+				}
 				listPrefix := prefix
 				if sha != "" {
 					listPrefix = prefix + sha + "-"
 				}
-
-				repoMgr, err := opts.App.BuildRepoManager()
+				dlOpts, err = preparer.PrepareDownloadByPrefix(cmd.Context(), dlOpts, listPrefix)
 				if err != nil {
-					return fmt.Errorf("init repo manager: %w", err)
+					return err
 				}
-				ctx := cmd.Context()
-
-				lpOwner := owner
-				if lpOwner == "" {
-					lpOwner, err = repoMgr.GetCurrentUser(ctx)
-					if err != nil {
-						return fmt.Errorf("get current LP user: %w", err)
-					}
-				}
-				dlOpts.Owner = lpOwner
-
-				lpProject, err := repoMgr.GetOrCreateProject(ctx, lpOwner)
-				if err != nil {
-					return fmt.Errorf("get LP project: %w", err)
-				}
-				dlOpts.LPProject = lpProject
-				dlOpts.RecipePrefix = listPrefix
 			}
 			if owner != "" {
 				dlOpts.Owner = owner
@@ -400,6 +246,23 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
 
 	return cmd
+}
+
+func newLocalBuildPreparer(opts *Options) (*frontend.LocalBuildPreparer, error) {
+	repoMgr, err := opts.App.BuildRepoManager()
+	if err != nil {
+		return nil, fmt.Errorf("init repo manager: %w", err)
+	}
+	if repoMgr == nil {
+		return nil, app.ErrLaunchpadAuthRequired
+	}
+
+	builders, err := opts.App.BuildRecipeBuilders()
+	if err != nil {
+		return nil, fmt.Errorf("init recipe builders: %w", err)
+	}
+
+	return frontend.NewLocalBuildPreparer(opts.App.GitClient(), repoMgr, builders), nil
 }
 
 func newBuildCleanupCmd(opts *Options) *cobra.Command {
