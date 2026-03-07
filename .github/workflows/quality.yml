@@ -1,0 +1,77 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install quality tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pre-commit==4.5.1
+          go install github.com/arch-go/arch-go@v1.7.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Determine changed Go files
+        id: changed-go
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --name-only --diff-filter=ACMR \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" \
+              -- '*.go' > changed_go_files.txt
+          elif [[ -n "${{ github.event.before }}" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+            git diff --name-only --diff-filter=ACMR \
+              "${{ github.event.before }}" \
+              "${{ github.sha }}" \
+              -- '*.go' > changed_go_files.txt
+          else
+            git ls-files '*.go' > changed_go_files.txt
+          fi
+
+          echo "Changed Go files:"
+          cat changed_go_files.txt || true
+
+      - name: Run repo-wide quality hooks
+        env:
+          SKIP: go-changed-package-coverage
+        run: pre-commit run --all-files --show-diff-on-failure
+
+      - name: Enforce changed-package coverage
+        run: |
+          mapfile -t changed_go_files < changed_go_files.txt
+          if (( ${#changed_go_files[@]} == 0 )); then
+            echo "No changed Go files detected. Skipping changed-package coverage."
+            exit 0
+          fi
+
+          pre-commit run go-changed-package-coverage --files "${changed_go_files[@]}"

@@ -463,6 +463,8 @@ pre-commit run --all-files
 
 The hooks run whitespace/YAML checks plus `arch-go`, `golangci-lint`, `go build`, `go test`, changed-package coverage via `go run ./tools/coverageguard --config .coverage-policy.yaml`, and `go mod tidy`.
 
+GitHub Actions runs the same contract in CI: repo-wide quality checks plus changed-package coverage against the pull request diff.
+
 ## License
 
 Apache-2.0

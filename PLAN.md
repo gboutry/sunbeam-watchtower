@@ -218,6 +218,7 @@ This distinction is important: stateful features must be designed around persist
 - added real daemon integration coverage for the CLI by re-entering the command surface through a helper subprocess, so `server start/status/stop`, auth persistence, and async operation persistence are verified across separate CLI invocations against an actual background server process
 - added a machine-enforced changed-package coverage guard (`tools/coverageguard` + `.coverage-policy.yaml`) and wired it into `pre-commit`, so package-level coverage floors become part of the merge contract instead of an informal expectation
 - ratcheted `.coverage-policy.yaml` with explicit per-package floors for core packages (`internal/config`, `internal/core/service/auth`, build/operation services, CLI, and durable stores) and raised auth-service test coverage so the policy follows measured quality instead of a single loose default
+- added GitHub Actions CI enforcement for the same contract: repo-wide quality checks run with the coverage hook skipped, then the changed-package coverage hook is applied only to the PR/push Go diff so server-side merges see the same policy as local commits
 
 ## Validation
 

@@ -133,6 +133,8 @@ go run ./tools/coverageguard --config .coverage-policy.yaml $(git diff --cached 
 
 `.coverage-policy.yaml` carries the per-package coverage floors; raise those thresholds when tests improve, rather than relying on the default floor indefinitely.
 
+The GitHub Actions workflow mirrors this locally-enforced contract: it runs the repo-wide hooks with the coverage hook skipped, then runs the same changed-package coverage hook against the PR diff.
+
 ## Debug logging
 
 Watchtower uses Go's `log/slog` for structured logging. All log output goes to stderr.
