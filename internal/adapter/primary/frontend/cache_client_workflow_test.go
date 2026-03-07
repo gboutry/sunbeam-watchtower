@@ -119,6 +119,14 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 			}{
 				Directory: "/tmp/packages",
 			},
+			Releases: struct {
+				Directory string                   `json:"directory"`
+				Entries   []dto.ReleaseCacheStatus `json:"entries"`
+				Error     string                   `json:"error,omitempty"`
+			}{
+				Directory: "/tmp/releases",
+				Entries:   []dto.ReleaseCacheStatus{{Project: "sunbeam", Name: "snap-openstack", ArtifactType: dto.ArtifactSnap, TrackCount: 1, ChannelCount: 2}},
+			},
 		})
 	}))
 	defer ts.Close()
@@ -130,5 +138,27 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 	}
 	if got.Git.Directory != "/tmp/git" || len(got.Git.Repos) != 1 || got.Git.Repos[0].Name != "keystone" {
 		t.Fatalf("Status() = %+v, want git cache snapshot", got)
+	}
+	if got.Releases.Directory != "/tmp/releases" || len(got.Releases.Entries) != 1 || got.Releases.Entries[0].Name != "snap-openstack" {
+		t.Fatalf("Status() releases = %+v, want releases snapshot", got.Releases)
+	}
+}
+
+func TestCacheClientWorkflowSyncReleases(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/cache/sync/releases" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		_ = json.NewEncoder(w).Encode(client.CacheSyncReleasesResult{Status: "ok"})
+	}))
+	defer ts.Close()
+
+	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
+	got, err := workflow.SyncReleases(context.Background())
+	if err != nil {
+		t.Fatalf("SyncReleases() error = %v", err)
+	}
+	if got.Status != "ok" {
+		t.Fatalf("SyncReleases() = %+v, want ok", got)
 	}
 }

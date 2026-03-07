@@ -54,6 +54,11 @@ type CacheSyncExcusesResponse struct {
 	Status string
 }
 
+// CacheSyncReleasesResponse contains the outcome of one releases-cache sync.
+type CacheSyncReleasesResponse struct {
+	Status string
+}
+
 // CacheClearRequest describes one cache-clear workflow.
 type CacheClearRequest struct {
 	Type     string
@@ -90,6 +95,11 @@ type CacheStatusResponse struct {
 	Excuses struct {
 		Directory string
 		Entries   []dto.ExcusesCacheStatus
+		Error     string
+	}
+	Releases struct {
+		Directory string
+		Entries   []dto.ReleaseCacheStatus
 		Error     string
 	}
 }
@@ -172,6 +182,19 @@ func (w *CacheClientWorkflow) SyncExcuses(ctx context.Context, req CacheSyncExcu
 	return &CacheSyncExcusesResponse{Status: result.Status}, nil
 }
 
+// SyncReleases syncs cached published release state.
+func (w *CacheClientWorkflow) SyncReleases(ctx context.Context) (*CacheSyncReleasesResponse, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	result, err := apiClient.CacheSyncReleases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &CacheSyncReleasesResponse{Status: result.Status}, nil
+}
+
 // Clear clears one cache type.
 func (w *CacheClientWorkflow) Clear(ctx context.Context, req CacheClearRequest) error {
 	apiClient, err := w.resolveClient()
@@ -213,6 +236,9 @@ func (w *CacheClientWorkflow) Status(ctx context.Context) (*CacheStatusResponse,
 	response.Excuses.Directory = result.Excuses.Directory
 	response.Excuses.Entries = append(response.Excuses.Entries, result.Excuses.Entries...)
 	response.Excuses.Error = result.Excuses.Error
+	response.Releases.Directory = result.Releases.Directory
+	response.Releases.Entries = append(response.Releases.Entries, result.Releases.Entries...)
+	response.Releases.Error = result.Releases.Error
 	return response, nil
 }
 

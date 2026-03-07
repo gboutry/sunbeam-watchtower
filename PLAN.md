@@ -108,11 +108,15 @@ The tree above is intentionally summarized. The current codebase also includes:
 
 - `internal/adapter/primary/frontend` for frontend-facing async workflow helpers
 - `internal/adapter/secondary/authflowstore` for pending auth-flow persistence
+- `internal/adapter/secondary/charmhub` for public charm publication lookups
 - `internal/adapter/secondary/credentials` for Launchpad credential persistence
 - `internal/adapter/secondary/excusescache` for migration-excuses caching
 - `internal/adapter/secondary/operationstore` for long-running operation persistence
+- `internal/adapter/secondary/releasecache` for published snap/charm release snapshots
+- `internal/adapter/secondary/snapstore` for public snap publication lookups
 - `internal/core/service/auth` for application-surface authentication workflows
 - `internal/core/service/operation` for long-running operation orchestration
+- `internal/core/service/release` for cached published snap/charm release tracking
 
 ## Architecture rules enforced in CI
 
@@ -144,9 +148,10 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - `GET /api/v1/reviews*`
 - `GET /api/v1/commits*`
 - `POST /api/v1/builds/*` / `GET /api/v1/builds`
+- `GET /api/v1/releases` / `GET /api/v1/releases/{name}`
 - `POST /api/v1/projects/sync`
-- `POST /api/v1/cache/sync/git` / `POST /api/v1/cache/sync/upstream` / `POST /api/v1/cache/sync/bugs` / `POST /api/v1/cache/sync/excuses`
-- `DELETE /api/v1/cache/{type}` (git, packages-index, upstream-repos, bugs, excuses)
+- `POST /api/v1/cache/sync/git` / `POST /api/v1/cache/sync/upstream` / `POST /api/v1/cache/sync/bugs` / `POST /api/v1/cache/sync/excuses` / `POST /api/v1/cache/sync/releases`
+- `DELETE /api/v1/cache/{type}` (git, packages-index, upstream-repos, bugs, excuses, releases)
 - `GET /api/v1/cache/status`
 - `GET /api/v1/config`
 
@@ -244,6 +249,9 @@ This distinction is important: stateful features must be designed around persist
 - extracted cache/excuses bootstrap wiring and runtime/auth-operation store wiring out of `internal/app/app.go` into focused bootstrap modules, with direct tests around the new cache/runtime seams, so `App` is closer to a thin composition root instead of carrying every lazy factory itself
 - reconciled `README.md`, `CONTRIBUTING.md`, and the runtime roadmap with the implemented CLI behavior: explicit server resolution order, local daemon lifecycle, and the current set of persistent workflows are now documented consistently
 - completed a targeted Huma request-contract audit on API input structs and added a mechanical API test that fails if any optional slice/map/bool request field is introduced without an explicit `required:` tag, so the contract hardening no longer relies on manual review alone
+- added a new cache-first `releases` domain for published snaps and charms: config-declared tracked publications, public Snap Store and Charmhub secondary adapters, a dedicated release cache, and a core release service now power `watchtower releases list|show` plus `/api/v1/releases`
+- extended the cache surface to manage published release snapshots as a first-class cache type, so `cache sync releases`, `cache clear releases`, and `cache status` follow the same frontend/API patterns as the other read-heavy domains
+- exposed tracked publications through the public config DTO, so `config show` reflects the same snap/charm release-tracking configuration that the new cache and query flows consume
 
 ## Validation
 
