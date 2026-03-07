@@ -2,7 +2,7 @@
 
 A unified CLI dashboard for tracking packages, code, reviews, bugs, builds, and Launchpad project metadata across GitHub, Launchpad, and Gerrit forges.
 
-The CLI runs on top of a local HTTP API server. The codebase now uses a hexagonal split where `internal/adapter/primary/*` drives `internal/app`, which wires `internal/core/service/*` to `internal/adapter/secondary/*` through `internal/core/port/*`. Public reusable contracts and helpers live under `pkg/`, notably `pkg/client`, `pkg/dto/v1`, `pkg/distro/v1`, `pkg/forge/v1`, and `pkg/launchpad/v1`.
+Watchtower is moving toward a server-first runtime model. A persistent Watchtower server is the durable coordination boundary for auth, async operations, and future TUI/MCP clients, while the CLI remains a first-class frontend that can still perform local preparation and, when needed, start an ephemeral embedded server for single-command work. The codebase uses a hexagonal split where `internal/adapter/primary/*` drives `internal/app`, which wires `internal/core/service/*` to `internal/adapter/secondary/*` through `internal/core/port/*`. Public reusable contracts and helpers live under `pkg/`, notably `pkg/client`, `pkg/dto/v1`, `pkg/distro/v1`, `pkg/forge/v1`, and `pkg/launchpad/v1`.
 
 ## Installation
 
@@ -66,11 +66,33 @@ watchtower project sync --dry-run
 - `cmd/watchtower` is a thin entrypoint into the CLI adapter.
 - `internal/adapter/primary/cli` contains Cobra command logic.
 - `internal/adapter/primary/api` exposes the application over HTTP/OpenAPI.
+- `internal/adapter/primary/frontend` contains frontend-facing shared workflows such as local build preparation and async orchestration helpers.
 - `internal/app` is the composition root used by the primary adapters.
 - `internal/core/port` contains interfaces only.
 - `internal/core/service/*` contains domain logic and use cases.
 - `internal/adapter/secondary/*` contains concrete integrations for git, Launchpad, caches, and OpenStack.
 - `pkg/*` contains reusable client and DTO packages that can be consumed outside the repository.
+
+## Runtime model
+
+Watchtower currently supports three workflow shapes:
+
+1. `remote-only` workflows, where the server does the work directly
+2. `local-only` workflows, where a frontend inspects local state
+3. `split` workflows, where a frontend prepares local inputs and the server executes the durable remote part
+
+Examples:
+
+```bash
+# Persistent server mode for auth, async operations, and multi-client usage
+watchtower serve --listen 127.0.0.1:8472
+WATCHTOWER_SERVER=http://127.0.0.1:8472 watchtower operation list
+
+# Split workflow: local checkout stays local, prepared LP refs go to the server
+watchtower build trigger demo --source local --local-path .
+```
+
+For split workflows, the server never reads raw local paths. Frontends prepare a stable `prepared` build source payload and send that to the server.
 
 ## Configuration
 

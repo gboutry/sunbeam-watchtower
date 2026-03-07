@@ -27,13 +27,18 @@ internal/
 ├── adapter/
 │   ├── primary/                   Driving adapters (input → calls core)
 │   │   ├── api/                   HTTP server, handlers, API-specific DTOs
-│   │   └── cli/                   Cobra commands, output rendering
+│   │   ├── cli/                   Cobra commands, output rendering
+│   │   └── frontend/              Shared frontend workflows (local prep, async helpers)
 │   └── secondary/                 Driven adapters (output → implements ports)
+│       ├── authflowstore/         Pending auth-flow persistence
 │       ├── bugcache/              Bug/task cache (bbolt-backed, decorator pattern)
+│       ├── credentials/           Credential persistence helpers
 │       ├── distrocache/           Distro package index cache
+│       ├── excusescache/          Migration-excuses cache
 │       ├── git/                   go-git backed GitClient
 │       ├── gitcache/              Local bare-clone cache for commit history
 │       ├── launchpad/             LP recipe builders, repo manager, project manager
+│       ├── operationstore/        Long-running operation persistence
 │       └── openstack/             OpenStack upstream deliverable mapping
 ├── app/                           Composition root (wires adapters + services)
 ├── config/                        Config structs, loading, validation
@@ -64,6 +69,27 @@ pkg/                               Public reusable packages
 - **`pkg/*`** — never imports `internal/*`
 
 These rules are machine-enforced by `arch-go` (see `arch-go.yml`) and `depguard` (see `.golangci.yml`).
+
+## Runtime model
+
+Watchtower has two runtime modes:
+
+1. `persistent server` mode
+   - used by `watchtower serve`
+   - owns durable auth-flow and async-operation state
+   - is the intended target for multi-client usage such as future TUI and MCP frontends
+2. `ephemeral embedded` mode
+   - used when the CLI starts a short-lived local server for one command
+   - is suitable for stateless queries and other single-command work
+   - must not be treated as durable across separate CLI invocations
+
+Workflow design should also distinguish:
+
+1. `remote-only` workflows executed by the server
+2. `local-only` workflows executed by a frontend
+3. `split` workflows where local preparation happens in a shared frontend layer and the server executes the durable remote part
+
+For split workflows, do not push raw filesystem concepts into the server. The frontend should produce a stable prepared contract and send that over the API.
 
 ## Building
 
@@ -214,7 +240,7 @@ sunbeam-watchtower/
 ### Build service architecture
 
 The build service (`internal/core/service/build/`) supports local and remote build
-modes on Launchpad. Key types and interfaces:
+workflows on Launchpad. Key types and interfaces:
 
 - **`ArtifactStrategy`** (`strategy.go`) — per-artifact-type strategy interface
   (rock, charm, snap). Includes series-aware helpers:
@@ -230,8 +256,13 @@ modes on Launchpad. Key types and interfaces:
   repo lifecycle. `GetDefaultRepo(ctx, projectName)` discovers the project's
   official git repo and default branch. `GetCurrentUser(ctx)` resolves the
   authenticated LP user for local builds.
-- **`Trigger()`** in the build service selects local vs remote mode via the
-  `Source` field in `TriggerOpts` (`"local"` or `"remote"`).
+- **`frontend.LocalBuildPreparer`** (`internal/adapter/primary/frontend/build_prepare.go`) —
+  performs split-workflow local preparation shared by CLI and future frontends.
+  It resolves local git state, prepares Launchpad repo/ref inputs, and emits a
+  `dto.PreparedBuildSource`.
+- **`Trigger()`** in the build service consumes `TriggerOpts.Prepared` when a
+  frontend has already prepared the Launchpad repo/ref/build-path inputs.
+  Otherwise it resolves Launchpad state itself for remote/official workflows.
 
 ## Code style
 
