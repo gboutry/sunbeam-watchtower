@@ -61,11 +61,17 @@ type CacheClearRequest struct {
 	Trackers []string
 }
 
+// CacheEntry describes one named cache entry.
+type CacheEntry struct {
+	Name string
+	Size string
+}
+
 // CacheStatusResponse contains the full cache status snapshot.
 type CacheStatusResponse struct {
 	Git struct {
 		Directory string
-		Repos     []client.CacheEntry
+		Repos     []CacheEntry
 	}
 	Packages struct {
 		Directory string
@@ -74,7 +80,7 @@ type CacheStatusResponse struct {
 	}
 	Upstream struct {
 		Directory string
-		Repos     []client.CacheEntry
+		Repos     []CacheEntry
 	}
 	Bugs struct {
 		Directory string
@@ -191,12 +197,16 @@ func (w *CacheClientWorkflow) Status(ctx context.Context) (*CacheStatusResponse,
 
 	response := &CacheStatusResponse{}
 	response.Git.Directory = result.Git.Directory
-	response.Git.Repos = append(response.Git.Repos, result.Git.Repos...)
+	for _, repo := range result.Git.Repos {
+		response.Git.Repos = append(response.Git.Repos, CacheEntry{Name: repo.Name, Size: repo.Size})
+	}
 	response.Packages.Directory = result.Packages.Directory
 	response.Packages.Sources = append(response.Packages.Sources, result.Packages.Sources...)
 	response.Packages.Error = result.Packages.Error
 	response.Upstream.Directory = result.Upstream.Directory
-	response.Upstream.Repos = append(response.Upstream.Repos, result.Upstream.Repos...)
+	for _, repo := range result.Upstream.Repos {
+		response.Upstream.Repos = append(response.Upstream.Repos, CacheEntry{Name: repo.Name, Size: repo.Size})
+	}
 	response.Bugs.Directory = result.Bugs.Directory
 	response.Bugs.Entries = append(response.Bugs.Entries, result.Bugs.Entries...)
 	response.Bugs.Error = result.Bugs.Error

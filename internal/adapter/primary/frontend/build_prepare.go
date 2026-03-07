@@ -12,9 +12,39 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
+
+// PreparedBuildTriggerRequest holds build trigger fields after frontend-side preparation.
+type PreparedBuildTriggerRequest struct {
+	Project   string
+	Artifacts []string
+	Wait      bool
+	Timeout   time.Duration
+	Owner     string
+	Prefix    string
+	Prepared  *dto.PreparedBuildSource
+}
+
+// PreparedBuildListRequest holds build list fields after frontend-side preparation.
+type PreparedBuildListRequest struct {
+	Projects     []string
+	All          bool
+	State        string
+	Owner        string
+	LPProject    string
+	RecipePrefix string
+}
+
+// PreparedBuildDownloadRequest holds build download fields after frontend-side preparation.
+type PreparedBuildDownloadRequest struct {
+	Project      string
+	Artifacts    []string
+	ArtifactsDir string
+	Owner        string
+	LPProject    string
+	RecipePrefix string
+}
 
 // LocalBuildPreparer handles frontend-side local preparation for split build workflows.
 type LocalBuildPreparer struct {
@@ -39,142 +69,142 @@ func NewLocalBuildPreparer(
 // PrepareTrigger resolves local git and Launchpad state and returns a prepared build-trigger request.
 func (p *LocalBuildPreparer) PrepareTrigger(
 	ctx context.Context,
-	opts client.BuildsTriggerOptions,
+	req PreparedBuildTriggerRequest,
 	localPath string,
-) (client.BuildsTriggerOptions, error) {
+) (PreparedBuildTriggerRequest, error) {
 	if p.repoManager == nil {
-		return opts, app.ErrLaunchpadAuthRequired
+		return req, app.ErrLaunchpadAuthRequired
 	}
-	pb, ok := p.builders[opts.Project]
+	pb, ok := p.builders[req.Project]
 	if !ok {
-		return opts, fmt.Errorf("unknown project %q", opts.Project)
+		return req, fmt.Errorf("unknown project %q", req.Project)
 	}
 
-	lpOwner := opts.Owner
+	lpOwner := req.Owner
 	var err error
 	if lpOwner == "" {
 		lpOwner, err = p.repoManager.GetCurrentUser(ctx)
 		if err != nil {
-			return opts, fmt.Errorf("get current LP user: %w", err)
+			return req, fmt.Errorf("get current LP user: %w", err)
 		}
 	}
-	opts.Owner = lpOwner
+	req.Owner = lpOwner
 
 	sha, err := p.gitClient.HeadSHA(localPath)
 	if err != nil {
-		return opts, fmt.Errorf("resolve HEAD SHA: %w", err)
+		return req, fmt.Errorf("resolve HEAD SHA: %w", err)
 	}
 	shortSHA := sha[:8]
 
-	artifactNames := opts.Artifacts
+	artifactNames := req.Artifacts
 	if len(artifactNames) == 0 {
 		artifactNames, err = pb.Strategy.DiscoverRecipes(localPath)
 		if err != nil {
-			return opts, fmt.Errorf("discover artifacts: %w", err)
+			return req, fmt.Errorf("discover artifacts: %w", err)
 		}
 	}
 
 	tempNames := make([]string, 0, len(artifactNames))
 	buildPaths := make(map[string]string, len(artifactNames))
 	for _, name := range artifactNames {
-		tempName := pb.Strategy.TempRecipeName(name, sha, opts.Prefix)
+		tempName := pb.Strategy.TempRecipeName(name, sha, req.Prefix)
 		tempNames = append(tempNames, tempName)
 		buildPaths[tempName] = pb.Strategy.BuildPath(name)
 	}
-	opts.Artifacts = tempNames
+	req.Artifacts = tempNames
 
 	lpProject, err := p.repoManager.GetOrCreateProject(ctx, lpOwner)
 	if err != nil {
-		return opts, fmt.Errorf("get/create LP project: %w", err)
+		return req, fmt.Errorf("get/create LP project: %w", err)
 	}
 
-	repoSelfLink, gitSSHURL, err := p.repoManager.GetOrCreateRepo(ctx, lpOwner, lpProject, opts.Project)
+	repoSelfLink, gitSSHURL, err := p.repoManager.GetOrCreateRepo(ctx, lpOwner, lpProject, req.Project)
 	if err != nil {
-		return opts, fmt.Errorf("get/create LP repo: %w", err)
+		return req, fmt.Errorf("get/create LP repo: %w", err)
 	}
 
 	if err := pushToLaunchpad(p.gitClient, localPath, gitSSHURL, lpOwner, shortSHA); err != nil {
-		return opts, fmt.Errorf("push to LP: %w", err)
+		return req, fmt.Errorf("push to LP: %w", err)
 	}
 
 	tmpBranch := "refs/heads/tmp-" + shortSHA
 	refLink, err := p.repoManager.WaitForGitRef(ctx, repoSelfLink, tmpBranch, 2*time.Minute)
 	if err != nil {
-		return opts, fmt.Errorf("wait for git ref: %w", err)
+		return req, fmt.Errorf("wait for git ref: %w", err)
 	}
 
 	gitRefLinks := make(map[string]string, len(tempNames))
 	for _, name := range tempNames {
 		gitRefLinks[name] = refLink
 	}
-	opts.Prepared = &dto.PreparedBuildSource{
+	req.Prepared = &dto.PreparedBuildSource{
 		LPProject:    lpProject,
 		RepoSelfLink: repoSelfLink,
 		GitRefLinks:  gitRefLinks,
 		BuildPaths:   buildPaths,
 	}
 
-	return opts, nil
+	return req, nil
 }
 
 // PrepareListByPrefix resolves Launchpad owner/project state for local-build discovery by prefix.
 func (p *LocalBuildPreparer) PrepareListByPrefix(
 	ctx context.Context,
-	opts client.BuildsListOptions,
+	req PreparedBuildListRequest,
 	prefix string,
-) (client.BuildsListOptions, error) {
+) (PreparedBuildListRequest, error) {
 	if p.repoManager == nil {
-		return opts, app.ErrLaunchpadAuthRequired
+		return req, app.ErrLaunchpadAuthRequired
 	}
 
-	lpOwner := opts.Owner
+	lpOwner := req.Owner
 	var err error
 	if lpOwner == "" {
 		lpOwner, err = p.repoManager.GetCurrentUser(ctx)
 		if err != nil {
-			return opts, fmt.Errorf("get current LP user: %w", err)
+			return req, fmt.Errorf("get current LP user: %w", err)
 		}
-		opts.Owner = lpOwner
+		req.Owner = lpOwner
 	}
 
 	lpProject, err := p.repoManager.GetOrCreateProject(ctx, lpOwner)
 	if err != nil {
-		return opts, fmt.Errorf("get LP project: %w", err)
+		return req, fmt.Errorf("get LP project: %w", err)
 	}
-	opts.LPProject = lpProject
-	opts.RecipePrefix = prefix
+	req.LPProject = lpProject
+	req.RecipePrefix = prefix
 
-	return opts, nil
+	return req, nil
 }
 
 // PrepareDownloadByPrefix resolves Launchpad owner/project state for local-build downloads.
 func (p *LocalBuildPreparer) PrepareDownloadByPrefix(
 	ctx context.Context,
-	opts client.BuildsDownloadOptions,
+	req PreparedBuildDownloadRequest,
 	prefix string,
-) (client.BuildsDownloadOptions, error) {
+) (PreparedBuildDownloadRequest, error) {
 	if p.repoManager == nil {
-		return opts, app.ErrLaunchpadAuthRequired
+		return req, app.ErrLaunchpadAuthRequired
 	}
 
-	lpOwner := opts.Owner
+	lpOwner := req.Owner
 	var err error
 	if lpOwner == "" {
 		lpOwner, err = p.repoManager.GetCurrentUser(ctx)
 		if err != nil {
-			return opts, fmt.Errorf("get current LP user: %w", err)
+			return req, fmt.Errorf("get current LP user: %w", err)
 		}
 	}
-	opts.Owner = lpOwner
+	req.Owner = lpOwner
 
 	lpProject, err := p.repoManager.GetOrCreateProject(ctx, lpOwner)
 	if err != nil {
-		return opts, fmt.Errorf("get LP project: %w", err)
+		return req, fmt.Errorf("get LP project: %w", err)
 	}
-	opts.LPProject = lpProject
-	opts.RecipePrefix = prefix
+	req.LPProject = lpProject
+	req.RecipePrefix = prefix
 
-	return opts, nil
+	return req, nil
 }
 
 func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, shortSHA string) error {
