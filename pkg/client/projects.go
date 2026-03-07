@@ -27,3 +27,10 @@ func (c *Client) ProjectsSync(ctx context.Context, opts ProjectsSyncOptions) (*P
 	err := c.post(ctx, "/api/v1/projects/sync", opts, &result)
 	return &result, err
 }
+
+// ProjectsSyncAsync starts project sync as a background operation.
+func (c *Client) ProjectsSyncAsync(ctx context.Context, opts ProjectsSyncOptions) (*dto.OperationJob, error) {
+	var result dto.OperationJob
+	err := c.post(ctx, "/api/v1/projects/sync/async", opts, &result)
+	return &result, err
+}

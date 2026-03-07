@@ -99,6 +99,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 				api.RegisterCommitsAPI(srv.API(), opts.App)
 				api.RegisterBuildsAPI(srv.API(), opts.App)
 				api.RegisterProjectsAPI(srv.API(), opts.App)
+				api.RegisterOperationsAPI(srv.API(), opts.App)
 				api.RegisterCacheAPI(srv.API(), opts.App)
 				api.RegisterConfigAPI(srv.API(), opts.App)
 				if err := srv.Start(); err != nil {
@@ -130,6 +131,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 	root.AddCommand(newCommitCmd(opts))
 	root.AddCommand(newBugCmd(opts))
 	root.AddCommand(newBuildCmd(opts))
+	root.AddCommand(newOperationCmd(opts))
 	root.AddCommand(newCacheCmd(opts))
 	root.AddCommand(newProjectCmd(opts))
 	root.AddCommand(newPackagesCmd(opts))

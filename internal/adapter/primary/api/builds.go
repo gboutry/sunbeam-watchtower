@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -98,6 +99,8 @@ type BuildsCleanupOutput struct {
 
 // RegisterBuildsAPI registers the /api/v1/builds endpoints on the given huma API.
 func RegisterBuildsAPI(api huma.API, application *app.App) {
+	operationFacade := frontend.NewFacade(application)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "trigger-builds",
 		Method:      http.MethodPost,
@@ -111,23 +114,9 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to build build service: %v", err))
 		}
 
-		var timeout time.Duration
-		if input.Body.Timeout != "" {
-			timeout, err = time.ParseDuration(input.Body.Timeout)
-			if err != nil {
-				return nil, huma.Error422UnprocessableEntity("invalid timeout duration", err)
-			}
-		}
-
-		triggerOpts := build.TriggerOpts{
-			Wait:         input.Body.Wait,
-			Timeout:      timeout,
-			Owner:        input.Body.Owner,
-			Prefix:       input.Body.Prefix,
-			RepoSelfLink: input.Body.RepoSelfLink,
-			GitRefLinks:  input.Body.GitRefLinks,
-			BuildPaths:   input.Body.BuildPaths,
-			LPProject:    input.Body.LPProject,
+		triggerOpts, err := buildTriggerOptionsFromInput(input)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid timeout duration", err)
 		}
 
 		result, err := svc.Trigger(ctx, input.Body.Project, input.Body.Artifacts, triggerOpts)
@@ -137,6 +126,33 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 
 		out := &BuildsTriggerOutput{}
 		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "trigger-builds-async",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/builds/trigger/async",
+		Summary:     "Trigger builds asynchronously",
+		Description: "Queue build triggering as a long-running operation job.",
+		Tags:        []string{"builds", "operations"},
+	}, func(ctx context.Context, input *BuildsTriggerInput) (*OperationOutput, error) {
+		triggerOpts, err := buildTriggerOptionsFromInput(input)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity("invalid timeout duration", err)
+		}
+
+		job, err := operationFacade.StartBuildTrigger(ctx, frontend.BuildTriggerOptions{
+			Project:   input.Body.Project,
+			Artifacts: input.Body.Artifacts,
+			Trigger:   triggerOpts,
+		})
+		if err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("async trigger failed: %v", err))
+		}
+
+		out := &OperationOutput{}
+		out.Body = *job
 		return out, nil
 	})
 
@@ -236,4 +252,26 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		out.Body.Deleted = deleted
 		return out, nil
 	})
+}
+
+func buildTriggerOptionsFromInput(input *BuildsTriggerInput) (build.TriggerOpts, error) {
+	var timeout time.Duration
+	var err error
+	if input.Body.Timeout != "" {
+		timeout, err = time.ParseDuration(input.Body.Timeout)
+		if err != nil {
+			return build.TriggerOpts{}, err
+		}
+	}
+
+	return build.TriggerOpts{
+		Wait:         input.Body.Wait,
+		Timeout:      timeout,
+		Owner:        input.Body.Owner,
+		Prefix:       input.Body.Prefix,
+		RepoSelfLink: input.Body.RepoSelfLink,
+		GitRefLinks:  input.Body.GitRefLinks,
+		BuildPaths:   input.Body.BuildPaths,
+		LPProject:    input.Body.LPProject,
+	}, nil
 }

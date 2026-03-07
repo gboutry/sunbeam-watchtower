@@ -31,6 +31,13 @@ func (c *Client) BuildsTrigger(ctx context.Context, opts BuildsTriggerOptions) (
 	return &result, err
 }
 
+// BuildsTriggerAsync triggers builds as a background operation.
+func (c *Client) BuildsTriggerAsync(ctx context.Context, opts BuildsTriggerOptions) (*dto.OperationJob, error) {
+	var result dto.OperationJob
+	err := c.post(ctx, "/api/v1/builds/trigger/async", opts, &result)
+	return &result, err
+}
+
 // BuildsListOptions holds query parameters for listing builds.
 type BuildsListOptions struct {
 	Projects     []string

@@ -418,7 +418,8 @@ The prefix-based discovery is implemented via:
 These are still the main gaps before TUI and MCP work:
 
 - Launchpad auth now has an application/API surface, but it is still Launchpad-only; future work should extend the same model to GitHub/Gerrit when authenticated workflows are needed
-- long-running operations now have an initial reusable in-memory async/progress/event foundation via `internal/core/service/operation` plus `internal/adapter/secondary/operationstore`, but API/CLI/MCP/TUI consumers still need to adopt it and higher-level frontend wrappers still need to be added on top
+- long-running operations now have an initial reusable in-memory async/progress/event foundation via `internal/core/service/operation` plus `internal/adapter/secondary/operationstore`
 - `internal/app` should remain the composition root (wiring config, caches, clients, and services), not become the runtime API for every frontend
-- TUI/MCP will likely want the new dedicated application facade/use-case layer on top of the core services to become the main frontend entrypoint, exposing frontend-friendly workflows rather than raw service-by-service access
+- API/CLI now adopt that foundation through `internal/adapter/primary/frontend`, with async build trigger + project sync wrappers and `/api/v1/operations` inspection/cancel endpoints; MCP/TUI still need to adopt the same model
+- TUI/MCP will likely want the new dedicated frontend facade layer on top of the core services to become their main entrypoint, exposing frontend-friendly workflows rather than raw service-by-service access
 - that facade would be the right place for cross-cutting concerns that frontends need but core services should not own directly: auth/session state, progress/events, async orchestration, cancellation, and view-oriented aggregation

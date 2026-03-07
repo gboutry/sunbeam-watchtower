@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
@@ -269,6 +270,117 @@ func renderBuildRequestsTable(w io.Writer, results []dto.BuildRequest) error {
 			r.Status,
 			r.ErrorMessage,
 			r.WebLink,
+		)
+	}
+	return tw.Flush()
+}
+
+// renderOperationJobs writes operations in the requested format.
+func renderOperationJobs(w io.Writer, format string, jobs []dto.OperationJob) error {
+	switch format {
+	case "json":
+		return renderJSON(w, jobs)
+	case "yaml":
+		return renderYAML(w, jobs)
+	default:
+		return renderOperationJobsTable(w, jobs)
+	}
+}
+
+func renderOperationJobsTable(w io.Writer, jobs []dto.OperationJob) error {
+	if len(jobs) == 0 {
+		fmt.Fprintln(w, "No operations found.")
+		return nil
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tKIND\tSTATE\tCREATED\tSUMMARY")
+	for _, job := range jobs {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			job.ID,
+			job.Kind,
+			job.State,
+			formatTimestamp(job.CreatedAt),
+			job.Summary,
+		)
+	}
+	return tw.Flush()
+}
+
+// renderOperationJob writes a single operation in the requested format.
+func renderOperationJob(w io.Writer, format string, job *dto.OperationJob) error {
+	switch format {
+	case "json":
+		return renderJSON(w, job)
+	case "yaml":
+		return renderYAML(w, job)
+	default:
+		return renderOperationJobTable(w, job)
+	}
+}
+
+func renderOperationJobTable(w io.Writer, job *dto.OperationJob) error {
+	if job == nil {
+		fmt.Fprintln(w, "No operation found.")
+		return nil
+	}
+
+	fmt.Fprintf(w, "ID:            %s\n", job.ID)
+	fmt.Fprintf(w, "Kind:          %s\n", job.Kind)
+	fmt.Fprintf(w, "State:         %s\n", job.State)
+	fmt.Fprintf(w, "Created:       %s\n", formatTimestamp(job.CreatedAt))
+	if !job.StartedAt.IsZero() {
+		fmt.Fprintf(w, "Started:       %s\n", formatTimestamp(job.StartedAt))
+	}
+	if !job.FinishedAt.IsZero() {
+		fmt.Fprintf(w, "Finished:      %s\n", formatTimestamp(job.FinishedAt))
+	}
+	fmt.Fprintf(w, "Cancellable:   %t\n", job.Cancellable)
+	if job.Summary != "" {
+		fmt.Fprintf(w, "Summary:       %s\n", job.Summary)
+	}
+	if job.Error != "" {
+		fmt.Fprintf(w, "Error:         %s\n", job.Error)
+	}
+	if job.Progress != nil {
+		fmt.Fprintf(w, "Progress:      %s\n", formatOperationProgress(job.Progress))
+	}
+	if len(job.Attributes) > 0 {
+		fmt.Fprintln(w, "Attributes:")
+		for key, value := range job.Attributes {
+			fmt.Fprintf(w, "  %s=%s\n", key, value)
+		}
+	}
+	return nil
+}
+
+// renderOperationEvents writes operation events in the requested format.
+func renderOperationEvents(w io.Writer, format string, events []dto.OperationEvent) error {
+	switch format {
+	case "json":
+		return renderJSON(w, events)
+	case "yaml":
+		return renderYAML(w, events)
+	default:
+		return renderOperationEventsTable(w, events)
+	}
+}
+
+func renderOperationEventsTable(w io.Writer, events []dto.OperationEvent) error {
+	if len(events) == 0 {
+		fmt.Fprintln(w, "No operation events found.")
+		return nil
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "TIME\tTYPE\tMESSAGE\tERROR\tPROGRESS")
+	for _, event := range events {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			formatTimestamp(event.Time),
+			event.Type,
+			event.Message,
+			event.Error,
+			formatOperationProgress(event.Progress),
 		)
 	}
 	return tw.Flush()
@@ -548,4 +660,30 @@ func formatSize(bytes int64) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+func formatTimestamp(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format("2006-01-02 15:04:05")
+}
+
+func formatOperationProgress(progress *dto.OperationProgress) string {
+	if progress == nil {
+		return ""
+	}
+	parts := []string{}
+	if progress.Phase != "" {
+		parts = append(parts, progress.Phase)
+	}
+	if progress.Message != "" {
+		parts = append(parts, progress.Message)
+	}
+	if progress.Indeterminate {
+		parts = append(parts, "indeterminate")
+	} else if progress.Total > 0 {
+		parts = append(parts, fmt.Sprintf("%d/%d", progress.Current, progress.Total))
+	}
+	return strings.Join(parts, " | ")
 }

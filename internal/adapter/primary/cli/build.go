@@ -29,7 +29,7 @@ func newBuildCmd(opts *Options) *cobra.Command {
 
 func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	var source, owner, prefix, localPath, artifactsDir string
-	var wait, download bool
+	var wait, download, async bool
 	var timeout time.Duration
 
 	cmd := &cobra.Command{
@@ -43,6 +43,9 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			// --download implies --wait.
 			if download {
 				wait = true
+			}
+			if async && wait {
+				return fmt.Errorf("--async cannot be combined with --wait or --download")
 			}
 
 			triggerOpts := client.BuildsTriggerOptions{
@@ -58,6 +61,14 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				if err := prepareLocalTrigger(cmd, opts, projectName, artifactNames, localPath, prefix, &triggerOpts); err != nil {
 					return err
 				}
+			}
+
+			if async {
+				job, err := opts.Client.BuildsTriggerAsync(cmd.Context(), triggerOpts)
+				if err != nil {
+					return err
+				}
+				return renderOperationJob(opts.Out, opts.Output, job)
 			}
 
 			result, err := opts.Client.BuildsTrigger(cmd.Context(), triggerOpts)
@@ -111,6 +122,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait for builds to complete")
 	cmd.Flags().BoolVar(&download, "download", false, "download artifacts after builds succeed (implies --wait)")
+	cmd.Flags().BoolVar(&async, "async", false, "queue the build trigger as a long-running operation")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Hour, "max wait time")
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
