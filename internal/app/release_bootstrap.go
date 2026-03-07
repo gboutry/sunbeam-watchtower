@@ -58,7 +58,7 @@ func (a *App) TrackedReleases(ctx context.Context) ([]dto.TrackedPublication, er
 			return nil, fmt.Errorf("project %s: caching repo: %w", project.Name, err)
 		}
 
-		baseTracks, branches, err := resolveReleaseTracking(project)
+		baseTracks, branches, err := resolveReleaseTracking(a.Config, project)
 		if err != nil {
 			return nil, fmt.Errorf("project %s: %w", project.Name, err)
 		}
@@ -138,12 +138,12 @@ type discoveredCharm struct {
 	Resources []string
 }
 
-func resolveReleaseTracking(project config.ProjectConfig) ([]string, []dto.TrackedReleaseBranch, error) {
+func resolveReleaseTracking(cfg *config.Config, project config.ProjectConfig) ([]string, []dto.TrackedReleaseBranch, error) {
 	var tracks []string
 	if project.Release != nil && len(project.Release.Tracks) > 0 {
 		tracks = append([]string(nil), project.Release.Tracks...)
 	} else {
-		tracks = append([]string(nil), project.Series...)
+		tracks = effectiveProjectSeries(cfg, project)
 		if project.Release != nil && len(project.Release.TrackMap) > 0 {
 			for idx, series := range tracks {
 				if mapped, ok := project.Release.TrackMap[series]; ok {
@@ -186,6 +186,16 @@ func resolveReleaseTracking(project config.ProjectConfig) ([]string, []dto.Track
 		}
 	}
 	return tracks, branches, nil
+}
+
+func effectiveProjectSeries(cfg *config.Config, project config.ProjectConfig) []string {
+	if len(project.Series) > 0 {
+		return append([]string(nil), project.Series...)
+	}
+	if cfg != nil && len(cfg.Launchpad.Series) > 0 {
+		return append([]string(nil), cfg.Launchpad.Series...)
+	}
+	return nil
 }
 
 func discoverSnapName(repoPath string) (string, error) {

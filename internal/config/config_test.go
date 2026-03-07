@@ -623,6 +623,23 @@ func TestValidate_ReleaseTrackMapRequiresKnownSeries(t *testing.T) {
 	}
 }
 
+func TestValidate_ReleaseTrackMapAcceptsLaunchpadSeriesFallback(t *testing.T) {
+	cfg := &Config{
+		Launchpad: LaunchpadConfig{Series: []string{"2024.1", "2025.1"}},
+		Projects: []ProjectConfig{{
+			Name:         "sunbeam",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			ArtifactType: "snap",
+			Release: &ProjectReleaseConfig{
+				TrackMap: map[string]string{"2025.1": "latest"},
+			},
+		}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() should accept launchpad.series fallback for release.track_map: %v", err)
+	}
+}
+
 func TestValidate_ReleaseBranchRejectsUnknownSeriesAndInvalidRisk(t *testing.T) {
 	cfg := &Config{
 		Projects: []ProjectConfig{{
