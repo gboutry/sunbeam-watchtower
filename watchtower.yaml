@@ -13,6 +13,7 @@ gerrit:
 
 projects:
   - name: sunbeam-charms
+    artifact_type: charm
     code:
       forge: gerrit
       host: https://review.opendev.org
@@ -23,7 +24,8 @@ projects:
       - forge: launchpad
         project: sunbeam-charms
 
-  - name: sunbeam
+  - name: openstack
+    artifact_type: snap
     code:
       forge: github
       owner: canonical
@@ -33,6 +35,7 @@ projects:
         project: snap-openstack
 
   - name: openstack-hypervisor
+    artifact_type: snap
     code:
       forge: github
       owner: canonical
@@ -60,6 +63,7 @@ projects:
         project: ubuntu-openstack-rocks
 
   - name: cinder-volume
+    artifact_type: snap
     code:
       forge: github
       owner: canonical
@@ -71,6 +75,7 @@ projects:
         project: snap-cinder-volume
 
   - name: epa-orchestrator
+    artifact_type: snap
     code:
       forge: github
       owner: canonical
@@ -82,6 +87,7 @@ projects:
         project: snap-epa-orchestrator
 
   - name: manila-data
+    artifact_type: snap
     code:
       forge: github
       owner: canonical
@@ -93,6 +99,7 @@ projects:
         project: snap-manila-data
 
   - name: openstack-network-agents
+    artifact_type: snap
     code:
       forge: github
       owner: canonical
@@ -104,6 +111,7 @@ projects:
         project: snap-openstack-network-agents
 
   - name: consul-client
+    artifact_type: snap
     code:
       forge: github
       owner: canonical
