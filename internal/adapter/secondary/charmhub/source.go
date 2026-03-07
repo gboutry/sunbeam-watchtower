@@ -38,21 +38,22 @@ func (s *Source) Fetch(ctx context.Context, publication dto.TrackedPublication) 
 	if err != nil {
 		return nil, err
 	}
-	trackSet := make(map[string]bool, len(publication.Tracks))
-	for _, track := range publication.Tracks {
-		trackSet[track] = true
-	}
 	byChannel := make(map[string]*dto.ReleaseChannelSnapshot)
 	for _, entry := range channelMap.ChannelMap {
-		if len(trackSet) > 0 && !trackSet[entry.Channel.Track] {
+		track, risk, branch, err := dto.ParseReleaseChannelName(entry.Channel.Name)
+		if err != nil {
+			continue
+		}
+		if !publication.AllowsChannel(track, risk, branch) {
 			continue
 		}
 		channelName := entry.Channel.Name
 		channel := byChannel[channelName]
 		if channel == nil {
 			channel = &dto.ReleaseChannelSnapshot{
-				Track:     entry.Channel.Track,
-				Risk:      dto.ReleaseRisk(entry.Channel.Risk),
+				Track:     track,
+				Risk:      risk,
+				Branch:    branch,
 				Channel:   channelName,
 				UpdatedAt: entry.Channel.ReleasedAt,
 			}
@@ -93,7 +94,7 @@ func (s *Source) Fetch(ctx context.Context, publication dto.TrackedPublication) 
 		channels = append(channels, dto.NormalizeChannel(*byChannel[name]))
 	}
 
-	tracks := append([]string(nil), publication.Tracks...)
+	tracks := publication.AllTracks()
 	if len(tracks) == 0 {
 		for _, channel := range channels {
 			tracks = append(tracks, channel.Track)

@@ -64,6 +64,7 @@ type ReleaseResourceSnapshot struct {
 type ReleaseChannelSnapshot struct {
 	Track     string                    `json:"track" yaml:"track"`
 	Risk      ReleaseRisk               `json:"risk" yaml:"risk"`
+	Branch    string                    `json:"branch,omitempty" yaml:"branch,omitempty"`
 	Channel   string                    `json:"channel" yaml:"channel"`
 	Targets   []ReleaseTargetSnapshot   `json:"targets,omitempty" yaml:"targets,omitempty"`
 	Resources []ReleaseResourceSnapshot `json:"resources,omitempty" yaml:"resources,omitempty"`
@@ -87,6 +88,7 @@ type ReleaseListEntry struct {
 	ArtifactType ArtifactType              `json:"artifact_type" yaml:"artifact_type"`
 	Track        string                    `json:"track" yaml:"track"`
 	Risk         ReleaseRisk               `json:"risk" yaml:"risk"`
+	Branch       string                    `json:"branch,omitempty" yaml:"branch,omitempty"`
 	Channel      string                    `json:"channel" yaml:"channel"`
 	Targets      []ReleaseTargetSnapshot   `json:"targets,omitempty" yaml:"targets,omitempty"`
 	Resources    []ReleaseResourceSnapshot `json:"resources,omitempty" yaml:"resources,omitempty"`
@@ -109,16 +111,25 @@ type ReleaseListQuery struct {
 	Projects     []string
 	ArtifactType *ArtifactType
 	Tracks       []string
+	Branches     []string
 	Risks        []ReleaseRisk
 }
 
-// TrackedPublication defines one configured published artifact to track.
+// TrackedReleaseBranch defines one explicitly managed branch channel.
+type TrackedReleaseBranch struct {
+	Track  string
+	Branch string
+	Risks  []ReleaseRisk
+}
+
+// TrackedPublication defines one discovered published artifact to track.
 type TrackedPublication struct {
 	Project      string
 	Name         string
 	ArtifactType ArtifactType
 	Tracks       []string
 	Resources    []string
+	Branches     []TrackedReleaseBranch
 }
 
 // ReleaseCacheStatus reports cached publication metadata for one tracked artifact.
@@ -134,7 +145,7 @@ type ReleaseCacheStatus struct {
 // NormalizeChannel fills derived fields and ordering on the snapshot.
 func NormalizeChannel(channel ReleaseChannelSnapshot) ReleaseChannelSnapshot {
 	if channel.Channel == "" && channel.Track != "" && channel.Risk != "" {
-		channel.Channel = channel.Track + "/" + string(channel.Risk)
+		channel.Channel = ReleaseChannelName(channel.Track, channel.Risk, channel.Branch)
 	}
 	sort.Slice(channel.Targets, func(i, j int) bool {
 		if channel.Targets[i].Architecture == channel.Targets[j].Architecture {
@@ -156,7 +167,10 @@ func NormalizePublicationSnapshot(snapshot PublishedArtifactSnapshot) PublishedA
 	}
 	sort.Slice(snapshot.Channels, func(i, j int) bool {
 		if snapshot.Channels[i].Track == snapshot.Channels[j].Track {
-			return riskOrder(snapshot.Channels[i].Risk) < riskOrder(snapshot.Channels[j].Risk)
+			if snapshot.Channels[i].Branch == snapshot.Channels[j].Branch {
+				return riskOrder(snapshot.Channels[i].Risk) < riskOrder(snapshot.Channels[j].Risk)
+			}
+			return snapshot.Channels[i].Branch < snapshot.Channels[j].Branch
 		}
 		return snapshot.Channels[i].Track < snapshot.Channels[j].Track
 	})
@@ -177,6 +191,69 @@ func ValidateReleaseTracks(tracks []string) error {
 		seen[track] = true
 	}
 	return nil
+}
+
+// ReleaseChannelName builds the canonical track/risk[/branch] channel name.
+func ReleaseChannelName(track string, risk ReleaseRisk, branch string) string {
+	if branch == "" {
+		return track + "/" + string(risk)
+	}
+	return track + "/" + string(risk) + "/" + branch
+}
+
+// ParseReleaseChannelName parses track/risk[/branch] channel names.
+func ParseReleaseChannelName(channel string) (string, ReleaseRisk, string, error) {
+	parts := strings.Split(channel, "/")
+	if len(parts) != 2 && len(parts) != 3 {
+		return "", "", "", fmt.Errorf("invalid release channel %q", channel)
+	}
+	risk, err := ParseReleaseRisk(parts[1])
+	if err != nil {
+		return "", "", "", err
+	}
+	branch := ""
+	if len(parts) == 3 {
+		branch = parts[2]
+		if strings.TrimSpace(branch) == "" {
+			return "", "", "", fmt.Errorf("invalid release channel %q", channel)
+		}
+	}
+	if strings.TrimSpace(parts[0]) == "" {
+		return "", "", "", fmt.Errorf("invalid release channel %q", channel)
+	}
+	return parts[0], risk, branch, nil
+}
+
+// AllTracks returns the union of base tracks and branch tracks.
+func (p TrackedPublication) AllTracks() []string {
+	tracks := append([]string(nil), p.Tracks...)
+	for _, branch := range p.Branches {
+		tracks = append(tracks, branch.Track)
+	}
+	return uniqueSortedStrings(tracks)
+}
+
+// AllowsChannel reports whether one track/risk[/branch] should be tracked.
+func (p TrackedPublication) AllowsChannel(track string, risk ReleaseRisk, branch string) bool {
+	if branch == "" {
+		for _, known := range p.Tracks {
+			if known == track {
+				return true
+			}
+		}
+		return false
+	}
+	for _, configured := range p.Branches {
+		if configured.Track != track || configured.Branch != branch {
+			continue
+		}
+		for _, knownRisk := range configured.Risks {
+			if knownRisk == risk {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func uniqueSortedStrings(values []string) []string {

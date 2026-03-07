@@ -5,6 +5,7 @@ package app
 
 import (
 	"errors"
+	"io"
 	"log/slog"
 	"sync"
 
@@ -85,6 +86,9 @@ func NewAppWithOptions(cfg *config.Config, logger *slog.Logger, opts Options) *A
 	mode := opts.RuntimeMode
 	if mode == "" {
 		mode = RuntimeModePersistent
+	}
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &App{Config: cfg, Logger: logger, runtimeMode: mode}
 }

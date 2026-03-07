@@ -58,24 +58,31 @@ type ProjectBuildConfig struct {
 	LPProject           string   `mapstructure:"lp_project" yaml:"lp_project,omitempty"`
 }
 
-// ProjectPublicationConfig holds per-project publication tracking settings.
-type ProjectPublicationConfig struct {
-	Name      string   `mapstructure:"name" yaml:"name"`
-	Type      string   `mapstructure:"type" yaml:"type"`
-	Tracks    []string `mapstructure:"tracks" yaml:"tracks,omitempty"`
-	Resources []string `mapstructure:"resources" yaml:"resources,omitempty"`
+// ProjectReleaseBranchConfig declares one explicitly managed release branch.
+type ProjectReleaseBranchConfig struct {
+	Series string   `mapstructure:"series" yaml:"series,omitempty"`
+	Track  string   `mapstructure:"track" yaml:"track,omitempty"`
+	Branch string   `mapstructure:"branch" yaml:"branch"`
+	Risks  []string `mapstructure:"risks" yaml:"risks,omitempty"`
+}
+
+// ProjectReleaseConfig holds per-project release tracking overrides.
+type ProjectReleaseConfig struct {
+	Tracks   []string                     `mapstructure:"tracks" yaml:"tracks,omitempty"`
+	TrackMap map[string]string            `mapstructure:"track_map" yaml:"track_map,omitempty"`
+	Branches []ProjectReleaseBranchConfig `mapstructure:"branches" yaml:"branches,omitempty"`
 }
 
 // ProjectConfig defines a project tracked across forges.
 type ProjectConfig struct {
-	Name             string                     `mapstructure:"name" yaml:"name"`
-	ArtifactType     string                     `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
-	Code             CodeConfig                 `mapstructure:"code" yaml:"code"`
-	Bugs             []BugTrackerConfig         `mapstructure:"bugs" yaml:"bugs,omitempty"`
-	Build            *ProjectBuildConfig        `mapstructure:"build" yaml:"build,omitempty"`
-	Publications     []ProjectPublicationConfig `mapstructure:"publications" yaml:"publications,omitempty"`
-	Series           []string                   `mapstructure:"series" yaml:"series,omitempty"`
-	DevelopmentFocus string                     `mapstructure:"development_focus" yaml:"development_focus,omitempty"`
+	Name             string                `mapstructure:"name" yaml:"name"`
+	ArtifactType     string                `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
+	Code             CodeConfig            `mapstructure:"code" yaml:"code"`
+	Bugs             []BugTrackerConfig    `mapstructure:"bugs" yaml:"bugs,omitempty"`
+	Build            *ProjectBuildConfig   `mapstructure:"build" yaml:"build,omitempty"`
+	Release          *ProjectReleaseConfig `mapstructure:"release" yaml:"release,omitempty"`
+	Series           []string              `mapstructure:"series" yaml:"series,omitempty"`
+	DevelopmentFocus string                `mapstructure:"development_focus" yaml:"development_focus,omitempty"`
 }
 
 // BuildConfig holds build pipeline settings.
@@ -262,25 +269,74 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("projects[%d] (%s): build.owner is required when official_codehosting is true", i, p.Name)
 			}
 		}
-		for j, publication := range p.Publications {
-			if publication.Name == "" {
-				return fmt.Errorf("projects[%d] (%s): publications[%d].name is required", i, p.Name, j)
+		if p.Release != nil {
+			if p.ArtifactType != "snap" && p.ArtifactType != "charm" {
+				return fmt.Errorf("projects[%d] (%s): release overrides require artifact_type snap or charm", i, p.Name)
 			}
-			if !validArtifactTypes[publication.Type] || publication.Type == "rock" {
-				return fmt.Errorf("projects[%d] (%s): publications[%d].type %q must be snap or charm", i, p.Name, j, publication.Type)
+			if len(p.Release.Tracks) > 0 && len(p.Release.TrackMap) > 0 {
+				return fmt.Errorf("projects[%d] (%s): release.tracks and release.track_map are mutually exclusive", i, p.Name)
 			}
-			if len(publication.Tracks) == 0 {
-				return fmt.Errorf("projects[%d] (%s): publications[%d].tracks is required", i, p.Name, j)
-			}
-			seenTracks := make(map[string]bool, len(publication.Tracks))
-			for _, track := range publication.Tracks {
+			seenTracks := make(map[string]bool, len(p.Release.Tracks))
+			for _, track := range p.Release.Tracks {
 				if track == "" {
-					return fmt.Errorf("projects[%d] (%s): publications[%d].tracks cannot contain empty values", i, p.Name, j)
+					return fmt.Errorf("projects[%d] (%s): release.tracks cannot contain empty values", i, p.Name)
 				}
 				if seenTracks[track] {
-					return fmt.Errorf("projects[%d] (%s): publications[%d].tracks contains duplicate %q", i, p.Name, j, track)
+					return fmt.Errorf("projects[%d] (%s): release.tracks contains duplicate %q", i, p.Name, track)
 				}
 				seenTracks[track] = true
+			}
+			for series, track := range p.Release.TrackMap {
+				if series == "" {
+					return fmt.Errorf("projects[%d] (%s): release.track_map cannot contain an empty series key", i, p.Name)
+				}
+				if track == "" {
+					return fmt.Errorf("projects[%d] (%s): release.track_map[%q] cannot map to an empty track", i, p.Name, series)
+				}
+				if len(p.Series) > 0 {
+					found := false
+					for _, knownSeries := range p.Series {
+						if knownSeries == series {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return fmt.Errorf("projects[%d] (%s): release.track_map key %q must match one of the declared series", i, p.Name, series)
+					}
+				}
+			}
+			for j, branch := range p.Release.Branches {
+				if branch.Branch == "" {
+					return fmt.Errorf("projects[%d] (%s): release.branches[%d].branch is required", i, p.Name, j)
+				}
+				if (branch.Series == "" && branch.Track == "") || (branch.Series != "" && branch.Track != "") {
+					return fmt.Errorf("projects[%d] (%s): release.branches[%d] must set exactly one of series or track", i, p.Name, j)
+				}
+				if branch.Series != "" && len(p.Series) > 0 {
+					found := false
+					for _, knownSeries := range p.Series {
+						if knownSeries == branch.Series {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return fmt.Errorf("projects[%d] (%s): release.branches[%d].series %q must match one of the declared series", i, p.Name, j, branch.Series)
+					}
+				}
+				seenRisks := make(map[string]bool, len(branch.Risks))
+				for _, risk := range branch.Risks {
+					switch risk {
+					case "edge", "beta", "candidate", "stable":
+					default:
+						return fmt.Errorf("projects[%d] (%s): release.branches[%d].risks contains invalid risk %q", i, p.Name, j, risk)
+					}
+					if seenRisks[risk] {
+						return fmt.Errorf("projects[%d] (%s): release.branches[%d].risks contains duplicate %q", i, p.Name, j, risk)
+					}
+					seenRisks[risk] = true
+				}
 			}
 		}
 

@@ -45,7 +45,7 @@ func TestReleaseServerWorkflowListShowAndStatus(t *testing.T) {
 	if len(list) != 1 || list[0].Name != "snap-openstack" {
 		t.Fatalf("List() = %+v, want one row", list)
 	}
-	show, err := workflow.Show(context.Background(), "snap-openstack", &[]dto.ArtifactType{dto.ArtifactSnap}[0], "")
+	show, err := workflow.Show(context.Background(), "snap-openstack", &[]dto.ArtifactType{dto.ArtifactSnap}[0], "", "")
 	if err != nil {
 		t.Fatalf("Show() error = %v", err)
 	}

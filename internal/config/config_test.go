@@ -527,40 +527,135 @@ func TestValidate_EmptyConfig(t *testing.T) {
 	}
 }
 
-func TestValidate_PublicationsRequireTracks(t *testing.T) {
+func TestValidate_ReleaseConfigRejectsTracksAndTrackMapTogether(t *testing.T) {
 	cfg := &Config{
 		Projects: []ProjectConfig{{
-			Name: "sunbeam",
-			Code: CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
-			Publications: []ProjectPublicationConfig{{
-				Name: "snap-openstack",
-				Type: "snap",
-			}},
+			Name:         "sunbeam",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			ArtifactType: "snap",
+			Release: &ProjectReleaseConfig{
+				Tracks:   []string{"2024.1"},
+				TrackMap: map[string]string{"2024.1": "latest"},
+			},
 		}},
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() should error when publication tracks are missing")
+		t.Fatal("Validate() should error when release.tracks and release.track_map are both set")
 	}
 }
 
-func TestValidate_PublicationsAcceptSnapAndCharm(t *testing.T) {
+func TestValidate_ReleaseConfigAcceptsTrackMapAndBranches(t *testing.T) {
 	cfg := &Config{
 		Projects: []ProjectConfig{{
-			Name: "sunbeam",
-			Code: CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
-			Publications: []ProjectPublicationConfig{{
-				Name:   "snap-openstack",
-				Type:   "snap",
-				Tracks: []string{"2024.1"},
-			}, {
-				Name:      "keystone-k8s",
-				Type:      "charm",
-				Tracks:    []string{"2024.1"},
-				Resources: []string{"keystone-image"},
-			}},
+			Name:         "sunbeam",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			ArtifactType: "snap",
+			Series:       []string{"2024.1", "2025.1"},
+			Release: &ProjectReleaseConfig{
+				TrackMap: map[string]string{"2025.1": "latest"},
+				Branches: []ProjectReleaseBranchConfig{{
+					Series: "2024.1",
+					Branch: "risc-v",
+					Risks:  []string{"edge", "stable"},
+				}, {
+					Track:  "latest",
+					Branch: "hotfix",
+				}},
+			},
 		}},
 	}
 	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate() should accept snap/charm publications: %v", err)
+		t.Fatalf("Validate() should accept release overrides: %v", err)
+	}
+}
+
+func TestValidate_ReleaseConfigRequiresSnapOrCharmArtifactType(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "sunbeam",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			ArtifactType: "rock",
+			Release: &ProjectReleaseConfig{
+				Tracks: []string{"2024.1"},
+			},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject release overrides for non snap/charm projects")
+	}
+}
+
+func TestValidate_ReleaseBranchRequiresExactlyOneSeriesOrTrack(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "sunbeam",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			ArtifactType: "snap",
+			Series:       []string{"2024.1"},
+			Release: &ProjectReleaseConfig{
+				Branches: []ProjectReleaseBranchConfig{{
+					Series: "2024.1",
+					Track:  "latest",
+					Branch: "risc-v",
+				}},
+			},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject branches with both series and track")
+	}
+}
+
+func TestValidate_ReleaseTrackMapRequiresKnownSeries(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "sunbeam",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			ArtifactType: "snap",
+			Series:       []string{"2024.1"},
+			Release: &ProjectReleaseConfig{
+				TrackMap: map[string]string{"2025.1": "latest"},
+			},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject track_map keys outside declared series")
+	}
+}
+
+func TestValidate_ReleaseBranchRejectsUnknownSeriesAndInvalidRisk(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "sunbeam",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			ArtifactType: "snap",
+			Series:       []string{"2024.1"},
+			Release: &ProjectReleaseConfig{
+				Branches: []ProjectReleaseBranchConfig{{
+					Series: "2025.1",
+					Branch: "risc-v",
+					Risks:  []string{"weird"},
+				}},
+			},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject unknown branch series and invalid risk")
+	}
+}
+
+func TestValidate_ReleaseTracksRejectDuplicateValues(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "sunbeam",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			ArtifactType: "snap",
+			Release: &ProjectReleaseConfig{
+				Tracks: []string{"2024.1", "2024.1"},
+			},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject duplicate release tracks")
 	}
 }

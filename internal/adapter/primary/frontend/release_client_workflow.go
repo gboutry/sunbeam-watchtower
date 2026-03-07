@@ -17,6 +17,7 @@ type ReleasesListRequest struct {
 	Projects     []string
 	ArtifactType string
 	Tracks       []string
+	Branches     []string
 	Risks        []string
 }
 
@@ -25,6 +26,7 @@ type ReleasesShowRequest struct {
 	Name         string
 	ArtifactType string
 	Track        string
+	Branch       string
 }
 
 // ReleaseClientWorkflow exposes reusable client-side release workflows.
@@ -48,6 +50,7 @@ func (w *ReleaseClientWorkflow) List(ctx context.Context, req ReleasesListReques
 		Projects:     req.Projects,
 		ArtifactType: req.ArtifactType,
 		Tracks:       req.Tracks,
+		Branches:     req.Branches,
 		Risks:        req.Risks,
 	})
 }
@@ -61,6 +64,7 @@ func (w *ReleaseClientWorkflow) Show(ctx context.Context, req ReleasesShowReques
 	return apiClient.ReleasesShow(ctx, req.Name, client.ReleasesShowOptions{
 		ArtifactType: req.ArtifactType,
 		Track:        req.Track,
+		Branch:       req.Branch,
 	})
 }
 
