@@ -242,6 +242,7 @@ This distinction is important: stateful features must be designed around persist
 - added focused build transport tests in `pkg/client` and set an explicit `pkg/client: 21` changed-package coverage floor so transport-shaping changes remain guarded without pretending the entire multi-endpoint client package is already at the default package-wide maturity level
 - extracted the duplicated adapter AST helpers into `tools/archtest` and rewired the CLI, frontend, and API architecture tests to use the shared loader/import/signature walker primitives, so future boundary rules evolve from one implementation instead of three diverging copies
 - extracted cache/excuses bootstrap wiring and runtime/auth-operation store wiring out of `internal/app/app.go` into focused bootstrap modules, with direct tests around the new cache/runtime seams, so `App` is closer to a thin composition root instead of carrying every lazy factory itself
+- reconciled `README.md`, `CONTRIBUTING.md`, and the runtime roadmap with the implemented CLI behavior: explicit server resolution order, local daemon lifecycle, and the current set of persistent workflows are now documented consistently
 
 ## Validation
 
@@ -521,9 +522,9 @@ The prefix-based discovery is implemented via:
 These are still the main gaps before TUI and MCP work:
 
 - Launchpad auth now has an application/API surface, but it is still Launchpad-only; future work should extend the same model to GitHub/Gerrit when authenticated workflows are needed
-- the runtime contract between persistent-server mode and ephemeral embedded mode must be made explicit in the CLI, docs, and store implementations
-- async operations and pending auth flows currently need durable storage to become true multi-invocation server features
-- split local-build preparation currently lives too much in CLI command code; it should move into a shared preparation layer reusable by CLI and TUI while still keeping raw local paths out of the server
+- the TUI/MCP adapters still need to consume the shared frontend/client facade and persistent-server operation model instead of inventing parallel runtime access patterns
+- `internal/app` still has bootstrap logic that should continue moving into focused modules so the composition root remains easy to evolve in parallel
+- API/request contract hardening is not finished yet; optional-field validation and environment-sensitive test assumptions still need targeted cleanup
 
 ## Remediation roadmap
 
@@ -535,44 +536,28 @@ The next architecture work should be delivered in the following order.
 - [x] reduce build/backend coupling by introducing a backend-neutral prepared build contract while keeping Launchpad compatibility for existing clients
 - [x] replace duplicated adapter AST guards with shared tooling so CLI, frontend, and API boundary checks evolve from one implementation
 
-### Phase 1: declare the runtime contract
+### Phase 1: keep runtime/docs in sync
 
-- update `README.md`, `CONTRIBUTING.md`, and this `PLAN.md` to describe Watchtower as a server-first system with local-only, remote-only, and split workflows
-- document the two supported runtime modes: persistent server and ephemeral embedded
-- define which commands/features are safe in ephemeral mode and which require persistence-aware runtime
-- define which workflows require local preparation before calling the server
-- make CLI messaging explicit when a user invokes a stateful workflow without a persistent server
+- keep `README.md`, `CONTRIBUTING.md`, and this `PLAN.md` aligned with the implemented runtime resolution order (`--server`, `WATCHTOWER_SERVER`, local daemon, auto-started daemon, embedded server)
+- document which commands/features are persistent-server workflows versus ephemeral-safe workflows
+- keep local daemon lifecycle commands (`server start|status|stop`) documented as the supported local persistent mode
+- avoid reintroducing ambiguity about whether stateful flows are durable across invocations
 
-### Phase 2: make stateful features durable
-
-- add persistent implementations of `port.OperationStore`
-- add persistent implementations of `port.LaunchpadPendingAuthFlowStore`
-- keep in-memory implementations for tests and explicitly ephemeral mode
-- wire the dedicated server to durable stores by default
-
-### Phase 3: align CLI behavior with the runtime model
-
-- keep the CLI as a first-class frontend that can do local preparation and call the server for remote execution
-- prefer connecting to an existing configured server
-- allow the CLI to start a background local server for stateful workflows when no server is configured
-- reserve per-command embedded servers for stateless or explicitly non-durable workflows
-- avoid keeping split-workflow preparation trapped inside Cobra command handlers
-
-### Phase 4: restore the build API boundary
+### Phase 2: keep the build API boundary clean
 
 - move local-build preparation logic behind a shared application/frontend preparation layer reusable by CLI and TUI
 - keep raw local paths and local filesystem concerns out of the server
 - have local preparation produce stable prepared forge/build references that the server can execute durably
-- reduce Launchpad-specific leakage in the main user-facing build API while preserving an explicit prepared-input contract for split workflows
+- keep the main user-facing build API on the backend-neutral prepared-input contract instead of drifting back toward Launchpad-specific request fields
 - keep any low-level Launchpad-oriented controls separate from the normal user-facing build trigger contract
 
-### Phase 5: shrink `internal/app`
+### Phase 3: shrink `internal/app`
 
 - keep `internal/app` as the composition root
 - extract config-to-policy logic into focused builders/factories for forge wiring, build wiring, package-source resolution, and project-sync configuration
 - reduce `App`'s role as a service locator and move behavior into narrower units with explicit responsibilities
 
-### Phase 6: harden API and test contracts
+### Phase 4: harden API and test contracts
 
 - audit Huma request structs so every optional slice/map/bool field is marked `required:"false"`
 - add regression tests for omitted optional query/body fields
