@@ -60,6 +60,14 @@ func TestCacheStatusCmd_RendersCacheStatus(t *testing.T) {
 				Directory: "/tmp/git",
 				Repos:     []client.CacheEntry{{Name: "keystone", Size: "4.0 MiB"}},
 			},
+			Releases: struct {
+				Directory string                   `json:"directory"`
+				Entries   []dto.ReleaseCacheStatus `json:"entries"`
+				Error     string                   `json:"error,omitempty"`
+			}{
+				Directory: "/tmp/releases",
+				Entries:   []dto.ReleaseCacheStatus{{Project: "sunbeam", Name: "snap-openstack", ArtifactType: dto.ArtifactSnap, TrackCount: 1, ChannelCount: 2}},
+			},
 		})
 	}))
 	defer ts.Close()
@@ -79,7 +87,7 @@ func TestCacheStatusCmd_RendersCacheStatus(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if !strings.Contains(out.String(), "/tmp/git") || !strings.Contains(out.String(), "keystone") {
+	if !strings.Contains(out.String(), "/tmp/git") || !strings.Contains(out.String(), "keystone") || !strings.Contains(out.String(), "snap-openstack") {
 		t.Fatalf("unexpected output: %q", out.String())
 	}
 }

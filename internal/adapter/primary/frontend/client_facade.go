@@ -13,6 +13,7 @@ type ClientFacade struct {
 	operations *OperationClientWorkflow
 	projects   *ProjectClientWorkflow
 	builds     *BuildWorkflow
+	releases   *ReleaseClientWorkflow
 	packages   *PackagesClientWorkflow
 	cache      *CacheClientWorkflow
 	bugs       *BugClientWorkflow
@@ -41,6 +42,7 @@ func NewClientFacade(apiClient *ClientTransport, application *app.App) *ClientFa
 		operations:               NewOperationClientWorkflow(apiClient),
 		projects:                 NewProjectClientWorkflow(apiClient),
 		builds:                   builds,
+		releases:                 NewReleaseClientWorkflow(apiClient),
 		packages:                 NewPackagesClientWorkflow(apiClient, application),
 		cache:                    NewCacheClientWorkflow(apiClient),
 		bugs:                     NewBugClientWorkflow(apiClient),
@@ -62,6 +64,9 @@ func (f *ClientFacade) Projects() *ProjectClientWorkflow { return f.projects }
 
 // Builds returns reusable build workflows.
 func (f *ClientFacade) Builds() *BuildWorkflow { return f.builds }
+
+// Releases returns reusable release workflows.
+func (f *ClientFacade) Releases() *ReleaseClientWorkflow { return f.releases }
 
 // Packages returns reusable packages workflows.
 func (f *ClientFacade) Packages() *PackagesClientWorkflow { return f.packages }

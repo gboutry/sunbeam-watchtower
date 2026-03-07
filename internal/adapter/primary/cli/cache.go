@@ -15,9 +15,10 @@ const (
 	cacheTypeUpstreamRepos = "upstream-repos"
 	cacheTypeBugs          = "bugs"
 	cacheTypeExcuses       = "excuses"
+	cacheTypeReleases      = "releases"
 )
 
-var allCacheTypes = []string{cacheTypeGit, cacheTypePackagesIndex, cacheTypeUpstreamRepos, cacheTypeBugs, cacheTypeExcuses}
+var allCacheTypes = []string{cacheTypeGit, cacheTypePackagesIndex, cacheTypeUpstreamRepos, cacheTypeBugs, cacheTypeExcuses, cacheTypeReleases}
 
 func validateCacheTypes(args []string) error {
 	for _, arg := range args {
@@ -117,6 +118,15 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 				fmt.Fprintf(progressOut, "excuses cache sync: %s\n", result.Status)
 			}
 
+			if wantCacheType(args, cacheTypeReleases) {
+				fmt.Fprintln(progressOut, "syncing release caches...")
+				result, err := workflow.SyncReleases(cmd.Context())
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(progressOut, "release cache sync: %s\n", result.Status)
+			}
+
 			return nil
 		},
 	}
@@ -191,6 +201,14 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 				fmt.Fprintln(progressOut, "excuses cache cleared.")
 			}
 
+			if wantCacheType(args, cacheTypeReleases) {
+				fmt.Fprintln(progressOut, "clearing release cache...")
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "releases"}); err != nil {
+					return err
+				}
+				fmt.Fprintln(progressOut, "release cache cleared.")
+			}
+
 			return nil
 		},
 	}
@@ -231,6 +249,9 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 			status.Excuses.Entries = append(status.Excuses.Entries, result.Excuses.Entries...)
 			status.Excuses.Directory = result.Excuses.Directory
 			status.Excuses.Error = result.Excuses.Error
+			status.Releases.Entries = append(status.Releases.Entries, result.Releases.Entries...)
+			status.Releases.Directory = result.Releases.Directory
+			status.Releases.Error = result.Releases.Error
 
 			return renderCacheFullStatus(opts.Out, opts.Output, &status)
 		},

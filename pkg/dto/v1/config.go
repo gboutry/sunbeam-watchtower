@@ -43,14 +43,22 @@ type ProjectBuildConfig struct {
 	PrepareCommand string   `json:"prepare_command,omitempty" yaml:"prepare_command,omitempty"`
 }
 
+type ProjectPublicationConfig struct {
+	Name      string   `json:"name" yaml:"name"`
+	Type      string   `json:"type" yaml:"type"`
+	Tracks    []string `json:"tracks,omitempty" yaml:"tracks,omitempty"`
+	Resources []string `json:"resources,omitempty" yaml:"resources,omitempty"`
+}
+
 type ProjectConfig struct {
-	Name             string              `json:"name" yaml:"name"`
-	ArtifactType     string              `json:"artifact_type,omitempty" yaml:"artifact_type,omitempty"`
-	Code             CodeConfig          `json:"code" yaml:"code"`
-	Bugs             []BugTrackerConfig  `json:"bugs,omitempty" yaml:"bugs,omitempty"`
-	Build            *ProjectBuildConfig `json:"build,omitempty" yaml:"build,omitempty"`
-	Series           []string            `json:"series,omitempty" yaml:"series,omitempty"`
-	DevelopmentFocus string              `json:"development_focus,omitempty" yaml:"development_focus,omitempty"`
+	Name             string                     `json:"name" yaml:"name"`
+	ArtifactType     string                     `json:"artifact_type,omitempty" yaml:"artifact_type,omitempty"`
+	Code             CodeConfig                 `json:"code" yaml:"code"`
+	Bugs             []BugTrackerConfig         `json:"bugs,omitempty" yaml:"bugs,omitempty"`
+	Build            *ProjectBuildConfig        `json:"build,omitempty" yaml:"build,omitempty"`
+	Publications     []ProjectPublicationConfig `json:"publications,omitempty" yaml:"publications,omitempty"`
+	Series           []string                   `json:"series,omitempty" yaml:"series,omitempty"`
+	DevelopmentFocus string                     `json:"development_focus,omitempty" yaml:"development_focus,omitempty"`
 }
 
 type BuildConfig struct {

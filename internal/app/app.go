@@ -12,6 +12,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/distrocache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/excusescache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/gitcache"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/releasecache"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
@@ -63,6 +64,10 @@ type App struct {
 	excusesCache *excusescache.Cache
 	excusesErr   error
 
+	releaseCacheOnce sync.Once
+	releaseCache     *releasecache.Cache
+	releaseCacheErr  error
+
 	operationStoreOnce sync.Once
 	operationStore     port.OperationStore
 
@@ -99,6 +104,11 @@ func (a *App) Close() error {
 	}
 	if a.excusesCache != nil {
 		if err := a.excusesCache.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if a.releaseCache != nil {
+		if err := a.releaseCache.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}

@@ -526,3 +526,41 @@ func TestValidate_EmptyConfig(t *testing.T) {
 		t.Errorf("Validate() should pass for empty config: %v", err)
 	}
 }
+
+func TestValidate_PublicationsRequireTracks(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name: "sunbeam",
+			Code: CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			Publications: []ProjectPublicationConfig{{
+				Name: "snap-openstack",
+				Type: "snap",
+			}},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should error when publication tracks are missing")
+	}
+}
+
+func TestValidate_PublicationsAcceptSnapAndCharm(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name: "sunbeam",
+			Code: CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			Publications: []ProjectPublicationConfig{{
+				Name:   "snap-openstack",
+				Type:   "snap",
+				Tracks: []string{"2024.1"},
+			}, {
+				Name:      "keystone-k8s",
+				Type:      "charm",
+				Tracks:    []string{"2024.1"},
+				Resources: []string{"keystone-image"},
+			}},
+		}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() should accept snap/charm publications: %v", err)
+	}
+}
