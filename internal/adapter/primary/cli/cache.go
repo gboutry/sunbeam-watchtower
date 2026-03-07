@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
 
@@ -67,7 +68,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeGit) {
 				fmt.Fprintln(progressOut, "syncing git caches...")
-				result, err := workflow.SyncGit(cmd.Context(), project)
+				result, err := workflow.SyncGit(cmd.Context(), frontend.CacheSyncGitRequest{Project: project})
 				if err != nil {
 					return err
 				}
@@ -79,7 +80,11 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypePackagesIndex) {
 				fmt.Fprintln(progressOut, "syncing packages index...")
-				if err := workflow.SyncPackagesIndex(cmd.Context(), distros, releases, backports); err != nil {
+				if err := workflow.SyncPackagesIndex(cmd.Context(), frontend.CacheSyncPackagesIndexRequest{
+					Distros:   distros,
+					Releases:  releases,
+					Backports: backports,
+				}); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "packages index sync done.")
@@ -96,7 +101,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeBugs) {
 				fmt.Fprintln(progressOut, "syncing bug caches...")
-				result, err := workflow.SyncBugs(cmd.Context(), project)
+				result, err := workflow.SyncBugs(cmd.Context(), frontend.CacheSyncBugsRequest{Project: project})
 				if err != nil {
 					return err
 				}
@@ -105,7 +110,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeExcuses) {
 				fmt.Fprintln(progressOut, "syncing excuses caches...")
-				result, err := workflow.SyncExcuses(cmd.Context(), trackers)
+				result, err := workflow.SyncExcuses(cmd.Context(), frontend.CacheSyncExcusesRequest{Trackers: trackers})
 				if err != nil {
 					return err
 				}
@@ -148,7 +153,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeGit) {
 				fmt.Fprintln(progressOut, "clearing git cache...")
-				if err := workflow.Clear(cmd.Context(), "git", project); err != nil {
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "git", Project: project}); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "git cache cleared.")
@@ -156,7 +161,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypePackagesIndex) {
 				fmt.Fprintln(progressOut, "clearing packages index cache...")
-				if err := workflow.Clear(cmd.Context(), "packages-index", ""); err != nil {
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "packages-index"}); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "packages index cache cleared.")
@@ -164,7 +169,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeUpstreamRepos) {
 				fmt.Fprintln(progressOut, "clearing upstream repos cache...")
-				if err := workflow.Clear(cmd.Context(), "upstream-repos", ""); err != nil {
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "upstream-repos"}); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "upstream repos cache cleared.")
@@ -172,7 +177,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeBugs) {
 				fmt.Fprintln(progressOut, "clearing bug cache...")
-				if err := workflow.Clear(cmd.Context(), "bugs", project); err != nil {
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "bugs", Project: project}); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "bug cache cleared.")
@@ -180,7 +185,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeExcuses) {
 				fmt.Fprintln(progressOut, "clearing excuses cache...")
-				if err := workflow.ClearExcuses(cmd.Context(), trackers); err != nil {
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "excuses", Trackers: trackers}); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "excuses cache cleared.")
