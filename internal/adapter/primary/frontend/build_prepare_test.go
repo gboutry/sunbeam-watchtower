@@ -93,17 +93,17 @@ func TestLocalBuildPreparerPrepareTrigger(t *testing.T) {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
 
-	if got.Owner != "lp-user" || got.Prepared == nil || got.Prepared.LPProject != "lp-project" || got.Prepared.RepoSelfLink == "" {
+	if got.Owner != "lp-user" || got.Prepared == nil || got.Prepared.TargetProject != "lp-project" || got.Prepared.Repository == "" {
 		t.Fatalf("unexpected prepared trigger: %+v", got)
 	}
 	if len(got.Artifacts) != 1 || got.Artifacts[0] != "tmp-build-01234567-keystone" {
 		t.Fatalf("Artifacts = %v", got.Artifacts)
 	}
-	if got.Prepared.BuildPaths[got.Artifacts[0]] != "rocks/keystone" {
-		t.Fatalf("BuildPaths = %+v", got.Prepared.BuildPaths)
+	if got.Prepared.Recipes[got.Artifacts[0]].BuildPath != "rocks/keystone" {
+		t.Fatalf("Recipes = %+v", got.Prepared.Recipes)
 	}
-	if got.Prepared.GitRefLinks[got.Artifacts[0]] == "" {
-		t.Fatalf("GitRefLinks = %+v", got.Prepared.GitRefLinks)
+	if got.Prepared.Recipes[got.Artifacts[0]].SourceRef == "" {
+		t.Fatalf("Recipes = %+v", got.Prepared.Recipes)
 	}
 }
 
@@ -130,7 +130,7 @@ func TestLocalBuildPreparerPrepareListByPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrepareListByPrefix() error = %v", err)
 	}
-	if got.Owner != "lp-user" || got.LPProject != "lp-project" || got.RecipePrefix != "tmp-build-01234567-" {
+	if got.Owner != "lp-user" || got.TargetProject != "lp-project" || got.RecipePrefix != "tmp-build-01234567-" {
 		t.Fatalf("unexpected list opts: %+v", got)
 	}
 }

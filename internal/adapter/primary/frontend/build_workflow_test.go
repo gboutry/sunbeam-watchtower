@@ -107,7 +107,7 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 	if got.Result == nil {
 		t.Fatal("Result = nil, want response")
 	}
-	if triggerBody.Prepared == nil || triggerBody.Prepared.LPProject != "lp-project" {
+	if triggerBody.Prepared == nil || triggerBody.Prepared.TargetProject != "lp-project" {
 		t.Fatalf("Prepared trigger body = %+v", triggerBody.Prepared)
 	}
 	if len(downloadBody.Artifacts) != 1 || !strings.HasPrefix(downloadBody.Artifacts[0], "tmp-build-01234567-") {
@@ -144,7 +144,7 @@ func TestBuildWorkflowListLocal(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 
-	if !strings.Contains(query, "all=true") || !strings.Contains(query, "recipe_prefix=tmp-build-01234567-") || !strings.Contains(query, "lp_project=lp-project") {
+	if !strings.Contains(query, "all=true") || !strings.Contains(query, "recipe_prefix=tmp-build-01234567-") || !strings.Contains(query, "target_project=lp-project") {
 		t.Fatalf("unexpected query: %q", query)
 	}
 }

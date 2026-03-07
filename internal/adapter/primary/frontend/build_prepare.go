@@ -28,22 +28,22 @@ type PreparedBuildTriggerRequest struct {
 
 // PreparedBuildListRequest holds build list fields after frontend-side preparation.
 type PreparedBuildListRequest struct {
-	Projects     []string
-	All          bool
-	State        string
-	Owner        string
-	LPProject    string
-	RecipePrefix string
+	Projects      []string
+	All           bool
+	State         string
+	Owner         string
+	TargetProject string
+	RecipePrefix  string
 }
 
 // PreparedBuildDownloadRequest holds build download fields after frontend-side preparation.
 type PreparedBuildDownloadRequest struct {
-	Project      string
-	Artifacts    []string
-	ArtifactsDir string
-	Owner        string
-	LPProject    string
-	RecipePrefix string
+	Project       string
+	Artifacts     []string
+	ArtifactsDir  string
+	Owner         string
+	TargetProject string
+	RecipePrefix  string
 }
 
 // LocalBuildPreparer handles frontend-side local preparation for split build workflows.
@@ -138,10 +138,16 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		gitRefLinks[name] = refLink
 	}
 	req.Prepared = &dto.PreparedBuildSource{
-		LPProject:    lpProject,
-		RepoSelfLink: repoSelfLink,
-		GitRefLinks:  gitRefLinks,
-		BuildPaths:   buildPaths,
+		Backend:       dto.PreparedBuildBackendLaunchpad,
+		TargetProject: lpProject,
+		Repository:    repoSelfLink,
+		Recipes:       make(map[string]dto.PreparedBuildRecipe, len(tempNames)),
+	}
+	for _, name := range tempNames {
+		req.Prepared.Recipes[name] = dto.PreparedBuildRecipe{
+			SourceRef: gitRefLinks[name],
+			BuildPath: buildPaths[name],
+		}
 	}
 
 	return req, nil
@@ -171,7 +177,7 @@ func (p *LocalBuildPreparer) PrepareListByPrefix(
 	if err != nil {
 		return req, fmt.Errorf("get LP project: %w", err)
 	}
-	req.LPProject = lpProject
+	req.TargetProject = lpProject
 	req.RecipePrefix = prefix
 
 	return req, nil
@@ -201,7 +207,7 @@ func (p *LocalBuildPreparer) PrepareDownloadByPrefix(
 	if err != nil {
 		return req, fmt.Errorf("get LP project: %w", err)
 	}
-	req.LPProject = lpProject
+	req.TargetProject = lpProject
 	req.RecipePrefix = prefix
 
 	return req, nil
