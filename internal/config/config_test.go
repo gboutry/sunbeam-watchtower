@@ -676,3 +676,24 @@ func TestValidate_ReleaseTracksRejectDuplicateValues(t *testing.T) {
 		t.Fatal("Validate() should reject duplicate release tracks")
 	}
 }
+
+func TestValidate_ReleaseSkipArtifactsRejectsEmptyAndDuplicateValues(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "sunbeam-charms",
+			Code:         CodeConfig{Forge: "gerrit", Host: "https://review.opendev.org", Project: "openstack/sunbeam-charms"},
+			ArtifactType: "charm",
+			Release: &ProjectReleaseConfig{
+				SkipArtifacts: []string{"sunbeam-libs", ""},
+			},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject empty release.skip_artifacts values")
+	}
+
+	cfg.Projects[0].Release.SkipArtifacts = []string{"sunbeam-libs", "sunbeam-libs"}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject duplicate release.skip_artifacts values")
+	}
+}

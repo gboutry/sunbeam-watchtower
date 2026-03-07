@@ -80,6 +80,10 @@ func (a *App) discoverTrackedReleases(ctx context.Context) ([]dto.TrackedPublica
 			if err != nil {
 				return nil, nil, fmt.Errorf("project %s: %w", project.Name, err)
 			}
+			if shouldSkipReleaseArtifact(project, snapName) {
+				warnings = append(warnings, fmt.Sprintf("%s: skipped artifact %s (release.skip_artifacts)", project.Name, snapName))
+				continue
+			}
 			key := publicationKey(project.Name, artifactType, snapName)
 			byKey[key] = dto.TrackedPublication{
 				Project:      project.Name,
@@ -94,6 +98,10 @@ func (a *App) discoverTrackedReleases(ctx context.Context) ([]dto.TrackedPublica
 				return nil, nil, fmt.Errorf("project %s: %w", project.Name, err)
 			}
 			for _, artifact := range artifacts {
+				if shouldSkipReleaseArtifact(project, artifact.Name) {
+					warnings = append(warnings, fmt.Sprintf("%s: skipped artifact %s (release.skip_artifacts)", project.Name, artifact.Name))
+					continue
+				}
 				key := publicationKey(project.Name, artifactType, artifact.Name)
 				byKey[key] = dto.TrackedPublication{
 					Project:      project.Name,
@@ -300,4 +308,16 @@ func dedupeStrings(values []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func shouldSkipReleaseArtifact(project config.ProjectConfig, name string) bool {
+	if project.Release == nil || len(project.Release.SkipArtifacts) == 0 {
+		return false
+	}
+	for _, skipped := range project.Release.SkipArtifacts {
+		if skipped == name {
+			return true
+		}
+	}
+	return false
 }

@@ -51,9 +51,10 @@ type ProjectReleaseBranchConfig struct {
 }
 
 type ProjectReleaseConfig struct {
-	Tracks   []string                     `json:"tracks,omitempty" yaml:"tracks,omitempty"`
-	TrackMap map[string]string            `json:"track_map,omitempty" yaml:"track_map,omitempty"`
-	Branches []ProjectReleaseBranchConfig `json:"branches,omitempty" yaml:"branches,omitempty"`
+	Tracks        []string                     `json:"tracks,omitempty" yaml:"tracks,omitempty"`
+	TrackMap      map[string]string            `json:"track_map,omitempty" yaml:"track_map,omitempty"`
+	Branches      []ProjectReleaseBranchConfig `json:"branches,omitempty" yaml:"branches,omitempty"`
+	SkipArtifacts []string                     `json:"skip_artifacts,omitempty" yaml:"skip_artifacts,omitempty"`
 }
 
 type ProjectConfig struct {
