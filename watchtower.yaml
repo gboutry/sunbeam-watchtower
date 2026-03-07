@@ -36,6 +36,11 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+    release:
+      branches:
+        - series: "2024.1"
+          branch: split
+          risks: [edge]
 
   - name: openstack-hypervisor
     artifact_type: snap
