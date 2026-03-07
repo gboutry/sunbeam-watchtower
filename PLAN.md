@@ -47,7 +47,7 @@ The bug correlation system is one of the most important features. Its purpose is
 Sunbeam Watchtower now follows a stricter hexagonal layout:
 
 - **Entrypoint**: `cmd/watchtower`
-- **Primary adapters**: `internal/adapter/primary/api` and `internal/adapter/primary/cli`
+- **Primary adapters**: `internal/adapter/primary/api`, `internal/adapter/primary/cli`, and `internal/adapter/primary/frontend`
 - **Composition root**: `internal/app`
 - **Core ports**: `internal/core/port` (interfaces only)
 - **Core services**: `internal/core/service/*`
@@ -104,6 +104,16 @@ pkg/
 └── launchpad/v1/
 ```
 
+The tree above is intentionally summarized. The current codebase also includes:
+
+- `internal/adapter/primary/frontend` for frontend-facing async workflow helpers
+- `internal/adapter/secondary/authflowstore` for pending auth-flow persistence
+- `internal/adapter/secondary/credentials` for Launchpad credential persistence
+- `internal/adapter/secondary/excusescache` for migration-excuses caching
+- `internal/adapter/secondary/operationstore` for long-running operation persistence
+- `internal/core/service/auth` for application-surface authentication workflows
+- `internal/core/service/operation` for long-running operation orchestration
+
 ## Architecture rules enforced in CI
 
 - `arch-go` enforces the package dependency model above with 100% compliance and coverage.
@@ -140,6 +150,47 @@ The HTTP API remains the application boundary for non-CLI consumers.
 - `GET /api/v1/cache/status`
 - `GET /api/v1/config`
 
+## Runtime model
+
+Watchtower is now explicitly moving toward a **server-first runtime model**:
+
+- a dedicated Watchtower server is the long-term durable coordination boundary
+- future TUI and MCP surfaces are expected to reuse the same server/API
+- the CLI remains a first-class tool, not just a thin HTTP wrapper
+- some workflows are intentionally split between local preparation and remote execution
+- the CLI may still spawn a local embedded server for convenience, but that is a runtime mode, not the primary architecture
+
+Watchtower workflows therefore fall into three categories:
+
+1. **Remote-only workflows**
+   - pure API queries
+   - server-managed syncs
+   - auth state
+   - durable async operations
+2. **Local-only workflows**
+   - inspecting a local checkout
+   - reading local workspace state
+   - deriving artifact metadata from a local tree
+3. **Split workflows**
+   - local preparation happens on the client side
+   - prepared references are then sent to the server for durable remote execution
+   - example: `build --source local --local-path ...`, where the local side prepares Launchpad git/repo/ref state and the server then creates recipes, requests builds, and tracks execution
+
+For split workflows, the server must never require raw local filesystem access. Local paths stay local; the shared contract is the prepared forge/build reference produced by local preparation.
+
+Two runtime modes are expected to coexist:
+
+1. **Persistent server mode**
+   - used by the dedicated daemon/server process
+   - supports resumable auth flows, durable async operations, and multi-client workflows
+   - is the target mode for MCP, TUI, and advanced CLI usage
+2. **Ephemeral embedded mode**
+   - used when the CLI starts a short-lived local server for one command
+   - suitable for stateless or single-command work
+   - must not pretend to offer durable auth-flow or async-operation semantics across invocations
+
+This distinction is important: stateful features must be designed around persistent-server semantics first, then degraded or disabled explicitly in ephemeral mode. At the same time, local preparation must remain reusable outside the CLI adapter so future frontends such as the TUI can perform the same split-workflow preparation without duplicating command code.
+
 ## Recent refactor outcomes
 
 - migrated the old `internal/api`, `internal/cli`, `internal/service`, and `internal/port` layout into the new `internal/adapter/*` and `internal/core/*` split
@@ -159,12 +210,16 @@ The HTTP API remains the application boundary for non-CLI consumers.
 
 ## Validation
 
-The refactor is currently validated by all of the following:
+The intended validation baseline for the refactor is:
 
 - `go test ./...`
 - `golangci-lint run ./...`
 - `arch-go --color no`
 - `pre-commit run --all-files`
+
+Architecture boundaries are currently validated by `arch-go` with 100% compliance and coverage.
+
+Some local test runs may still depend on host/runtime conditions (for example loopback listener availability or inherited git signing configuration). Those cases should be treated as test-environment hardening work, not as architecture-boundary failures.
 
 ## Deferred contract-test plan
 
@@ -418,6 +473,67 @@ The prefix-based discovery is implemented via:
 These are still the main gaps before TUI and MCP work:
 
 - Launchpad auth now has an application/API surface, but it is still Launchpad-only; future work should extend the same model to GitHub/Gerrit when authenticated workflows are needed
+- the runtime contract between persistent-server mode and ephemeral embedded mode must be made explicit in the CLI, docs, and store implementations
+- async operations and pending auth flows currently need durable storage to become true multi-invocation server features
+- split local-build preparation currently lives too much in CLI command code; it should move into a shared preparation layer reusable by CLI and TUI while still keeping raw local paths out of the server
+
+## Remediation roadmap
+
+The next architecture work should be delivered in the following order.
+
+### Phase 1: declare the runtime contract
+
+- update `README.md`, `CONTRIBUTING.md`, and this `PLAN.md` to describe Watchtower as a server-first system with local-only, remote-only, and split workflows
+- document the two supported runtime modes: persistent server and ephemeral embedded
+- define which commands/features are safe in ephemeral mode and which require persistence-aware runtime
+- define which workflows require local preparation before calling the server
+- make CLI messaging explicit when a user invokes a stateful workflow without a persistent server
+
+### Phase 2: make stateful features durable
+
+- add persistent implementations of `port.OperationStore`
+- add persistent implementations of `port.LaunchpadPendingAuthFlowStore`
+- keep in-memory implementations for tests and explicitly ephemeral mode
+- wire the dedicated server to durable stores by default
+
+### Phase 3: align CLI behavior with the runtime model
+
+- keep the CLI as a first-class frontend that can do local preparation and call the server for remote execution
+- prefer connecting to an existing configured server
+- allow the CLI to start a background local server for stateful workflows when no server is configured
+- reserve per-command embedded servers for stateless or explicitly non-durable workflows
+- avoid keeping split-workflow preparation trapped inside Cobra command handlers
+
+### Phase 4: restore the build API boundary
+
+- move local-build preparation logic behind a shared application/frontend preparation layer reusable by CLI and TUI
+- keep raw local paths and local filesystem concerns out of the server
+- have local preparation produce stable prepared forge/build references that the server can execute durably
+- reduce Launchpad-specific leakage in the main user-facing build API while preserving an explicit prepared-input contract for split workflows
+- keep any low-level Launchpad-oriented controls separate from the normal user-facing build trigger contract
+
+### Phase 5: shrink `internal/app`
+
+- keep `internal/app` as the composition root
+- extract config-to-policy logic into focused builders/factories for forge wiring, build wiring, package-source resolution, and project-sync configuration
+- reduce `App`'s role as a service locator and move behavior into narrower units with explicit responsibilities
+
+### Phase 6: harden API and test contracts
+
+- audit Huma request structs so every optional slice/map/bool field is marked `required:"false"`
+- add regression tests for omitted optional query/body fields
+- remove host-environment assumptions from tests, especially loopback listener defaults and inherited git signing settings
+- revalidate the documented baseline commands in a clean local environment
+
+## Acceptance criteria for the remediation
+
+- `watchtower auth login` can survive multiple CLI invocations when using a persistent server
+- `watchtower build trigger --async` can be followed by `watchtower operation show <id>` across separate commands
+- stateless commands still work without a pre-running server
+- split workflows such as `build --source local --local-path ...` still perform local preparation on the client side and never require server-side filesystem access
+- local preparation logic is reusable outside Cobra command code so the TUI can adopt the same behavior
+- the public build API no longer requires Launchpad-specific resource identifiers for normal usage, while prepared-input execution remains available for split workflows
+- `PLAN.md`, `README.md`, `CONTRIBUTING.md`, and the implemented runtime behavior describe the same architecture
 - long-running operations now have an initial reusable in-memory async/progress/event foundation via `internal/core/service/operation` plus `internal/adapter/secondary/operationstore`
 - `internal/app` should remain the composition root (wiring config, caches, clients, and services), not become the runtime API for every frontend
 - API/CLI now adopt that foundation through `internal/adapter/primary/frontend`, with async build trigger + project sync wrappers and `/api/v1/operations` inspection/cancel endpoints; MCP/TUI still need to adopt the same model
