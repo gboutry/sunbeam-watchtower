@@ -11,7 +11,6 @@ import (
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
@@ -86,7 +85,7 @@ func TestLocalBuildPreparerPrepareTrigger(t *testing.T) {
 		},
 	)
 
-	got, err := preparer.PrepareTrigger(context.Background(), client.BuildsTriggerOptions{
+	got, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
 	}, "/tmp/demo")
@@ -111,7 +110,7 @@ func TestLocalBuildPreparerPrepareTrigger(t *testing.T) {
 func TestLocalBuildPreparerPrepareTriggerRequiresAuth(t *testing.T) {
 	preparer := NewLocalBuildPreparer(&fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567"}, nil, nil)
 
-	_, err := preparer.PrepareTrigger(context.Background(), client.BuildsTriggerOptions{
+	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
 	}, "/tmp/demo")
@@ -127,7 +126,7 @@ func TestLocalBuildPreparerPrepareListByPrefix(t *testing.T) {
 		nil,
 	)
 
-	got, err := preparer.PrepareListByPrefix(context.Background(), client.BuildsListOptions{}, "tmp-build-01234567-")
+	got, err := preparer.PrepareListByPrefix(context.Background(), PreparedBuildListRequest{}, "tmp-build-01234567-")
 	if err != nil {
 		t.Fatalf("PrepareListByPrefix() error = %v", err)
 	}

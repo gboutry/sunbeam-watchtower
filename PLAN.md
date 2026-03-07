@@ -230,6 +230,7 @@ This distinction is important: stateful features must be designed around persist
 - rewired the CLI command layer to consume the shared client facade through `Options.Frontend()`, so command handlers now depend on one stable frontend entrypoint rather than constructing individual workflows ad hoc
 - tightened the CLI architecture guard so non-bootstrap command files also fail if they instantiate frontend workflows directly; command handlers are now expected to go through `Options.Frontend()` for workflow access
 - replaced the cache workflow public surface with frontend-owned request/response DTOs, so cache sync/clear/status flows no longer leak `pkg/client` result or option types to frontend consumers
+- finished the remaining frontend transport-contract cleanup for split build preparation and cache status: local build preparation now uses frontend-owned prepared request DTOs instead of `pkg/client` option structs, and cache status now exposes frontend-owned entry DTOs instead of transport result shapes
 
 ## Validation
 

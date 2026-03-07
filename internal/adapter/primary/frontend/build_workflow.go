@@ -98,7 +98,7 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 		return nil, errors.New("build workflow requires an API client")
 	}
 
-	triggerOpts := client.BuildsTriggerOptions{
+	preparedTrigger := PreparedBuildTriggerRequest{
 		Project:   req.Project,
 		Artifacts: append([]string(nil), req.Artifacts...),
 		Wait:      req.Wait,
@@ -106,19 +106,30 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 		Prefix:    req.Prefix,
 	}
 	if req.Timeout > 0 {
-		triggerOpts.Timeout = req.Timeout.String()
+		preparedTrigger.Timeout = req.Timeout
 	}
-	requestedArtifacts := append([]string(nil), triggerOpts.Artifacts...)
+	requestedArtifacts := append([]string(nil), preparedTrigger.Artifacts...)
 
 	if req.Source == "local" {
 		if w.preparer == nil {
 			return nil, errors.New("local build preparation is not configured")
 		}
 		var err error
-		triggerOpts, err = w.preparer.PrepareTrigger(ctx, triggerOpts, req.LocalPath)
+		preparedTrigger, err = w.preparer.PrepareTrigger(ctx, preparedTrigger, req.LocalPath)
 		if err != nil {
 			return nil, err
 		}
+	}
+	triggerOpts := client.BuildsTriggerOptions{
+		Project:   preparedTrigger.Project,
+		Artifacts: preparedTrigger.Artifacts,
+		Wait:      preparedTrigger.Wait,
+		Owner:     preparedTrigger.Owner,
+		Prefix:    preparedTrigger.Prefix,
+		Prepared:  preparedTrigger.Prepared,
+	}
+	if preparedTrigger.Timeout > 0 {
+		triggerOpts.Timeout = preparedTrigger.Timeout.String()
 	}
 
 	response := &BuildTriggerResponse{}
@@ -170,7 +181,7 @@ func (w *BuildWorkflow) List(ctx context.Context, req BuildListRequest) ([]dto.B
 		return nil, errors.New("build workflow requires an API client")
 	}
 
-	listOpts := client.BuildsListOptions{
+	preparedList := PreparedBuildListRequest{
 		Projects: append([]string(nil), req.Projects...),
 		All:      req.All,
 		State:    req.State,
@@ -180,18 +191,26 @@ func (w *BuildWorkflow) List(ctx context.Context, req BuildListRequest) ([]dto.B
 		if w.preparer == nil {
 			return nil, errors.New("local build preparation is not configured")
 		}
-		if req.DefaultAll && !listOpts.All {
-			listOpts.All = true
+		if req.DefaultAll && !preparedList.All {
+			preparedList.All = true
 		}
 		listPrefix := req.Prefix
 		if req.SHA != "" {
 			listPrefix += req.SHA + "-"
 		}
 		var err error
-		listOpts, err = w.preparer.PrepareListByPrefix(ctx, listOpts, listPrefix)
+		preparedList, err = w.preparer.PrepareListByPrefix(ctx, preparedList, listPrefix)
 		if err != nil {
 			return nil, err
 		}
+	}
+	listOpts := client.BuildsListOptions{
+		Projects:     preparedList.Projects,
+		All:          preparedList.All,
+		State:        preparedList.State,
+		Owner:        preparedList.Owner,
+		LPProject:    preparedList.LPProject,
+		RecipePrefix: preparedList.RecipePrefix,
 	}
 
 	return w.client.BuildsList(ctx, listOpts)
@@ -203,7 +222,7 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 		return errors.New("build workflow requires an API client")
 	}
 
-	downloadOpts := client.BuildsDownloadOptions{
+	preparedDownload := PreparedBuildDownloadRequest{
 		Project:      req.Project,
 		Artifacts:    append([]string(nil), req.Artifacts...),
 		ArtifactsDir: req.ArtifactsDir,
@@ -218,10 +237,18 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 			listPrefix += req.SHA + "-"
 		}
 		var err error
-		downloadOpts, err = w.preparer.PrepareDownloadByPrefix(ctx, downloadOpts, listPrefix)
+		preparedDownload, err = w.preparer.PrepareDownloadByPrefix(ctx, preparedDownload, listPrefix)
 		if err != nil {
 			return err
 		}
+	}
+	downloadOpts := client.BuildsDownloadOptions{
+		Project:      preparedDownload.Project,
+		Artifacts:    preparedDownload.Artifacts,
+		RecipePrefix: preparedDownload.RecipePrefix,
+		Owner:        preparedDownload.Owner,
+		LPProject:    preparedDownload.LPProject,
+		ArtifactsDir: preparedDownload.ArtifactsDir,
 	}
 
 	return w.client.BuildsDownload(ctx, downloadOpts)
