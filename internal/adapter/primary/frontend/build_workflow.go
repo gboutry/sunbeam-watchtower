@@ -55,6 +55,11 @@ type BuildDownloadRequest struct {
 	Download client.BuildsDownloadOptions
 }
 
+// BuildCleanupRequest describes a frontend build-cleanup workflow.
+type BuildCleanupRequest struct {
+	Cleanup client.BuildsCleanupOptions
+}
+
 // NewBuildWorkflow creates a reusable frontend build workflow.
 func NewBuildWorkflow(apiClient *client.Client, preparer *LocalBuildPreparer) *BuildWorkflow {
 	return &BuildWorkflow{
@@ -186,4 +191,12 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 	}
 
 	return w.client.BuildsDownload(ctx, downloadOpts)
+}
+
+// Cleanup deletes temporary build recipes matching the requested filters.
+func (w *BuildWorkflow) Cleanup(ctx context.Context, req BuildCleanupRequest) ([]string, error) {
+	if w.client == nil {
+		return nil, errors.New("build workflow requires an API client")
+	}
+	return w.client.BuildsCleanup(ctx, req.Cleanup)
 }

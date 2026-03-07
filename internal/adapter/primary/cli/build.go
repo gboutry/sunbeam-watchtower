@@ -217,11 +217,13 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 		Use:   "cleanup",
 		Short: "Delete temporary build recipes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			deleted, err := opts.Client.BuildsCleanup(cmd.Context(), client.BuildsCleanupOptions{
-				Project: project,
-				Owner:   owner,
-				Prefix:  prefix,
-				DryRun:  dryRun,
+			deleted, err := frontend.NewBuildWorkflow(opts.Client, nil).Cleanup(cmd.Context(), frontend.BuildCleanupRequest{
+				Cleanup: client.BuildsCleanupOptions{
+					Project: project,
+					Owner:   owner,
+					Prefix:  prefix,
+					DryRun:  dryRun,
+				},
 			})
 			if err != nil {
 				return err

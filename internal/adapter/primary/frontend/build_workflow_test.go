@@ -154,3 +154,39 @@ func TestBuildWorkflowListLocal(t *testing.T) {
 		t.Fatalf("unexpected query: %q", query)
 	}
 }
+
+func TestBuildWorkflowCleanup(t *testing.T) {
+	var gotBody client.BuildsCleanupOptions
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/builds/cleanup" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(client.BuildsCleanupResult{
+			Deleted: []string{"tmp-build-keystone", "tmp-build-glance"},
+		})
+	}))
+	defer ts.Close()
+
+	workflow := NewBuildWorkflow(client.NewClient(ts.URL), nil)
+	got, err := workflow.Cleanup(context.Background(), BuildCleanupRequest{
+		Cleanup: client.BuildsCleanupOptions{
+			Project: "keystone",
+			Owner:   "team-a",
+			Prefix:  "tmp-build",
+			DryRun:  true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+	if gotBody.Project != "keystone" || gotBody.Owner != "team-a" || gotBody.Prefix != "tmp-build" || !gotBody.DryRun {
+		t.Fatalf("cleanup body = %+v, want keystone/team-a/tmp-build dry-run", gotBody)
+	}
+	if len(got) != 2 || got[0] != "tmp-build-keystone" {
+		t.Fatalf("Cleanup() = %+v, want deleted recipes", got)
+	}
+}
