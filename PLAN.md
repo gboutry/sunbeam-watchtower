@@ -597,3 +597,4 @@ The next architecture work should be delivered in the following order.
 - API/CLI now adopt that foundation through `internal/adapter/primary/frontend`, with async build trigger + project sync wrappers and `/api/v1/operations` inspection/cancel endpoints; MCP/TUI still need to adopt the same model
 - TUI/MCP will likely want the new dedicated frontend facade layer on top of the core services to become their main entrypoint, exposing frontend-friendly workflows rather than raw service-by-service access
 - that facade would be the right place for cross-cutting concerns that frontends need but core services should not own directly: auth/session state, progress/events, async orchestration, cancellation, and view-oriented aggregation
+- looks like snap branch tracking is not working
