@@ -204,6 +204,56 @@ Projects can declare the Launchpad series that must exist on the project, plus t
 
 `watchtower project sync` ensures those series exist and sets the declared focus of development.
 
+### Release tracking overrides
+
+Published snap and charm tracking is repo-driven:
+
+- snap names come from `snap/snapcraft.yaml` or root `snapcraft.yaml`
+- charm names and resources come from `charmcraft.yaml`
+- tracked store tracks default to the project's `series`
+
+Use `project.release` only for store-specific overrides:
+
+```yaml
+- name: snap-openstack
+  artifact_type: snap
+  code:
+    forge: github
+    owner: canonical
+    project: snap-openstack
+  series:
+    - 2024.1
+    - 2025.1
+  release:
+    track_map:
+      2025.1: latest
+    branches:
+      - series: 2024.1
+        branch: risc-v
+        risks: [edge, beta, candidate, stable]
+
+- name: sunbeam-charms
+  artifact_type: charm
+  code:
+    forge: gerrit
+    host: https://review.opendev.org
+    project: openstack/sunbeam-charms
+  series:
+    - 2024.1
+  release:
+    branches:
+      - series: 2024.1
+        branch: risc-v
+        risks: [edge]
+```
+
+Rules:
+
+- `release.track_map` remaps project `series` to store tracks
+- `release.tracks` can replace the default series-derived tracks entirely
+- `release.branches` declares managed `track/risk/branch` channels for snaps or charms
+- branch channels are additive; Watchtower does not try to auto-discover arbitrary store branches as managed release lines
+
 ## Commands
 
 ### `watchtower packages`
