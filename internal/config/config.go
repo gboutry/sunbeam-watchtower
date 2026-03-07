@@ -273,6 +273,10 @@ func (c *Config) Validate() error {
 			if p.ArtifactType != "snap" && p.ArtifactType != "charm" {
 				return fmt.Errorf("projects[%d] (%s): release overrides require artifact_type snap or charm", i, p.Name)
 			}
+			effectiveSeries := p.Series
+			if len(effectiveSeries) == 0 {
+				effectiveSeries = c.Launchpad.Series
+			}
 			if len(p.Release.Tracks) > 0 && len(p.Release.TrackMap) > 0 {
 				return fmt.Errorf("projects[%d] (%s): release.tracks and release.track_map are mutually exclusive", i, p.Name)
 			}
@@ -293,9 +297,9 @@ func (c *Config) Validate() error {
 				if track == "" {
 					return fmt.Errorf("projects[%d] (%s): release.track_map[%q] cannot map to an empty track", i, p.Name, series)
 				}
-				if len(p.Series) > 0 {
+				if len(effectiveSeries) > 0 {
 					found := false
-					for _, knownSeries := range p.Series {
+					for _, knownSeries := range effectiveSeries {
 						if knownSeries == series {
 							found = true
 							break
@@ -313,9 +317,9 @@ func (c *Config) Validate() error {
 				if (branch.Series == "" && branch.Track == "") || (branch.Series != "" && branch.Track != "") {
 					return fmt.Errorf("projects[%d] (%s): release.branches[%d] must set exactly one of series or track", i, p.Name, j)
 				}
-				if branch.Series != "" && len(p.Series) > 0 {
+				if branch.Series != "" && len(effectiveSeries) > 0 {
 					found := false
-					for _, knownSeries := range p.Series {
+					for _, knownSeries := range effectiveSeries {
 						if knownSeries == branch.Series {
 							found = true
 							break
