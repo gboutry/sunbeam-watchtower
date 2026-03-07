@@ -529,6 +529,112 @@ func renderStringList(w io.Writer, format string, items []string) error {
 	}
 }
 
+// renderReleaseList writes release list rows in the requested format.
+func renderReleaseList(w io.Writer, format string, releases []dto.ReleaseListEntry) error {
+	switch format {
+	case "json":
+		return renderJSON(w, releases)
+	case "yaml":
+		return renderYAML(w, releases)
+	default:
+		if len(releases) == 0 {
+			fmt.Fprintln(w, "No releases found.")
+			return nil
+		}
+		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tTRACK\tRISK\tTARGETS\tRESOURCES\tUPDATED")
+		for _, release := range releases {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				release.Project,
+				release.ArtifactType.String(),
+				release.Name,
+				release.Track,
+				release.Risk,
+				formatReleaseTargets(release.Targets),
+				formatReleaseResources(release.Resources),
+				formatTimestamp(release.UpdatedAt),
+			)
+		}
+		return tw.Flush()
+	}
+}
+
+// renderReleaseShow writes one release matrix in the requested format.
+func renderReleaseShow(w io.Writer, format string, release *dto.ReleaseShowResult) error {
+	switch format {
+	case "json":
+		return renderJSON(w, release)
+	case "yaml":
+		return renderYAML(w, release)
+	default:
+		fmt.Fprintf(w, "Project:       %s\n", release.Project)
+		fmt.Fprintf(w, "Type:          %s\n", release.ArtifactType.String())
+		fmt.Fprintf(w, "Name:          %s\n", release.Name)
+		fmt.Fprintf(w, "Updated:       %s\n", formatTimestamp(release.UpdatedAt))
+		if len(release.Tracks) > 0 {
+			fmt.Fprintf(w, "Tracks:        %s\n", strings.Join(release.Tracks, ", "))
+		}
+		fmt.Fprintln(w)
+		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(tw, "TRACK\tRISK\tTARGETS\tRESOURCES")
+		for _, channel := range release.Channels {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n",
+				channel.Track,
+				channel.Risk,
+				formatReleaseTargets(channel.Targets),
+				formatReleaseResources(channel.Resources),
+			)
+		}
+		return tw.Flush()
+	}
+}
+
+func formatReleaseTargets(targets []dto.ReleaseTargetSnapshot) string {
+	if len(targets) == 0 {
+		return "-"
+	}
+	parts := make([]string, 0, len(targets))
+	for _, target := range targets {
+		label := target.Architecture
+		if label == "" {
+			label = target.Base.Architecture
+		}
+		if label == "" {
+			label = "default"
+		}
+		revision := ""
+		if target.Revision > 0 {
+			revision = fmt.Sprintf("r%d", target.Revision)
+		}
+		version := target.Version
+		if version != "" && revision != "" {
+			parts = append(parts, fmt.Sprintf("%s:%s/%s", label, revision, version))
+		} else if revision != "" {
+			parts = append(parts, fmt.Sprintf("%s:%s", label, revision))
+		} else if version != "" {
+			parts = append(parts, fmt.Sprintf("%s:%s", label, version))
+		} else {
+			parts = append(parts, label)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatReleaseResources(resources []dto.ReleaseResourceSnapshot) string {
+	if len(resources) == 0 {
+		return "-"
+	}
+	parts := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		if resource.Revision > 0 {
+			parts = append(parts, fmt.Sprintf("%s:r%d", resource.Name, resource.Revision))
+		} else {
+			parts = append(parts, resource.Name)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 type cacheEntry struct {
 	Name string `json:"name" yaml:"name"`
 	Size string `json:"size" yaml:"size"`
@@ -558,6 +664,11 @@ type cacheFullStatus struct {
 		Entries   []dto.ExcusesCacheStatus `json:"entries" yaml:"entries"`
 		Error     string                   `json:"error,omitempty" yaml:"error,omitempty"`
 	} `json:"excuses" yaml:"excuses"`
+	Releases struct {
+		Directory string                   `json:"directory" yaml:"directory"`
+		Entries   []dto.ReleaseCacheStatus `json:"entries" yaml:"entries"`
+		Error     string                   `json:"error,omitempty" yaml:"error,omitempty"`
+	} `json:"releases" yaml:"releases"`
 }
 
 func renderCacheFullStatus(w io.Writer, format string, status *cacheFullStatus) error {
@@ -635,6 +746,34 @@ func renderCacheFullStatusTable(w io.Writer, status *cacheFullStatus) error {
 				lastUpdated = entry.LastUpdated.Format("2006-01-02 15:04:05")
 			}
 			fmt.Fprintf(tw, "  %s\t%d\t%s\t%s\n", entry.Tracker, entry.EntryCount, lastUpdated, formatSize(entry.DiskSize))
+		}
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+	}
+
+	fmt.Fprintln(w, "\n=== Releases ===")
+	if status.Releases.Error != "" {
+		fmt.Fprintf(w, "  (unavailable: %s)\n", status.Releases.Error)
+	} else if len(status.Releases.Entries) == 0 {
+		fmt.Fprintln(w, "  (none)")
+	} else {
+		fmt.Fprintf(w, "directory: %s\n", status.Releases.Directory)
+		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(tw, "  PROJECT\tTYPE\tNAME\tTRACKS\tCHANNELS\tLAST UPDATED")
+		for _, entry := range status.Releases.Entries {
+			lastUpdated := "never"
+			if !entry.LastUpdated.IsZero() {
+				lastUpdated = entry.LastUpdated.Format("2006-01-02 15:04:05")
+			}
+			fmt.Fprintf(tw, "  %s\t%s\t%s\t%d\t%d\t%s\n",
+				entry.Project,
+				entry.ArtifactType.String(),
+				entry.Name,
+				entry.TrackCount,
+				entry.ChannelCount,
+				lastUpdated,
+			)
 		}
 		if err := tw.Flush(); err != nil {
 			return err

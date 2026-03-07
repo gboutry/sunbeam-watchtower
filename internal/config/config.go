@@ -58,15 +58,24 @@ type ProjectBuildConfig struct {
 	LPProject           string   `mapstructure:"lp_project" yaml:"lp_project,omitempty"`
 }
 
+// ProjectPublicationConfig holds per-project publication tracking settings.
+type ProjectPublicationConfig struct {
+	Name      string   `mapstructure:"name" yaml:"name"`
+	Type      string   `mapstructure:"type" yaml:"type"`
+	Tracks    []string `mapstructure:"tracks" yaml:"tracks,omitempty"`
+	Resources []string `mapstructure:"resources" yaml:"resources,omitempty"`
+}
+
 // ProjectConfig defines a project tracked across forges.
 type ProjectConfig struct {
-	Name             string              `mapstructure:"name" yaml:"name"`
-	ArtifactType     string              `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
-	Code             CodeConfig          `mapstructure:"code" yaml:"code"`
-	Bugs             []BugTrackerConfig  `mapstructure:"bugs" yaml:"bugs,omitempty"`
-	Build            *ProjectBuildConfig `mapstructure:"build" yaml:"build,omitempty"`
-	Series           []string            `mapstructure:"series" yaml:"series,omitempty"`
-	DevelopmentFocus string              `mapstructure:"development_focus" yaml:"development_focus,omitempty"`
+	Name             string                     `mapstructure:"name" yaml:"name"`
+	ArtifactType     string                     `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
+	Code             CodeConfig                 `mapstructure:"code" yaml:"code"`
+	Bugs             []BugTrackerConfig         `mapstructure:"bugs" yaml:"bugs,omitempty"`
+	Build            *ProjectBuildConfig        `mapstructure:"build" yaml:"build,omitempty"`
+	Publications     []ProjectPublicationConfig `mapstructure:"publications" yaml:"publications,omitempty"`
+	Series           []string                   `mapstructure:"series" yaml:"series,omitempty"`
+	DevelopmentFocus string                     `mapstructure:"development_focus" yaml:"development_focus,omitempty"`
 }
 
 // BuildConfig holds build pipeline settings.
@@ -251,6 +260,27 @@ func (c *Config) Validate() error {
 			}
 			if p.Build.OfficialCodehosting && p.Build.Owner == "" {
 				return fmt.Errorf("projects[%d] (%s): build.owner is required when official_codehosting is true", i, p.Name)
+			}
+		}
+		for j, publication := range p.Publications {
+			if publication.Name == "" {
+				return fmt.Errorf("projects[%d] (%s): publications[%d].name is required", i, p.Name, j)
+			}
+			if !validArtifactTypes[publication.Type] || publication.Type == "rock" {
+				return fmt.Errorf("projects[%d] (%s): publications[%d].type %q must be snap or charm", i, p.Name, j, publication.Type)
+			}
+			if len(publication.Tracks) == 0 {
+				return fmt.Errorf("projects[%d] (%s): publications[%d].tracks is required", i, p.Name, j)
+			}
+			seenTracks := make(map[string]bool, len(publication.Tracks))
+			for _, track := range publication.Tracks {
+				if track == "" {
+					return fmt.Errorf("projects[%d] (%s): publications[%d].tracks cannot contain empty values", i, p.Name, j)
+				}
+				if seenTracks[track] {
+					return fmt.Errorf("projects[%d] (%s): publications[%d].tracks contains duplicate %q", i, p.Name, j, track)
+				}
+				seenTracks[track] = true
 			}
 		}
 

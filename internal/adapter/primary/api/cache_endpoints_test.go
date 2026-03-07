@@ -98,3 +98,21 @@ func TestCacheSyncBugs_EmptyConfigReturnsZeroSynced(t *testing.T) {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
+
+func TestCacheSyncReleases_WithConfiguredPublicationReturns200(t *testing.T) {
+	srv, base := startTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	application := app.NewApp(&config.Config{}, discardLogger())
+	RegisterCacheAPI(srv.API(), application)
+
+	resp, err := http.Post(base+"/api/v1/cache/sync/releases", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}

@@ -74,6 +74,18 @@ func (c *Client) CacheSyncExcuses(ctx context.Context, opts CacheSyncExcusesOpti
 	return &result, err
 }
 
+// CacheSyncReleasesResult is the response returned by CacheSyncReleases.
+type CacheSyncReleasesResult struct {
+	Status string `json:"status"`
+}
+
+// CacheSyncReleases syncs cached published snap/charm release state.
+func (c *Client) CacheSyncReleases(ctx context.Context) (*CacheSyncReleasesResult, error) {
+	var result CacheSyncReleasesResult
+	err := c.post(ctx, "/api/v1/cache/sync/releases", nil, &result)
+	return &result, err
+}
+
 // CacheDelete clears a specific cache type.
 func (c *Client) CacheDelete(ctx context.Context, cacheType string, project string) error {
 	return c.CacheDeleteWithTrackers(ctx, cacheType, project, nil)
@@ -122,6 +134,11 @@ type CacheStatusResult struct {
 		Entries   []dto.ExcusesCacheStatus `json:"entries"`
 		Error     string                   `json:"error,omitempty"`
 	} `json:"excuses"`
+	Releases struct {
+		Directory string                   `json:"directory"`
+		Entries   []dto.ReleaseCacheStatus `json:"entries"`
+		Error     string                   `json:"error,omitempty"`
+	} `json:"releases"`
 }
 
 // CacheStatus returns the full cache status (git + packages + upstream).

@@ -15,6 +15,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	pkg "github.com/gboutry/sunbeam-watchtower/internal/core/service/package"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
@@ -52,7 +53,7 @@ type CacheSyncUpstreamOutput struct {
 
 // CacheDeleteInput is the request for DELETE /api/v1/cache/{type}.
 type CacheDeleteInput struct {
-	Type     string   `path:"type" doc:"Cache type to clear (git, packages-index, upstream-repos, bugs, excuses)"`
+	Type     string   `path:"type" doc:"Cache type to clear (git, packages-index, upstream-repos, bugs, excuses, releases)"`
 	Project  string   `query:"project" required:"false" doc:"Clear only this project (git/bugs types only)"`
 	Trackers []string `query:"tracker" required:"false" doc:"Clear only these excuses trackers (excuses type only)"`
 }
@@ -92,6 +93,13 @@ type CacheSyncExcusesOutput struct {
 	}
 }
 
+// CacheSyncReleasesOutput is the response for POST /api/v1/cache/sync/releases.
+type CacheSyncReleasesOutput struct {
+	Body struct {
+		Status string `json:"status" example:"ok"`
+	}
+}
+
 // CacheStatusOutput is the response for GET /api/v1/cache/status.
 type CacheStatusOutput struct {
 	Body struct {
@@ -118,6 +126,11 @@ type CacheStatusOutput struct {
 			Entries   []dto.ExcusesCacheStatus `json:"entries"`
 			Error     string                   `json:"error,omitempty"`
 		} `json:"excuses"`
+		Releases struct {
+			Directory string                   `json:"directory"`
+			Entries   []dto.ReleaseCacheStatus `json:"entries"`
+			Error     string                   `json:"error,omitempty"`
+		} `json:"releases"`
 	}
 }
 
@@ -296,6 +309,22 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		return out, nil
 	})
 
+	// POST /api/v1/cache/sync/releases
+	huma.Register(api, huma.Operation{
+		OperationID: "cache-sync-releases",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/cache/sync/releases",
+		Summary:     "Sync published snap and charm release caches",
+		Tags:        []string{"cache", "releases"},
+	}, func(ctx context.Context, _ *struct{}) (*CacheSyncReleasesOutput, error) {
+		if err := frontend.NewServerFacade(application).Releases().SyncCache(ctx); err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("release cache sync failed: %v", err))
+		}
+		out := &CacheSyncReleasesOutput{}
+		out.Body.Status = "ok"
+		return out, nil
+	})
+
 	// DELETE /api/v1/cache/{type}
 	huma.Register(api, huma.Operation{
 		OperationID: "cache-delete",
@@ -412,9 +441,18 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				}
 			}
 
+		case "releases":
+			cache, err := application.ReleaseCache()
+			if err != nil {
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open release cache: %v", err))
+			}
+			if err := cache.RemoveAll(); err != nil {
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing release cache: %v", err))
+			}
+
 		default:
 			return nil, huma.Error400BadRequest(
-				fmt.Sprintf("unknown cache type %q (valid: git, packages-index, upstream-repos, bugs, excuses)", input.Type))
+				fmt.Sprintf("unknown cache type %q (valid: git, packages-index, upstream-repos, bugs, excuses, releases)", input.Type))
 		}
 
 		out := &CacheDeleteOutput{}
@@ -514,6 +552,20 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				out.Body.Excuses.Error = sErr.Error()
 			} else {
 				out.Body.Excuses.Entries = statuses
+			}
+		}
+
+		// Published release cache status.
+		releaseCache, err := application.ReleaseCache()
+		if err != nil {
+			out.Body.Releases.Error = err.Error()
+		} else {
+			out.Body.Releases.Directory = releaseCache.CacheDir()
+			statuses, sErr := frontend.NewServerFacade(application).Releases().CacheStatus(ctx)
+			if sErr != nil {
+				out.Body.Releases.Error = sErr.Error()
+			} else {
+				out.Body.Releases.Entries = statuses
 			}
 		}
 

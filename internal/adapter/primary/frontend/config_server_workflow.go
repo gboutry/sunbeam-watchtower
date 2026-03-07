@@ -90,6 +90,15 @@ func configToDTO(cfg *config.Config) *dto.Config {
 				Project: bug.Project,
 			}
 		}
+		outProject.Publications = make([]dto.ProjectPublicationConfig, len(project.Publications))
+		for j, publication := range project.Publications {
+			outProject.Publications[j] = dto.ProjectPublicationConfig{
+				Name:      publication.Name,
+				Type:      publication.Type,
+				Tracks:    append([]string(nil), publication.Tracks...),
+				Resources: append([]string(nil), publication.Resources...),
+			}
+		}
 
 		out.Projects[i] = outProject
 	}

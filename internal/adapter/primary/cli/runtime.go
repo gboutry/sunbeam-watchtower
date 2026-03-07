@@ -77,6 +77,7 @@ func newConfiguredServer(logger *slog.Logger, application *app.App, serverOpts a
 	api.RegisterReviewsAPI(srv.API(), application)
 	api.RegisterCommitsAPI(srv.API(), application)
 	api.RegisterBuildsAPI(srv.API(), application)
+	api.RegisterReleasesAPI(srv.API(), application)
 	api.RegisterProjectsAPI(srv.API(), application)
 	api.RegisterOperationsAPI(srv.API(), application)
 	return srv

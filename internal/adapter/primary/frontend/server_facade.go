@@ -10,6 +10,7 @@ type ServerFacade struct {
 	auth       *AuthWorkflow
 	operations *OperationWorkflow
 	builds     *BuildServerWorkflow
+	releases   *ReleaseServerWorkflow
 	projects   *ProjectServerWorkflow
 	bugs       *BugServerWorkflow
 	reviews    *ReviewServerWorkflow
@@ -25,6 +26,7 @@ func NewServerFacade(application *app.App) *ServerFacade {
 		auth:       NewAuthWorkflow(application),
 		operations: NewOperationWorkflow(application),
 		builds:     NewBuildServerWorkflow(application, async),
+		releases:   NewReleaseServerWorkflow(application),
 		projects:   NewProjectServerWorkflow(application, async),
 		bugs:       NewBugServerWorkflow(application),
 		reviews:    NewReviewServerWorkflow(application),
@@ -41,6 +43,9 @@ func (f *ServerFacade) Operations() *OperationWorkflow { return f.operations }
 
 // Builds returns reusable build workflows.
 func (f *ServerFacade) Builds() *BuildServerWorkflow { return f.builds }
+
+// Releases returns reusable release workflows.
+func (f *ServerFacade) Releases() *ReleaseServerWorkflow { return f.releases }
 
 // Projects returns reusable project workflows.
 func (f *ServerFacade) Projects() *ProjectServerWorkflow { return f.projects }
