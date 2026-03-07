@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	distro "github.com/gboutry/sunbeam-watchtower/pkg/distro/v1"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	"github.com/spf13/cobra"
@@ -49,8 +49,9 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			setName := args[0]
 			ctx := cmd.Context()
+			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
 
-			results, err := opts.Client.PackagesDiff(ctx, client.PackagesDiffOptions{
+			response, err := workflow.Diff(ctx, frontend.PackagesDiffRequest{
 				Set:             setName,
 				Distros:         distros,
 				Releases:        releases,
@@ -66,10 +67,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			sources := opts.App.BuildPackageSources(distros, releases, suites, backports)
-			hasUpstream := upstreamRelease != "" || constraints != ""
-
-			return renderDiffResults(opts.Out, opts.Output, results, sources, merge, hasUpstream)
+			return renderDiffResults(opts.Out, opts.Output, response.Results, response.Sources, response.Merge, response.HasUpstream)
 		},
 	}
 
@@ -99,8 +97,10 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pkgName := args[0]
 			ctx := cmd.Context()
+			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
 
-			result, err := opts.Client.PackagesShow(ctx, pkgName, client.PackagesShowOptions{
+			response, err := workflow.ShowVersion(ctx, frontend.PackagesShowVersionRequest{
+				Package:         pkgName,
 				Distros:         distros,
 				Releases:        releases,
 				Backports:       backports,
@@ -111,10 +111,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			sources := opts.App.BuildPackageSources(distros, releases, nil, backports)
-			hasUpstream := upstreamRelease != ""
-
-			return renderDiffResults(opts.Out, opts.Output, []dto.PackageDiffResult{*result}, sources, merge, hasUpstream)
+			return renderDiffResults(opts.Out, opts.Output, []dto.PackageDiffResult{response.Result}, response.Sources, response.Merge, response.HasUpstream)
 		},
 	}
 
@@ -146,7 +143,9 @@ match. Otherwise, returns the highest version found across the configured
 				version = args[1]
 			}
 
-			result, err := opts.Client.PackagesDetail(cmd.Context(), pkgName, client.PackagesDetailOptions{
+			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
+			result, err := workflow.Detail(cmd.Context(), frontend.PackagesDetailRequest{
+				Package:   pkgName,
 				Version:   version,
 				Distros:   distros,
 				Releases:  releases,
@@ -178,8 +177,9 @@ func newPackagesListCmd(opts *Options) *cobra.Command {
 		Short: "List packages in a distro",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
 
-			result, err := opts.Client.PackagesList(ctx, client.PackagesListOptions{
+			result, err := workflow.List(ctx, frontend.PackagesListRequest{
 				Distros:    distros,
 				Releases:   releases,
 				Suites:     suites,
@@ -446,13 +446,14 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
 
 			var packages []string
 			for i := 0; i < len(args); i += 2 {
 				packages = append(packages, args[i]+"="+args[i+1])
 			}
 
-			results, err := opts.Client.PackagesDsc(ctx, client.PackagesDscOptions{
+			results, err := workflow.Dsc(ctx, frontend.PackagesDscRequest{
 				Packages:  packages,
 				Distros:   distros,
 				Releases:  releases,
@@ -520,8 +521,10 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pkgName := args[0]
 			ctx := cmd.Context()
+			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
 
-			results, err := opts.Client.PackagesRdepends(ctx, pkgName, client.PackagesRdependsOptions{
+			results, err := workflow.Rdepends(ctx, frontend.PackagesRdependsRequest{
+				Package:   pkgName,
 				Distros:   distros,
 				Releases:  releases,
 				Suites:    suites,

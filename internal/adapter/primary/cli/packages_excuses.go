@@ -6,7 +6,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	"github.com/spf13/cobra"
 )
@@ -33,7 +33,7 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List package migration excuses",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			results, err := opts.Client.PackagesExcusesList(cmd.Context(), client.PackagesExcusesListOptions{
+			results, err := frontend.NewPackagesClientWorkflow(opts.Client, opts.App).ExcusesList(cmd.Context(), frontend.PackagesExcusesListRequest{
 				Trackers:    trackers,
 				Name:        name,
 				Component:   component,
@@ -77,7 +77,8 @@ func newPackagesExcusesShowCmd(opts *Options) *cobra.Command {
 		Short: "Show a detailed package migration excuse",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := opts.Client.PackagesExcusesShow(cmd.Context(), args[0], client.PackagesExcusesShowOptions{
+			result, err := frontend.NewPackagesClientWorkflow(opts.Client, opts.App).ExcusesShow(cmd.Context(), frontend.PackagesExcusesShowRequest{
+				Package: args[0],
 				Tracker: tracker,
 				Version: version,
 			})

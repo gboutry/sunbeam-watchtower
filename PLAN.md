@@ -221,6 +221,7 @@ This distinction is important: stateful features must be designed around persist
 - added GitHub Actions CI enforcement for the same contract: repo-wide quality checks run with the coverage hook skipped, then the changed-package coverage hook is applied only to the PR/push Go diff so server-side merges see the same policy as local commits
 - added reusable client-side auth and operation workflows in `internal/adapter/primary/frontend`, and routed the CLI auth/operation commands through them, so future TUI/MCP frontends can reuse the same begin/finalize/logout/list/show/events/cancel/poll logic instead of speaking raw `pkg/client` calls directly
 - added a reusable client-side project workflow in `internal/adapter/primary/frontend` and routed `project sync` through it, so project sync/async/wait behavior is no longer encoded directly in Cobra handlers and can be reused by TUI/MCP frontends too
+- added reusable client-side cache and packages workflows in `internal/adapter/primary/frontend`, and routed the CLI cache/packages/packages-excuses commands through them, so cache sync/clear/status plus package diff/show/detail/list/dsc/rdepends/excuses behavior is no longer spread across Cobra handlers or raw `pkg/client` calls
 
 ## Validation
 
@@ -245,6 +246,8 @@ Durable server-side state work has started too: pending auth flows and long-runn
 Runtime mode selection is now being made explicit as well: persistent server mode is the place where durable coordination state lives, while explicitly ephemeral frontend mode continues to use memory-backed state for short-lived embedded workflows.
 
 The runtime resolution model has now started to move from documentation into code as well: the CLI first honors `--server` / `WATCHTOWER_SERVER`, then reuses a discovered local daemon on the default Unix socket, then auto-starts that local daemon for persistent workflows, and only falls back to an embedded one-command server for explicitly ephemeral work.
+
+The client-side frontend layer is now broad enough to be a real reuse surface: auth, operations, project sync, build orchestration, cache management, and packages/excuses flows can now be consumed by future TUI/MCP frontends without re-encoding Cobra-specific HTTP request logic.
 
 ## Deferred contract-test plan
 

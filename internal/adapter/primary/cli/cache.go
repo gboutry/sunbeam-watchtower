@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
 
@@ -59,6 +59,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 			if err := validateCacheTypes(args); err != nil {
 				return err
 			}
+			workflow := frontend.NewCacheClientWorkflow(opts.Client)
 
 			progressOut := opts.Out
 			if opts.Output == "json" || opts.Output == "yaml" {
@@ -67,9 +68,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeGit) {
 				fmt.Fprintln(progressOut, "syncing git caches...")
-				result, err := opts.Client.CacheSyncGit(cmd.Context(), client.CacheSyncGitOptions{
-					Project: project,
-				})
+				result, err := workflow.SyncGit(cmd.Context(), project)
 				if err != nil {
 					return err
 				}
@@ -81,11 +80,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypePackagesIndex) {
 				fmt.Fprintln(progressOut, "syncing packages index...")
-				if err := opts.Client.PackagesCacheSync(cmd.Context(), client.PackagesCacheSyncOptions{
-					Distros:   distros,
-					Releases:  releases,
-					Backports: backports,
-				}); err != nil {
+				if err := workflow.SyncPackagesIndex(cmd.Context(), distros, releases, backports); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "packages index sync done.")
@@ -93,7 +88,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeUpstreamRepos) {
 				fmt.Fprintln(progressOut, "syncing upstream repos...")
-				result, err := opts.Client.CacheSyncUpstream(cmd.Context())
+				result, err := workflow.SyncUpstream(cmd.Context())
 				if err != nil {
 					return err
 				}
@@ -102,9 +97,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeBugs) {
 				fmt.Fprintln(progressOut, "syncing bug caches...")
-				result, err := opts.Client.CacheSyncBugs(cmd.Context(), client.CacheSyncBugsOptions{
-					Project: project,
-				})
+				result, err := workflow.SyncBugs(cmd.Context(), project)
 				if err != nil {
 					return err
 				}
@@ -113,9 +106,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeExcuses) {
 				fmt.Fprintln(progressOut, "syncing excuses caches...")
-				result, err := opts.Client.CacheSyncExcuses(cmd.Context(), client.CacheSyncExcusesOptions{
-					Trackers: trackers,
-				})
+				result, err := workflow.SyncExcuses(cmd.Context(), trackers)
 				if err != nil {
 					return err
 				}
@@ -149,6 +140,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 			if err := validateCacheTypes(args); err != nil {
 				return err
 			}
+			workflow := frontend.NewCacheClientWorkflow(opts.Client)
 
 			progressOut := opts.Out
 			if opts.Output == "json" || opts.Output == "yaml" {
@@ -157,7 +149,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeGit) {
 				fmt.Fprintln(progressOut, "clearing git cache...")
-				if err := opts.Client.CacheDelete(cmd.Context(), "git", project); err != nil {
+				if err := workflow.Clear(cmd.Context(), "git", project); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "git cache cleared.")
@@ -165,7 +157,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypePackagesIndex) {
 				fmt.Fprintln(progressOut, "clearing packages index cache...")
-				if err := opts.Client.CacheDelete(cmd.Context(), "packages-index", ""); err != nil {
+				if err := workflow.Clear(cmd.Context(), "packages-index", ""); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "packages index cache cleared.")
@@ -173,7 +165,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeUpstreamRepos) {
 				fmt.Fprintln(progressOut, "clearing upstream repos cache...")
-				if err := opts.Client.CacheDelete(cmd.Context(), "upstream-repos", ""); err != nil {
+				if err := workflow.Clear(cmd.Context(), "upstream-repos", ""); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "upstream repos cache cleared.")
@@ -181,7 +173,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeBugs) {
 				fmt.Fprintln(progressOut, "clearing bug cache...")
-				if err := opts.Client.CacheDelete(cmd.Context(), "bugs", project); err != nil {
+				if err := workflow.Clear(cmd.Context(), "bugs", project); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "bug cache cleared.")
@@ -189,7 +181,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeExcuses) {
 				fmt.Fprintln(progressOut, "clearing excuses cache...")
-				if err := opts.Client.CacheDeleteWithTrackers(cmd.Context(), "excuses", "", trackers); err != nil {
+				if err := workflow.ClearExcuses(cmd.Context(), trackers); err != nil {
 					return err
 				}
 				fmt.Fprintln(progressOut, "excuses cache cleared.")
@@ -211,7 +203,7 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Logger.Debug("listing cache status")
 
-			result, err := opts.Client.CacheStatus(cmd.Context())
+			result, err := frontend.NewCacheClientWorkflow(opts.Client).Status(cmd.Context())
 			if err != nil {
 				return err
 			}
