@@ -48,8 +48,9 @@ type TriggerOpts struct {
 	Owner   string // override project owner
 	Prefix  string // temp recipe name prefix
 
-	LPProject string // override LP project for recipe operations
-	Prepared  *dto.PreparedBuildSource
+	TargetProject string // override backend target project for recipe operations
+	LPProject     string // deprecated Launchpad-specific alias for TargetProject
+	Prepared      *dto.PreparedBuildSource
 
 	Channels      map[string]string
 	Architectures []string
@@ -66,13 +67,14 @@ type RecipeResult = dto.BuildRecipeResult
 
 // ListOpts holds options for listing builds.
 type ListOpts struct {
-	Projects     []string
-	All          bool     // show all builds, not just active
-	State        string   // filter by state
-	Owner        string   // override project owner
-	LPProject    string   // override LP project for recipe lookup
-	RecipeNames  []string // explicit recipe names (overrides project config)
-	RecipePrefix string   // filter recipes by name prefix (used with ListRecipesByOwner)
+	Projects      []string
+	All           bool     // show all builds, not just active
+	State         string   // filter by state
+	Owner         string   // override project owner
+	TargetProject string   // override backend target project for recipe lookup
+	LPProject     string   // deprecated Launchpad-specific alias for TargetProject
+	RecipeNames   []string // explicit recipe names (overrides project config)
+	RecipePrefix  string   // filter recipes by name prefix (used with ListRecipesByOwner)
 }
 
 // ProjectResult holds builds from one project, or an error.
@@ -130,10 +132,17 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	}
 	pb.Owner = owner
 
-	if opts.Prepared != nil && opts.Prepared.LPProject != "" {
-		pb.LPProject = opts.Prepared.LPProject
-	} else if opts.LPProject != "" {
-		pb.LPProject = opts.LPProject
+	prepared := opts.Prepared.Normalize()
+
+	targetProject := opts.TargetProject
+	if targetProject == "" {
+		targetProject = opts.LPProject
+	}
+	if prepared != nil && prepared.TargetProject != "" {
+		targetProject = prepared.TargetProject
+	}
+	if targetProject != "" {
+		pb.LPProject = targetProject
 	}
 
 	recipes := artifactNames
@@ -148,10 +157,16 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	repoSelfLink := ""
 	var gitRefLinks map[string]string
 	var buildPaths map[string]string
-	if opts.Prepared != nil {
-		repoSelfLink = opts.Prepared.RepoSelfLink
-		gitRefLinks = opts.Prepared.GitRefLinks
-		buildPaths = opts.Prepared.BuildPaths
+	if prepared != nil {
+		repoSelfLink = prepared.Repository
+		if len(prepared.Recipes) > 0 {
+			gitRefLinks = make(map[string]string, len(prepared.Recipes))
+			buildPaths = make(map[string]string, len(prepared.Recipes))
+			for recipeName, recipe := range prepared.Recipes {
+				gitRefLinks[recipeName] = recipe.SourceRef
+				buildPaths[recipeName] = recipe.BuildPath
+			}
+		}
 	}
 	if gitRefLinks == nil {
 		gitRefLinks = make(map[string]string)
@@ -439,9 +454,11 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 			owner = opts.Owner
 		}
 
-		lpProject := pb.RecipeProject()
-		if opts.LPProject != "" {
-			lpProject = opts.LPProject
+		targetProject := pb.RecipeProject()
+		if opts.TargetProject != "" {
+			targetProject = opts.TargetProject
+		} else if opts.LPProject != "" {
+			targetProject = opts.LPProject
 		}
 
 		recipeNames := pb.Artifacts
@@ -468,7 +485,7 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 				if !strings.HasPrefix(r.Name, opts.RecipePrefix) {
 					continue
 				}
-				if lpProject != "" && r.Project != lpProject {
+				if targetProject != "" && r.Project != targetProject {
 					continue
 				}
 				recipeNames = append(recipeNames, r.Name)
@@ -476,7 +493,7 @@ func (s *Service) List(ctx context.Context, opts ListOpts) ([]dto.Build, []Proje
 		}
 
 		for _, recipeName := range recipeNames {
-			recipe, err := pb.Builder.GetRecipe(ctx, owner, lpProject, recipeName)
+			recipe, err := pb.Builder.GetRecipe(ctx, owner, targetProject, recipeName)
 			if err != nil {
 				s.logger.Warn("error getting recipe", "project", name, "recipe", recipeName, "error", err)
 				continue
@@ -535,7 +552,8 @@ type DownloadOpts struct {
 	ArtifactNames []string // explicit artifact names (maps to recipe names)
 	RecipePrefix  string   // discover recipes by prefix
 	Owner         string   // override LP owner
-	LPProject     string   // override LP project
+	TargetProject string   // override backend target project
+	LPProject     string   // deprecated Launchpad-specific alias for TargetProject
 	OutputDir     string   // output directory
 }
 
@@ -556,9 +574,11 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 			owner = opts.Owner
 		}
 
-		lpProject := pb.RecipeProject()
-		if opts.LPProject != "" {
-			lpProject = opts.LPProject
+		targetProject := pb.RecipeProject()
+		if opts.TargetProject != "" {
+			targetProject = opts.TargetProject
+		} else if opts.LPProject != "" {
+			targetProject = opts.LPProject
 		}
 
 		recipeNames := opts.ArtifactNames
@@ -581,7 +601,7 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 				if !strings.HasPrefix(r.Name, opts.RecipePrefix) {
 					continue
 				}
-				if lpProject != "" && r.Project != lpProject {
+				if targetProject != "" && r.Project != targetProject {
 					continue
 				}
 				recipeNames = append(recipeNames, r.Name)
@@ -589,7 +609,7 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 		}
 
 		for _, recipeName := range recipeNames {
-			recipe, err := pb.Builder.GetRecipe(ctx, owner, lpProject, recipeName)
+			recipe, err := pb.Builder.GetRecipe(ctx, owner, targetProject, recipeName)
 			if err != nil {
 				return fmt.Errorf("recipe %q: %w", recipeName, err)
 			}

@@ -11,6 +11,7 @@ package_thresholds:
   internal/core/service/operation: 73
   internal/adapter/secondary/authflowstore: 79
   internal/adapter/secondary/operationstore: 79
+  pkg/client: 21
   tools/coverageguard: 79
 
 exclude_packages:

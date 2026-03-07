@@ -14,12 +14,14 @@ func TestBuildTriggerOptionsFromInput_PreparedSource(t *testing.T) {
 	input.Body.Timeout = "45m"
 	input.Body.Owner = "lp-user"
 	input.Body.Prefix = "tmp-build"
-	input.Body.LPProject = "remote-project"
+	input.Body.TargetProject = "remote-project"
 	input.Body.Prepared = &dto.PreparedBuildSource{
-		LPProject:    "prepared-project",
-		RepoSelfLink: "/repo/demo",
-		GitRefLinks:  map[string]string{"tmp-build-01234567-keystone": "/ref/tmp"},
-		BuildPaths:   map[string]string{"tmp-build-01234567-keystone": "rocks/keystone"},
+		Backend:       dto.PreparedBuildBackendLaunchpad,
+		TargetProject: "prepared-project",
+		Repository:    "/repo/demo",
+		Recipes: map[string]dto.PreparedBuildRecipe{
+			"tmp-build-01234567-keystone": {SourceRef: "/ref/tmp", BuildPath: "rocks/keystone"},
+		},
 	}
 
 	got, err := buildTriggerOptionsFromInput(input)
@@ -33,16 +35,31 @@ func TestBuildTriggerOptionsFromInput_PreparedSource(t *testing.T) {
 	if got.Timeout != 45*time.Minute {
 		t.Fatalf("Timeout = %s, want 45m", got.Timeout)
 	}
-	if got.Owner != "lp-user" || got.Prefix != "tmp-build" || got.LPProject != "remote-project" {
+	if got.Owner != "lp-user" || got.Prefix != "tmp-build" || got.TargetProject != "remote-project" {
 		t.Fatalf("unexpected trigger options: %+v", got)
 	}
 	if got.Prepared == nil {
 		t.Fatal("Prepared = nil, want value")
 	}
-	if got.Prepared.LPProject != "prepared-project" || got.Prepared.RepoSelfLink != "/repo/demo" {
+	normalized := got.Prepared.Normalize()
+	if normalized.TargetProject != "prepared-project" || normalized.Repository != "/repo/demo" {
 		t.Fatalf("unexpected prepared source: %+v", got.Prepared)
 	}
-	if got.Prepared.BuildPaths["tmp-build-01234567-keystone"] != "rocks/keystone" {
-		t.Fatalf("unexpected build paths: %+v", got.Prepared.BuildPaths)
+	if normalized.Recipes["tmp-build-01234567-keystone"].BuildPath != "rocks/keystone" {
+		t.Fatalf("unexpected prepared recipes: %+v", normalized.Recipes)
+	}
+}
+
+func TestBuildTriggerOptionsFromInput_LegacyLPProjectCompatibility(t *testing.T) {
+	input := &BuildsTriggerInput{}
+	input.Body.Project = "demo"
+	input.Body.LPProject = "legacy-project"
+
+	got, err := buildTriggerOptionsFromInput(input)
+	if err != nil {
+		t.Fatalf("buildTriggerOptionsFromInput() error = %v", err)
+	}
+	if got.TargetProject != "legacy-project" {
+		t.Fatalf("TargetProject = %q, want legacy-project", got.TargetProject)
 	}
 }
