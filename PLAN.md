@@ -243,6 +243,7 @@ This distinction is important: stateful features must be designed around persist
 - extracted the duplicated adapter AST helpers into `tools/archtest` and rewired the CLI, frontend, and API architecture tests to use the shared loader/import/signature walker primitives, so future boundary rules evolve from one implementation instead of three diverging copies
 - extracted cache/excuses bootstrap wiring and runtime/auth-operation store wiring out of `internal/app/app.go` into focused bootstrap modules, with direct tests around the new cache/runtime seams, so `App` is closer to a thin composition root instead of carrying every lazy factory itself
 - reconciled `README.md`, `CONTRIBUTING.md`, and the runtime roadmap with the implemented CLI behavior: explicit server resolution order, local daemon lifecycle, and the current set of persistent workflows are now documented consistently
+- completed a targeted Huma request-contract audit on API input structs and added a mechanical API test that fails if any optional slice/map/bool request field is introduced without an explicit `required:` tag, so the contract hardening no longer relies on manual review alone
 
 ## Validation
 
