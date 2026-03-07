@@ -224,6 +224,7 @@ This distinction is important: stateful features must be designed around persist
 - added reusable client-side cache and packages workflows in `internal/adapter/primary/frontend`, and routed the CLI cache/packages/packages-excuses commands through them, so cache sync/clear/status plus package diff/show/detail/list/dsc/rdepends/excuses behavior is no longer spread across Cobra handlers or raw `pkg/client` calls
 - added reusable client-side bug, review, and commit workflows in `internal/adapter/primary/frontend`, and routed the CLI bug/review/commit commands through them, so `since` parsing, warning handling, and query shaping are now shared frontend behavior instead of command-local HTTP glue
 - extended the shared frontend client layer to cover `config show` and build cleanup as well, so the remaining CLI command handlers no longer need to issue raw config/build-management client calls directly
+- replaced the build workflow request surface with frontend-native request DTOs, so CLI build commands no longer depend on `pkg/client` transport option structs for trigger/list/download/cleanup orchestration
 
 ## Validation
 
