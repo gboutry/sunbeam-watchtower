@@ -33,7 +33,7 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List package migration excuses",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			results, err := frontend.NewPackagesClientWorkflow(opts.Client, opts.App).ExcusesList(cmd.Context(), frontend.PackagesExcusesListRequest{
+			results, err := opts.Frontend().Packages().ExcusesList(cmd.Context(), frontend.PackagesExcusesListRequest{
 				Trackers:    trackers,
 				Name:        name,
 				Component:   component,
@@ -77,7 +77,7 @@ func newPackagesExcusesShowCmd(opts *Options) *cobra.Command {
 		Short: "Show a detailed package migration excuse",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := frontend.NewPackagesClientWorkflow(opts.Client, opts.App).ExcusesShow(cmd.Context(), frontend.PackagesExcusesShowRequest{
+			result, err := opts.Frontend().Packages().ExcusesShow(cmd.Context(), frontend.PackagesExcusesShowRequest{
 				Package: args[0],
 				Tracker: tracker,
 				Version: version,

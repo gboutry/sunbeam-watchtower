@@ -49,7 +49,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			setName := args[0]
 			ctx := cmd.Context()
-			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
+			workflow := opts.Frontend().Packages()
 
 			response, err := workflow.Diff(ctx, frontend.PackagesDiffRequest{
 				Set:             setName,
@@ -97,7 +97,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pkgName := args[0]
 			ctx := cmd.Context()
-			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
+			workflow := opts.Frontend().Packages()
 
 			response, err := workflow.ShowVersion(ctx, frontend.PackagesShowVersionRequest{
 				Package:         pkgName,
@@ -143,7 +143,7 @@ match. Otherwise, returns the highest version found across the configured
 				version = args[1]
 			}
 
-			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
+			workflow := opts.Frontend().Packages()
 			result, err := workflow.Detail(cmd.Context(), frontend.PackagesDetailRequest{
 				Package:   pkgName,
 				Version:   version,
@@ -177,7 +177,7 @@ func newPackagesListCmd(opts *Options) *cobra.Command {
 		Short: "List packages in a distro",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
+			workflow := opts.Frontend().Packages()
 
 			result, err := workflow.List(ctx, frontend.PackagesListRequest{
 				Distros:    distros,
@@ -446,7 +446,7 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
+			workflow := opts.Frontend().Packages()
 
 			var packages []string
 			for i := 0; i < len(args); i += 2 {
@@ -521,7 +521,7 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pkgName := args[0]
 			ctx := cmd.Context()
-			workflow := frontend.NewPackagesClientWorkflow(opts.Client, opts.App)
+			workflow := opts.Frontend().Packages()
 
 			results, err := workflow.Rdepends(ctx, frontend.PackagesRdependsRequest{
 				Package:   pkgName,

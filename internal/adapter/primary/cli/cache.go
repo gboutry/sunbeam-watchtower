@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +58,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 			if err := validateCacheTypes(args); err != nil {
 				return err
 			}
-			workflow := frontend.NewCacheClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Cache()
 
 			progressOut := opts.Out
 			if opts.Output == "json" || opts.Output == "yaml" {
@@ -140,7 +139,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 			if err := validateCacheTypes(args); err != nil {
 				return err
 			}
-			workflow := frontend.NewCacheClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Cache()
 
 			progressOut := opts.Out
 			if opts.Output == "json" || opts.Output == "yaml" {
@@ -203,7 +202,7 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Logger.Debug("listing cache status")
 
-			result, err := frontend.NewCacheClientWorkflow(opts.Client).Status(cmd.Context())
+			result, err := opts.Frontend().Cache().Status(cmd.Context())
 			if err != nil {
 				return err
 			}

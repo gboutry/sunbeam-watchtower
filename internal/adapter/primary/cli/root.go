@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
@@ -29,7 +30,20 @@ type Options struct {
 	ServerAddr     string // external server address (--server / WATCHTOWER_SERVER)
 	ExecutablePath string
 
-	embeddedSrv *api.Server // auto-started embedded server
+	embeddedSrv    *api.Server // auto-started embedded server
+	frontendFacade *frontend.ClientFacade
+	frontendClient *client.Client
+	frontendApp    *app.App
+}
+
+// Frontend returns the shared client-side frontend facade for the current command execution.
+func (o *Options) Frontend() *frontend.ClientFacade {
+	if o.frontendFacade == nil || o.frontendClient != o.Client || o.frontendApp != o.App {
+		o.frontendFacade = frontend.NewClientFacade(o.Client, o.App)
+		o.frontendClient = o.Client
+		o.frontendApp = o.App
+	}
+	return o.frontendFacade
 }
 
 // envDefaults applies WATCHTOWER_* environment variables as defaults.
@@ -134,6 +148,9 @@ func NewRootCmd(opts *Options) *cobra.Command {
 			if opts.App != nil {
 				err = errors.Join(err, opts.App.Close())
 			}
+			opts.frontendFacade = nil
+			opts.frontendClient = nil
+			opts.frontendApp = nil
 			return err
 		},
 	}

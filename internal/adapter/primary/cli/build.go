@@ -44,11 +44,9 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("--async cannot be combined with --wait or --download")
 			}
 
-			buildsFrontend := frontend.NewBuildWorkflow(opts.Client, nil)
+			buildsFrontend := opts.Frontend().Builds()
 			if source == "local" {
-				var err error
-				buildsFrontend, err = frontend.NewBuildWorkflowFromApp(opts.Client, opts.App)
-				if err != nil {
+				if err := opts.Frontend().LocalBuildPreparationError(); err != nil {
 					return err
 				}
 			}
@@ -114,11 +112,9 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 			// Positional args and --project flag are merged.
 			allProjects := append(projects, args...)
 
-			buildsFrontend := frontend.NewBuildWorkflow(opts.Client, nil)
+			buildsFrontend := opts.Frontend().Builds()
 			if source == "local" {
-				var err error
-				buildsFrontend, err = frontend.NewBuildWorkflowFromApp(opts.Client, opts.App)
-				if err != nil {
+				if err := opts.Frontend().LocalBuildPreparationError(); err != nil {
 					return err
 				}
 			}
@@ -162,11 +158,9 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 			projectName := args[0]
 			artifactNames := args[1:]
 
-			buildsFrontend := frontend.NewBuildWorkflow(opts.Client, nil)
+			buildsFrontend := opts.Frontend().Builds()
 			if source == "local" {
-				var err error
-				buildsFrontend, err = frontend.NewBuildWorkflowFromApp(opts.Client, opts.App)
-				if err != nil {
+				if err := opts.Frontend().LocalBuildPreparationError(); err != nil {
 					return err
 				}
 			}
@@ -199,7 +193,7 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 		Use:   "cleanup",
 		Short: "Delete temporary build recipes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			deleted, err := frontend.NewBuildWorkflow(opts.Client, nil).Cleanup(cmd.Context(), frontend.BuildCleanupRequest{
+			deleted, err := opts.Frontend().Builds().Cleanup(cmd.Context(), frontend.BuildCleanupRequest{
 				Project: project,
 				Owner:   owner,
 				Prefix:  prefix,

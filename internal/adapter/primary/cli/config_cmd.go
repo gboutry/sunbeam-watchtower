@@ -1,9 +1,6 @@
 package cli
 
-import (
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
-	"github.com/spf13/cobra"
-)
+import "github.com/spf13/cobra"
 
 func newConfigCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
@@ -20,7 +17,7 @@ func newConfigShowCmd(opts *Options) *cobra.Command {
 		Use:   "show",
 		Short: "Display the current configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := frontend.NewConfigClientWorkflow(opts.Client).Show(cmd.Context())
+			cfg, err := opts.Frontend().Config().Show(cmd.Context())
 			if err != nil {
 				return err
 			}
