@@ -5,11 +5,10 @@ package cli
 
 import (
 	"go/ast"
-	"go/parser"
-	"go/token"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gboutry/sunbeam-watchtower/tools/archtest"
 )
 
 const clientImportPath = "github.com/gboutry/sunbeam-watchtower/pkg/client"
@@ -20,97 +19,63 @@ var cliBootstrapFiles = map[string]bool{
 }
 
 func TestCommandFilesDoNotImportOrCallPkgClientDirectly(t *testing.T) {
-	matches, err := filepath.Glob("*.go")
+	files, err := archtest.LoadGoFiles("*.go", cliBootstrapFiles)
 	if err != nil {
-		t.Fatalf("Glob() error = %v", err)
+		t.Fatalf("LoadGoFiles() error = %v", err)
 	}
 
-	fset := token.NewFileSet()
-	for _, path := range matches {
-		base := filepath.Base(path)
-		if strings.HasSuffix(base, "_test.go") || cliBootstrapFiles[base] {
-			continue
-		}
-
-		file, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Fatalf("ParseFile(%q) error = %v", path, err)
-		}
-
-		for _, imported := range file.Imports {
+	for _, file := range files {
+		for _, imported := range file.AST.Imports {
 			if strings.Trim(imported.Path.Value, "\"") == clientImportPath {
-				t.Fatalf("%s imports %q directly; route command logic through internal/adapter/primary/frontend instead", path, clientImportPath)
+				t.Fatalf("%s imports %q directly; route command logic through internal/adapter/primary/frontend instead", file.Path, clientImportPath)
 			}
 		}
 
-		ast.Inspect(file, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-
+		archtest.Visit[*ast.CallExpr](file.AST, func(call *ast.CallExpr) {
 			selector, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok {
-				return true
+				return
 			}
 
 			clientSelector, ok := selector.X.(*ast.SelectorExpr)
 			if !ok {
-				return true
+				return
 			}
 
 			optsIdent, ok := clientSelector.X.(*ast.Ident)
 			if !ok {
-				return true
+				return
 			}
 
 			if optsIdent.Name == "opts" && clientSelector.Sel.Name == "Client" {
-				t.Fatalf("%s calls opts.Client.%s directly; command handlers must delegate to frontend workflows", path, selector.Sel.Name)
+				t.Fatalf("%s calls opts.Client.%s directly; command handlers must delegate to frontend workflows", file.Path, selector.Sel.Name)
 			}
-			return true
 		})
 	}
 }
 
 func TestCommandFilesDoNotInstantiateFrontendWorkflowsDirectly(t *testing.T) {
-	matches, err := filepath.Glob("*.go")
+	files, err := archtest.LoadGoFiles("*.go", cliBootstrapFiles)
 	if err != nil {
-		t.Fatalf("Glob() error = %v", err)
+		t.Fatalf("LoadGoFiles() error = %v", err)
 	}
 
-	fset := token.NewFileSet()
-	for _, path := range matches {
-		base := filepath.Base(path)
-		if strings.HasSuffix(base, "_test.go") || cliBootstrapFiles[base] {
-			continue
-		}
-
-		file, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			t.Fatalf("ParseFile(%q) error = %v", path, err)
-		}
-
-		ast.Inspect(file, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-
+	for _, file := range files {
+		archtest.Visit[*ast.CallExpr](file.AST, func(call *ast.CallExpr) {
 			selector, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok {
-				return true
+				return
 			}
 
 			pkgIdent, ok := selector.X.(*ast.Ident)
 			if !ok || pkgIdent.Name != "frontend" {
-				return true
+				return
 			}
 
 			if strings.HasPrefix(selector.Sel.Name, "New") &&
 				(strings.HasSuffix(selector.Sel.Name, "Workflow") || selector.Sel.Name == "NewClientFacade") {
-				t.Fatalf("%s calls frontend.%s directly; command handlers must use opts.Frontend()", path, selector.Sel.Name)
+				t.Fatalf("%s calls frontend.%s directly; command handlers must use opts.Frontend()", file.Path, selector.Sel.Name)
 			}
-			return true
 		})
 	}
 }
