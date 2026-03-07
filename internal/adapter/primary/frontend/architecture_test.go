@@ -64,6 +64,48 @@ func TestExportedFrontendAPIsDoNotExposePkgClientTypes(t *testing.T) {
 	}
 }
 
+func TestFrontendUsesConcretePkgClientOnlyInTransportWrapper(t *testing.T) {
+	matches, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+
+	fset := token.NewFileSet()
+	for _, path := range matches {
+		base := filepath.Base(path)
+		if strings.HasSuffix(base, "_test.go") || base == "transport.go" {
+			continue
+		}
+
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatalf("ParseFile(%q) error = %v", path, err)
+		}
+
+		aliases := frontendClientImportAliases(file)
+		if len(aliases) == 0 {
+			continue
+		}
+
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+
+			pkgIdent, ok := selector.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+
+			if _, exists := aliases[pkgIdent.Name]; exists && selector.Sel.Name == "Client" {
+				t.Fatalf("%s references the concrete pkg/client.Client type directly; route frontend wiring through transport.go", path)
+			}
+			return true
+		})
+	}
+}
+
 func frontendClientImportAliases(file *ast.File) map[string]struct{} {
 	aliases := map[string]struct{}{}
 	for _, imported := range file.Imports {
