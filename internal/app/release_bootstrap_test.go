@@ -45,14 +45,17 @@ func TestTrackedReleases(t *testing.T) {
 		ArtifactType: "charm",
 		Series:       []string{"2024.1"},
 		Code:         config.CodeConfig{Forge: "gerrit", Host: "https://review.opendev.org", Project: "openstack/sunbeam-charms", GitURL: charmRemote},
+		Release: &config.ProjectReleaseConfig{
+			SkipArtifacts: []string{"glance-k8s"},
+		},
 	}}}, nil)
 
 	publications, err := application.TrackedReleases(context.Background())
 	if err != nil {
 		t.Fatalf("TrackedReleases() error = %v", err)
 	}
-	if len(publications) != 3 {
-		t.Fatalf("TrackedReleases() = %+v, want 3 entries", publications)
+	if len(publications) != 2 {
+		t.Fatalf("TrackedReleases() = %+v, want 2 entries", publications)
 	}
 
 	byName := make(map[string]dto.TrackedPublication, len(publications))
@@ -60,17 +63,49 @@ func TestTrackedReleases(t *testing.T) {
 		byName[publication.Name] = publication
 	}
 
-	if got := byName["glance-k8s"]; got.ArtifactType != dto.ArtifactCharm {
-		t.Fatalf("TrackedReleases() glance = %+v, want charm publication", got)
-	}
 	if got := byName["keystone-k8s"]; len(got.Resources) != 1 || got.Resources[0] != "keystone-image" {
 		t.Fatalf("TrackedReleases() keystone = %+v, want discovered resources", got)
+	}
+	if _, ok := byName["glance-k8s"]; ok {
+		t.Fatalf("TrackedReleases() should skip glance-k8s via release.skip_artifacts: %+v", byName["glance-k8s"])
 	}
 	if got := byName["snap-openstack"]; len(got.Tracks) != 2 || got.Tracks[1] != "latest" {
 		t.Fatalf("TrackedReleases() snap = %+v, want mapped snap tracks", got)
 	}
 	if got := byName["snap-openstack"]; len(got.Branches) != 1 || got.Branches[0].Branch != "risc-v" || got.Branches[0].Track != "2024.1" {
 		t.Fatalf("TrackedReleases() snap branches = %+v, want resolved branch override", got.Branches)
+	}
+}
+
+func TestDiscoverTrackedReleasesReportsSkippedArtifacts(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	charmRemote := createReleaseTestRemote(t, map[string]string{
+		"charms/keystone/charmcraft.yaml":     "name: keystone-k8s\n",
+		"charms/sunbeam-libs/charmcraft.yaml": "name: sunbeam-libs\n",
+	})
+
+	application := NewApp(&config.Config{
+		Launchpad: config.LaunchpadConfig{Series: []string{"2024.1"}},
+		Projects: []config.ProjectConfig{{
+			Name:         "sunbeam-charms",
+			ArtifactType: "charm",
+			Code:         config.CodeConfig{Forge: "gerrit", Host: "https://review.opendev.org", Project: "openstack/sunbeam-charms", GitURL: charmRemote},
+			Release: &config.ProjectReleaseConfig{
+				SkipArtifacts: []string{"sunbeam-libs"},
+			},
+		}},
+	}, nil)
+
+	discovery, err := application.DiscoverTrackedReleases(context.Background())
+	if err != nil {
+		t.Fatalf("DiscoverTrackedReleases() error = %v", err)
+	}
+	if len(discovery.Publications) != 1 || discovery.Publications[0].Name != "keystone-k8s" {
+		t.Fatalf("DiscoverTrackedReleases() publications = %+v, want only keystone-k8s", discovery.Publications)
+	}
+	if len(discovery.Warnings) != 1 || discovery.Warnings[0] != "sunbeam-charms: skipped artifact sunbeam-libs (release.skip_artifacts)" {
+		t.Fatalf("DiscoverTrackedReleases() warnings = %+v, want skip warning", discovery.Warnings)
 	}
 }
 

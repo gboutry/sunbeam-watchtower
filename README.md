@@ -245,6 +245,8 @@ Use `project.release` only for store-specific overrides:
       - series: 2024.1
         branch: risc-v
         risks: [edge]
+    skip_artifacts:
+      - sunbeam-libs
 ```
 
 Rules:
@@ -252,6 +254,7 @@ Rules:
 - `release.track_map` remaps project `series` to store tracks
 - `release.tracks` can replace the default series-derived tracks entirely
 - `release.branches` declares managed `track/risk/branch` channels for snaps or charms
+- `release.skip_artifacts` excludes discovered artifacts that exist in a mono repo but are not meant to be published or tracked
 - branch channels are additive; Watchtower does not try to auto-discover arbitrary store branches as managed release lines
 
 ## Commands

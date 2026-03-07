@@ -92,9 +92,10 @@ func configToDTO(cfg *config.Config) *dto.Config {
 		}
 		if project.Release != nil {
 			outProject.Release = &dto.ProjectReleaseConfig{
-				Tracks:   append([]string(nil), project.Release.Tracks...),
-				TrackMap: make(map[string]string, len(project.Release.TrackMap)),
-				Branches: make([]dto.ProjectReleaseBranchConfig, len(project.Release.Branches)),
+				Tracks:        append([]string(nil), project.Release.Tracks...),
+				TrackMap:      make(map[string]string, len(project.Release.TrackMap)),
+				Branches:      make([]dto.ProjectReleaseBranchConfig, len(project.Release.Branches)),
+				SkipArtifacts: append([]string(nil), project.Release.SkipArtifacts...),
 			}
 			for series, track := range project.Release.TrackMap {
 				outProject.Release.TrackMap[series] = track
