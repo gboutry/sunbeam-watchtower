@@ -48,7 +48,7 @@ func TestReleasesShowAndCacheSyncReleases(t *testing.T) {
 			if r.Method != http.MethodPost {
 				t.Fatalf("unexpected method: %s", r.Method)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "discovered": 4, "synced": 3, "skipped": 1})
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -67,7 +67,7 @@ func TestReleasesShowAndCacheSyncReleases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CacheSyncReleases() error = %v", err)
 	}
-	if result.Status != "ok" {
-		t.Fatalf("CacheSyncReleases() = %+v, want ok", result)
+	if result.Status != "ok" || result.Discovered != 4 || result.Synced != 3 || result.Skipped != 1 {
+		t.Fatalf("CacheSyncReleases() = %+v, want counted result", result)
 	}
 }

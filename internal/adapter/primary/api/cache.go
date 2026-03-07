@@ -95,9 +95,7 @@ type CacheSyncExcusesOutput struct {
 
 // CacheSyncReleasesOutput is the response for POST /api/v1/cache/sync/releases.
 type CacheSyncReleasesOutput struct {
-	Body struct {
-		Status string `json:"status" example:"ok"`
-	}
+	Body dto.ReleaseSyncResult
 }
 
 // CacheStatusOutput is the response for GET /api/v1/cache/status.
@@ -317,11 +315,12 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		Summary:     "Sync published snap and charm release caches",
 		Tags:        []string{"cache", "releases"},
 	}, func(ctx context.Context, _ *struct{}) (*CacheSyncReleasesOutput, error) {
-		if err := frontend.NewServerFacade(application).Releases().SyncCache(ctx); err != nil {
+		result, err := frontend.NewServerFacade(application).Releases().SyncCache(ctx)
+		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("release cache sync failed: %v", err))
 		}
 		out := &CacheSyncReleasesOutput{}
-		out.Body.Status = "ok"
+		out.Body = *result
 		return out, nil
 	})
 

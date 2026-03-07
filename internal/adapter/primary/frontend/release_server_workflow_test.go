@@ -60,3 +60,18 @@ func TestReleaseServerWorkflowListShowAndStatus(t *testing.T) {
 		t.Fatalf("CacheStatus() = %+v, want cached artifact", status)
 	}
 }
+
+func TestReleaseServerWorkflowSyncCacheReportsCounts(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	application := app.NewApp(&config.Config{}, nil)
+	defer application.Close()
+
+	workflow := NewReleaseServerWorkflow(application)
+	result, err := workflow.SyncCache(context.Background())
+	if err != nil {
+		t.Fatalf("SyncCache() error = %v", err)
+	}
+	if result.Status != "ok" || result.Discovered != 0 || result.Synced != 0 || result.Skipped != 0 {
+		t.Fatalf("SyncCache() = %+v, want zero-count ok result", result)
+	}
+}

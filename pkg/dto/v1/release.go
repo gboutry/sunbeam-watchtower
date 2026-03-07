@@ -142,6 +142,15 @@ type ReleaseCacheStatus struct {
 	LastUpdated  time.Time    `json:"last_updated" yaml:"last_updated"`
 }
 
+// ReleaseSyncResult reports one release-cache sync run.
+type ReleaseSyncResult struct {
+	Status     string   `json:"status" yaml:"status"`
+	Discovered int      `json:"discovered" yaml:"discovered"`
+	Synced     int      `json:"synced" yaml:"synced"`
+	Skipped    int      `json:"skipped" yaml:"skipped"`
+	Warnings   []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
 // NormalizeChannel fills derived fields and ordering on the snapshot.
 func NormalizeChannel(channel ReleaseChannelSnapshot) ReleaseChannelSnapshot {
 	if channel.Channel == "" && channel.Track != "" && channel.Risk != "" {

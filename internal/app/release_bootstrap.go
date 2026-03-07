@@ -35,34 +35,42 @@ func (a *App) ReleaseCache() (*releasecache.Cache, error) {
 
 // TrackedReleases returns the discovered published snap/charm artifacts to track.
 func (a *App) TrackedReleases(ctx context.Context) ([]dto.TrackedPublication, error) {
+	publications, _, err := a.discoverTrackedReleases(ctx)
+	return publications, err
+}
+
+func (a *App) discoverTrackedReleases(ctx context.Context) ([]dto.TrackedPublication, []string, error) {
 	if a == nil || a.Config == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	cache, err := a.GitCache()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	byKey := make(map[string]dto.TrackedPublication)
+	var warnings []string
 	for _, project := range a.Config.Projects {
 		artifactType, err := dto.ParseArtifactType(project.ArtifactType)
 		if err != nil || (artifactType != dto.ArtifactSnap && artifactType != dto.ArtifactCharm) {
+			warnings = append(warnings, fmt.Sprintf("%s: skipped (artifact_type must be snap or charm)", project.Name))
 			continue
 		}
 		cloneURL, err := project.Code.CloneURL()
 		if err != nil {
-			return nil, fmt.Errorf("project %s: resolving clone URL: %w", project.Name, err)
+			return nil, nil, fmt.Errorf("project %s: resolving clone URL: %w", project.Name, err)
 		}
 		repoPath, err := cache.EnsureRepo(ctx, cloneURL, nil)
 		if err != nil {
-			return nil, fmt.Errorf("project %s: caching repo: %w", project.Name, err)
+			return nil, nil, fmt.Errorf("project %s: caching repo: %w", project.Name, err)
 		}
 
 		baseTracks, branches, err := resolveReleaseTracking(a.Config, project)
 		if err != nil {
-			return nil, fmt.Errorf("project %s: %w", project.Name, err)
+			return nil, nil, fmt.Errorf("project %s: %w", project.Name, err)
 		}
 		if len(baseTracks) == 0 && len(branches) == 0 {
+			warnings = append(warnings, fmt.Sprintf("%s: skipped (no series, release.tracks, or release.branches configured)", project.Name))
 			continue
 		}
 
@@ -70,7 +78,7 @@ func (a *App) TrackedReleases(ctx context.Context) ([]dto.TrackedPublication, er
 		case dto.ArtifactSnap:
 			snapName, err := discoverSnapName(repoPath)
 			if err != nil {
-				return nil, fmt.Errorf("project %s: %w", project.Name, err)
+				return nil, nil, fmt.Errorf("project %s: %w", project.Name, err)
 			}
 			key := publicationKey(project.Name, artifactType, snapName)
 			byKey[key] = dto.TrackedPublication{
@@ -83,7 +91,7 @@ func (a *App) TrackedReleases(ctx context.Context) ([]dto.TrackedPublication, er
 		case dto.ArtifactCharm:
 			artifacts, err := discoverCharmPublications(repoPath)
 			if err != nil {
-				return nil, fmt.Errorf("project %s: %w", project.Name, err)
+				return nil, nil, fmt.Errorf("project %s: %w", project.Name, err)
 			}
 			for _, artifact := range artifacts {
 				key := publicationKey(project.Name, artifactType, artifact.Name)
@@ -112,7 +120,7 @@ func (a *App) TrackedReleases(ctx context.Context) ([]dto.TrackedPublication, er
 		}
 		return publications[i].Project < publications[j].Project
 	})
-	return publications, nil
+	return publications, warnings, nil
 }
 
 // BuildReleaseSources creates the release sources supported by the current process.
@@ -136,6 +144,21 @@ type snapcraftMetadata struct {
 type discoveredCharm struct {
 	Name      string
 	Resources []string
+}
+
+// ReleaseDiscoveryResult captures the tracked artifacts selected for release sync.
+type ReleaseDiscoveryResult struct {
+	Publications []dto.TrackedPublication
+	Warnings     []string
+}
+
+// DiscoverTrackedReleases resolves the tracked release inventory and skip reasons.
+func (a *App) DiscoverTrackedReleases(ctx context.Context) (*ReleaseDiscoveryResult, error) {
+	publications, warnings, err := a.discoverTrackedReleases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &ReleaseDiscoveryResult{Publications: publications, Warnings: warnings}, nil
 }
 
 func resolveReleaseTracking(cfg *config.Config, project config.ProjectConfig) ([]string, []dto.TrackedReleaseBranch, error) {

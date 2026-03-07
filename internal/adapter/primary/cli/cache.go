@@ -124,7 +124,11 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(progressOut, "release cache sync: %s\n", result.Status)
+				for _, w := range result.Warnings {
+					fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
+				}
+				fmt.Fprintf(progressOut, "release cache sync: %s (discovered %d, synced %d, skipped %d)\n",
+					result.Status, result.Discovered, result.Synced, result.Skipped)
 			}
 
 			return nil
