@@ -1,9 +1,6 @@
 package cli
 
-import (
-	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
-	"github.com/spf13/cobra"
-)
+import "github.com/spf13/cobra"
 
 func newOperationCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
@@ -25,7 +22,7 @@ func newOperationListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List long-running operations",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workflow := frontend.NewOperationClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Operations()
 			jobs, err := workflow.List(cmd.Context())
 			if err != nil {
 				return err
@@ -41,7 +38,7 @@ func newOperationShowCmd(opts *Options) *cobra.Command {
 		Short: "Show one operation",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workflow := frontend.NewOperationClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Operations()
 			job, err := workflow.Get(cmd.Context(), args[0])
 			if err != nil {
 				return err
@@ -57,7 +54,7 @@ func newOperationEventsCmd(opts *Options) *cobra.Command {
 		Short: "Show the event history for one operation",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workflow := frontend.NewOperationClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Operations()
 			events, err := workflow.Events(cmd.Context(), args[0])
 			if err != nil {
 				return err
@@ -73,7 +70,7 @@ func newOperationCancelCmd(opts *Options) *cobra.Command {
 		Short: "Request cancellation for one operation",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			workflow := frontend.NewOperationClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Operations()
 			job, err := workflow.Cancel(cmd.Context(), args[0])
 			if err != nil {
 				return err

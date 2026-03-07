@@ -25,7 +25,7 @@ func newBugShowCmd(opts *Options) *cobra.Command {
 		Short: "Show a bug and its tasks",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := frontend.NewBugClientWorkflow(opts.Client).Show(cmd.Context(), args[0])
+			result, err := opts.Frontend().Bugs().Show(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
@@ -50,7 +50,7 @@ func newBugListCmd(opts *Options) *cobra.Command {
 		Use:   "list",
 		Short: "List bug tasks across bug trackers",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := frontend.NewBugClientWorkflow(opts.Client).List(cmd.Context(), frontend.BugListRequest{
+			result, err := opts.Frontend().Bugs().List(cmd.Context(), frontend.BugListRequest{
 				Projects:   projects,
 				Status:     status,
 				Importance: importance,
@@ -90,7 +90,7 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 		Short: "Update LP bug statuses from cached commits",
 		Long:  "Scans cached commits for LP bug references and updates bug task statuses to Fix Committed. Also assigns bugs to the appropriate LP series based on which branches contain the fix.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := frontend.NewBugClientWorkflow(opts.Client).Sync(cmd.Context(), frontend.BugSyncRequest{
+			result, err := opts.Frontend().Bugs().Sync(cmd.Context(), frontend.BugSyncRequest{
 				Projects: projects,
 				DryRun:   dryRun,
 				Since:    since,

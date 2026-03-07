@@ -33,7 +33,7 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 		Long:  "Iterates over all unique LP projects from bug tracker config entries, ensures each declared series exists (creating if missing), and sets the development focus to the configured series.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Logger.Debug("project sync command started", "dry_run", dryRun)
-			workflow := frontend.NewProjectClientWorkflow(opts.Client)
+			workflow := opts.Frontend().Projects()
 			request := frontend.ProjectSyncRequest{
 				Projects: projects,
 				DryRun:   dryRun,

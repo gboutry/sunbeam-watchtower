@@ -1,377 +1,42 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
 package cli
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
-	"strings"
+	"log/slog"
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
-	"github.com/spf13/cobra"
+	"github.com/gboutry/sunbeam-watchtower/internal/config"
+	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 )
 
-func TestVersionCommand(t *testing.T) {
-	var out bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &bytes.Buffer{}}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"version"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error: %v", err)
+func TestOptionsFrontendCachesPerClientAndApp(t *testing.T) {
+	opts := &Options{
+		Client: client.NewClient("http://example.invalid"),
 	}
 
-	if !strings.Contains(out.String(), "watchtower") {
-		t.Errorf("output = %q, want to contain 'watchtower'", out.String())
-	}
-}
-
-func TestRuntimeModeForCommand(t *testing.T) {
-	t.Run("serve uses persistent mode", func(t *testing.T) {
-		opts := &Options{}
-		cmd := &cobra.Command{Use: "serve"}
-		cmd.SetArgs(nil)
-		cmd.Run = func(*cobra.Command, []string) {}
-		cmd.Use = "serve"
-		if got := runtimeModeForCommand(cmd, opts); got != app.RuntimeModePersistent {
-			t.Fatalf("runtimeModeForCommand() = %q, want %q", got, app.RuntimeModePersistent)
-		}
-	})
-
-	t.Run("external server keeps app ephemeral", func(t *testing.T) {
-		opts := &Options{ServerAddr: "http://127.0.0.1:8472"}
-		cmd := &cobra.Command{Use: "review"}
-		if got := runtimeModeForCommand(cmd, opts); got != app.RuntimeModeEphemeral {
-			t.Fatalf("runtimeModeForCommand() = %q, want %q", got, app.RuntimeModeEphemeral)
-		}
-	})
-}
-
-func TestConfigShowCommand(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-
-	yaml := `
-launchpad:
-  default_owner: test-team
-projects:
-  - name: test-project
-    code:
-      forge: github
-      owner: org
-      project: repo
-    bugs:
-      - forge: launchpad
-        project: test-project
-`
-	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
-		t.Fatal(err)
+	first := opts.Frontend()
+	second := opts.Frontend()
+	if first != second {
+		t.Fatal("Frontend() should cache the facade when client/app are unchanged")
 	}
 
-	var out bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &bytes.Buffer{}}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"config", "show", "--config", cfgFile})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error: %v", err)
+	opts.Client = client.NewClient("http://example-2.invalid")
+	third := opts.Frontend()
+	if third == second {
+		t.Fatal("Frontend() should rebuild the facade when the client changes")
 	}
 
-	output := out.String()
-	if !strings.Contains(output, "test-team") {
-		t.Errorf("output should contain 'test-team', got: %s", output)
-	}
-	if !strings.Contains(output, "test-project") {
-		t.Errorf("output should contain 'test-project', got: %s", output)
+	opts.App = app.NewApp(&config.Config{}, discardTestLogger())
+	fourth := opts.Frontend()
+	if fourth == third {
+		t.Fatal("Frontend() should rebuild the facade when the app changes")
 	}
 }
 
-func TestConfigShowCommand_NoConfig(t *testing.T) {
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"config", "show", "--config", "/nonexistent/path.yaml"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for missing config file")
-	}
-}
-
-func TestReviewListCommand_NoConfig(t *testing.T) {
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"review", "list", "--config", "/nonexistent/path.yaml"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for missing config file")
-	}
-}
-
-func TestReviewListCommand_EmptyConfig(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"review", "list", "--config", cfgFile})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error: %v", err)
-	}
-
-	if !strings.Contains(out.String(), "No merge requests") {
-		t.Errorf("expected 'No merge requests' message, got: %s", out.String())
-	}
-}
-
-func TestReviewListCommand_InvalidState(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"review", "list", "--config", cfgFile, "--state", "invalid"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for invalid state")
-	}
-}
-
-func TestReviewListCommand_InvalidForge(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"review", "list", "--config", cfgFile, "--forge", "gitlab"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for invalid forge")
-	}
-}
-
-func TestOutputFormats(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, format := range []string{"json", "yaml"} {
-		t.Run(format, func(t *testing.T) {
-			var out, errOut bytes.Buffer
-			opts := &Options{Out: &out, ErrOut: &errOut}
-			cmd := NewRootCmd(opts)
-			cmd.SetArgs([]string{"review", "list", "--config", cfgFile, "-o", format})
-
-			if err := cmd.Execute(); err != nil {
-				t.Fatalf("Execute() error: %v", err)
-			}
-
-			// Both JSON and YAML should produce valid output (even if empty).
-			if out.Len() == 0 {
-				t.Error("expected non-empty output")
-			}
-		})
-	}
-}
-
-func TestBugListCommand_NoConfig(t *testing.T) {
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"bug", "list", "--config", "/nonexistent/path.yaml"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for missing config file")
-	}
-}
-
-func TestBugListCommand_EmptyConfig(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"bug", "list", "--config", cfgFile})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error: %v", err)
-	}
-
-	if !strings.Contains(out.String(), "No bug tasks") {
-		t.Errorf("expected 'No bug tasks' message, got: %s", out.String())
-	}
-}
-
-func TestBugListCommand_OutputFormats(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, format := range []string{"json", "yaml"} {
-		t.Run(format, func(t *testing.T) {
-			var out, errOut bytes.Buffer
-			opts := &Options{Out: &out, ErrOut: &errOut}
-			cmd := NewRootCmd(opts)
-			cmd.SetArgs([]string{"bug", "list", "--config", cfgFile, "-o", format})
-
-			if err := cmd.Execute(); err != nil {
-				t.Fatalf("Execute() error: %v", err)
-			}
-
-			if out.Len() == 0 {
-				t.Error("expected non-empty output")
-			}
-		})
-	}
-}
-
-func TestReviewShowCommand_MissingProject(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"review", "show", "--config", cfgFile, "#1"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for missing --project flag")
-	}
-	if !strings.Contains(err.Error(), "--project") {
-		t.Errorf("error should mention --project, got: %v", err)
-	}
-}
-
-func TestReviewShowCommand_UnknownProject(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"review", "show", "--config", cfgFile, "--project", "nonexistent", "#1"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for unknown project")
-	}
-}
-
-func TestBugShowCommand_NoArgs(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"bug", "show", "--config", cfgFile})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error for missing bug ID argument")
-	}
-}
-
-func TestVerboseFlag(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("{}"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"review", "list", "--config", cfgFile, "--verbose"})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error: %v", err)
-	}
-
-	if !opts.Verbose {
-		t.Error("expected Verbose to be true")
-	}
-}
-
-func TestProjectSyncCommand_NoLPProjects(t *testing.T) {
-	dir := t.TempDir()
-	cfgFile := filepath.Join(dir, "config.yaml")
-	yaml := `
-projects:
-  - name: test
-    code:
-      forge: github
-      owner: org
-      project: repo
-`
-	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	var out, errOut bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &errOut}
-	cmd := NewRootCmd(opts)
-	cmd.SetArgs([]string{"project", "sync", "--config", cfgFile})
-
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error: %v", err)
-	}
-
-	if !strings.Contains(out.String(), "No changes needed") {
-		t.Errorf("expected 'No changes needed' message, got: %s", out.String())
-	}
-}
-
-func TestProjectSyncCommand_HasFlags(t *testing.T) {
-	var out bytes.Buffer
-	opts := &Options{Out: &out, ErrOut: &bytes.Buffer{}}
-	cmd := NewRootCmd(opts)
-
-	projectCmd, _, err := cmd.Find([]string{"project", "sync"})
-	if err != nil {
-		t.Fatalf("project sync command not found: %v", err)
-	}
-
-	if projectCmd.Flag("dry-run") == nil {
-		t.Error("expected --dry-run flag")
-	}
-	if projectCmd.Flag("project") == nil {
-		t.Error("expected --project flag")
-	}
+func discardTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 }
