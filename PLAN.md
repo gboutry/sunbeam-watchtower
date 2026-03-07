@@ -241,6 +241,7 @@ This distinction is important: stateful features must be designed around persist
 - ratcheted the changed-package coverage policy to match the current breadth of the refactored transport/DTO packages (`pkg/client: 19`, `pkg/dto/v1: 34`) after removing the compatibility-only code paths, and added focused client transport tests instead of backfilling low-value compatibility coverage
 - added focused build transport tests in `pkg/client` and set an explicit `pkg/client: 21` changed-package coverage floor so transport-shaping changes remain guarded without pretending the entire multi-endpoint client package is already at the default package-wide maturity level
 - extracted the duplicated adapter AST helpers into `tools/archtest` and rewired the CLI, frontend, and API architecture tests to use the shared loader/import/signature walker primitives, so future boundary rules evolve from one implementation instead of three diverging copies
+- extracted cache/excuses bootstrap wiring and runtime/auth-operation store wiring out of `internal/app/app.go` into focused bootstrap modules, with direct tests around the new cache/runtime seams, so `App` is closer to a thin composition root instead of carrying every lazy factory itself
 
 ## Validation
 
