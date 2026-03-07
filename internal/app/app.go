@@ -101,6 +101,16 @@ func (a *App) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if closer, ok := a.lpFlowStore.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if closer, ok := a.operationStore.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	return errors.Join(errs...)
 }
 
@@ -251,7 +261,20 @@ func (a *App) LaunchpadCredentialStore() port.LaunchpadCredentialStore {
 // LaunchpadPendingAuthFlowStore returns the shared pending Launchpad auth flow store.
 func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore {
 	a.lpFlowOnce.Do(func() {
-		a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
+		cacheDir, err := ResolveCacheDir()
+		if err != nil {
+			a.Logger.Warn("failed to resolve cache dir for auth flow store, falling back to memory", "error", err)
+			a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
+			return
+		}
+
+		store, err := authflowstore.NewBoltLaunchpadFlowStore(filepath.Join(cacheDir, "state"))
+		if err != nil {
+			a.Logger.Warn("failed to initialize auth flow store, falling back to memory", "error", err)
+			a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
+			return
+		}
+		a.lpFlowStore = store
 	})
 	return a.lpFlowStore
 }
@@ -259,7 +282,20 @@ func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore
 // OperationStore returns the shared long-running operation store.
 func (a *App) OperationStore() port.OperationStore {
 	a.operationStoreOnce.Do(func() {
-		a.operationStore = operationstore.NewMemoryStore()
+		cacheDir, err := ResolveCacheDir()
+		if err != nil {
+			a.Logger.Warn("failed to resolve cache dir for operation store, falling back to memory", "error", err)
+			a.operationStore = operationstore.NewMemoryStore()
+			return
+		}
+
+		store, err := operationstore.NewBoltStore(filepath.Join(cacheDir, "state"))
+		if err != nil {
+			a.Logger.Warn("failed to initialize operation store, falling back to memory", "error", err)
+			a.operationStore = operationstore.NewMemoryStore()
+			return
+		}
+		a.operationStore = store
 	})
 	return a.operationStore
 }

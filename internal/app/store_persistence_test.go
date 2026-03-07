@@ -1,0 +1,80 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
+package app
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/gboutry/sunbeam-watchtower/internal/config"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
+)
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func TestLaunchpadPendingAuthFlowStorePersistsAcrossApps(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	first := NewApp(&config.Config{}, discardLogger())
+	flow := &lp.PendingAuthFlow{
+		ID:                 "flow-1",
+		RequestToken:       "token",
+		RequestTokenSecret: "secret",
+		CreatedAt:          time.Now().UTC(),
+		ExpiresAt:          time.Now().UTC().Add(time.Minute),
+	}
+	if err := first.LaunchpadPendingAuthFlowStore().Put(context.Background(), flow); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	second := NewApp(&config.Config{}, discardLogger())
+	defer second.Close()
+
+	got, err := second.LaunchpadPendingAuthFlowStore().Get(context.Background(), flow.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got == nil || got.RequestToken != flow.RequestToken {
+		t.Fatalf("Get() = %+v, want persisted flow", got)
+	}
+}
+
+func TestOperationStorePersistsAcrossApps(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	first := NewApp(&config.Config{}, discardLogger())
+	job := dto.OperationJob{
+		ID:        "job-1",
+		Kind:      dto.OperationKindBuildTrigger,
+		State:     dto.OperationStateSucceeded,
+		CreatedAt: time.Now().UTC(),
+		Summary:   "done",
+	}
+	if err := first.OperationStore().Create(context.Background(), job); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	second := NewApp(&config.Config{}, discardLogger())
+	defer second.Close()
+
+	got, err := second.OperationStore().Get(context.Background(), job.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got == nil || got.Summary != "done" {
+		t.Fatalf("Get() = %+v, want persisted job", got)
+	}
+}

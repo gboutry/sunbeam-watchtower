@@ -225,6 +225,8 @@ The Huma request-contract hardening pass has started: optional query/body slice 
 
 The split-workflow build refactor has also started: local Launchpad/git preparation is moving out of Cobra handlers into a reusable frontend-side preparation layer so CLI and future TUI work can share the same local-preparation logic without pushing filesystem concerns into the server.
 
+Durable server-side state work has started too: pending auth flows and long-running operations are now moving behind bbolt-backed secondary adapters so a persistent Watchtower server can keep coordination state across process lifetimes instead of relying only on in-memory stores.
+
 ## Deferred contract-test plan
 
 We are **not** adopting broad go-vcr coverage now.
