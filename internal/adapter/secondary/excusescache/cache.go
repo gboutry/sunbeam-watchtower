@@ -43,7 +43,7 @@ type trackerMeta struct {
 }
 
 // NewCache creates a new excuses cache rooted at baseDir.
-func NewCache(baseDir string, sources []dto.ExcusesSource, logger *slog.Logger) (*Cache, error) {
+func NewCache(baseDir string, sources []dto.ExcusesSource, logger *slog.Logger, clients ...*http.Client) (*Cache, error) {
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating excuses cache dir: %w", err)
 	}
@@ -55,11 +55,15 @@ func NewCache(baseDir string, sources []dto.ExcusesSource, logger *slog.Logger) 
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	client := &http.Client{Timeout: 2 * time.Minute}
+	if len(clients) > 0 && clients[0] != nil {
+		client = clients[0]
+	}
 	return &Cache{
 		baseDir: baseDir,
 		sources: append([]dto.ExcusesSource(nil), sources...),
 		db:      db,
-		client:  &http.Client{Timeout: 2 * time.Minute},
+		client:  client,
 		logger:  logger,
 	}, nil
 }

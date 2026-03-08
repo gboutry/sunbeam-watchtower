@@ -8,18 +8,18 @@ import (
 	"time"
 )
 
-type SnapshotSource interface {
-	AuthSnapshot(context.Context) (*AuthSnapshot, error)
-	OperationSnapshot(context.Context) (*OperationSnapshot, error)
-	ProjectSnapshot(context.Context) (*ProjectSnapshot, error)
-	BuildSnapshot(context.Context) (*BuildSnapshot, error)
-	ReleaseSnapshot(context.Context) (*ReleaseSnapshot, error)
-	ReviewSnapshot(context.Context) (*ReviewSnapshot, error)
-	CommitSnapshot(context.Context) (*CommitSnapshot, error)
-	BugSnapshot(context.Context) (*BugSnapshot, error)
-	PackageSnapshot(context.Context) (*PackageSnapshot, error)
-	ExcusesSnapshot(context.Context) (*ExcusesSnapshot, error)
-	CacheSnapshot(context.Context) (*CacheSnapshot, error)
+type SnapshotSource struct {
+	AuthSnapshot      func(context.Context) (*AuthSnapshot, error)
+	OperationSnapshot func(context.Context) (*OperationSnapshot, error)
+	ProjectSnapshot   func(context.Context) (*ProjectSnapshot, error)
+	BuildSnapshot     func(context.Context) (*BuildSnapshot, error)
+	ReleaseSnapshot   func(context.Context) (*ReleaseSnapshot, error)
+	ReviewSnapshot    func(context.Context) (*ReviewSnapshot, error)
+	CommitSnapshot    func(context.Context) (*CommitSnapshot, error)
+	BugSnapshot       func(context.Context) (*BugSnapshot, error)
+	PackageSnapshot   func(context.Context) (*PackageSnapshot, error)
+	ExcusesSnapshot   func(context.Context) (*ExcusesSnapshot, error)
+	CacheSnapshot     func(context.Context) (*CacheSnapshot, error)
 }
 
 type AuthMetric struct {

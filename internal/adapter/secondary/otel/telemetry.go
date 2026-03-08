@@ -44,7 +44,7 @@ const (
 
 type Telemetry struct {
 	logger *slog.Logger
-	source SnapshotSource
+	source *SnapshotSource
 	cfg    config.OTelConfig
 
 	selfRegistry   *prometheus.Registry
@@ -95,7 +95,7 @@ type Telemetry struct {
 	wg     sync.WaitGroup
 }
 
-func New(ctx context.Context, cfg config.OTelConfig, logger *slog.Logger, source SnapshotSource) (*Telemetry, error) {
+func New(ctx context.Context, cfg config.OTelConfig, logger *slog.Logger, source *SnapshotSource) (*Telemetry, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}

@@ -32,13 +32,17 @@ type Client struct {
 }
 
 // NewClient creates a Client from existing credentials.
-func NewClient(creds *Credentials, logger *slog.Logger) *Client {
+func NewClient(creds *Credentials, logger *slog.Logger, httpClients ...*http.Client) *Client {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	httpClient := &http.Client{}
+	if len(httpClients) > 0 && httpClients[0] != nil {
+		httpClient = httpClients[0]
+	}
 	return &Client{
 		creds:  creds,
-		http:   &http.Client{},
+		http:   httpClient,
 		logger: logger,
 	}
 }

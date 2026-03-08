@@ -165,6 +165,7 @@ Watchtower now supports a top-level `otel` configuration block for persistent se
 - domain metrics are cache-first by default; live upstream collector fan-out is enabled only for systems listed in `otel.metrics.domain.live_systems`
 - `otel.traces` configures OTLP trace export for server request spans and telemetry collector refresh spans
 - `otel.logs` configures OTLP log export from the server logger while optionally mirroring logs to stderr
+- outbound HTTP spans are emitted for Launchpad, GitHub, Gerrit, Snap Store, Charmhub, package feeds, and excuses feeds through one traced transport seam in `internal/adapter/secondary/otel`
 
 Telemetry is intentionally a server concern:
 
@@ -279,6 +280,7 @@ This distinction is important: stateful features must be designed around persist
 - added a dedicated `otel` configuration surface plus a confined telemetry adapter, so persistent servers can expose separate self/domain Prometheus listeners, emit OTLP traces/logs, and export bounded domain metrics without leaking observability dependencies into primary adapters or core services
 - added server-side request telemetry and bounded domain collectors for auth, operations, projects, builds, releases, reviews, commits, bugs, packages, excuses, and cache freshness, with mechanical tests that keep OTel and Prometheus imports confined to the telemetry adapter package
 - switched domain telemetry to a cache-first operating model: cache/internal collectors stay default-on, while live upstream collectors (`reviews`, `builds`, `bugs`, `commits`) now require explicit allow-listing via `otel.metrics.domain.live_systems`
+- added a traced outbound HTTP transport seam and wired it through Launchpad, GitHub, Gerrit, Snap Store, Charmhub, package feeds, and excuses feeds so server traces now cover both inbound requests and upstream HTTP fan-out without leaking OTel imports outside `internal/adapter/secondary/otel`
 - grouped the root CLI help surface into `Workflows` and `Meta Commands`, so operational commands such as `auth`, `cache`, `serve`, `server`, and `version` are visually separated from the day-to-day workflow commands in Cobra help output
 - added a shared CLI output styler with theme-aware terminal colorization for human-readable output: dense tables now use restrained column tinting, key/value detail views color their labels, warnings/errors are styled consistently, JSON/YAML remain plain, and new renderer tests guard against ANSI leaking into machine-readable formats or disappearing from color-enabled text output
 

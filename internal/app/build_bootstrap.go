@@ -5,6 +5,7 @@ package app
 
 import (
 	"fmt"
+	"time"
 
 	adaptergit "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/git"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/launchpad"
@@ -29,7 +30,7 @@ func (a *App) BuildRecipeBuilders() (map[string]build.ProjectBuilder, error) {
 		}
 
 		if lpClient == nil {
-			lpClient = NewLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger)
+			lpClient = newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
 			if lpClient == nil {
 				a.Logger.Warn("skipping build projects (no LP auth configured)")
 				return result, nil
@@ -109,7 +110,7 @@ func (a *App) BuildRepoManager() (port.RepoManager, error) {
 		return nil, fmt.Errorf("no configuration loaded")
 	}
 
-	lpClient := NewLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger)
+	lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
 	if lpClient == nil {
 		return nil, nil
 	}

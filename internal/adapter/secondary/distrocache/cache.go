@@ -32,7 +32,7 @@ type Cache struct {
 }
 
 // NewCache creates a new distro cache rooted at baseDir.
-func NewCache(baseDir string, logger *slog.Logger) (*Cache, error) {
+func NewCache(baseDir string, logger *slog.Logger, clients ...*http.Client) (*Cache, error) {
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating cache dir: %w", err)
 	}
@@ -43,10 +43,14 @@ func NewCache(baseDir string, logger *slog.Logger) (*Cache, error) {
 		return nil, fmt.Errorf("opening bbolt db: %w", err)
 	}
 
+	client := &http.Client{Timeout: 5 * time.Minute}
+	if len(clients) > 0 && clients[0] != nil {
+		client = clients[0]
+	}
 	return &Cache{
 		baseDir: baseDir,
 		db:      db,
-		client:  &http.Client{Timeout: 5 * time.Minute},
+		client:  client,
 		logger:  logger,
 	}, nil
 }
