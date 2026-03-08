@@ -37,11 +37,6 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 )
 
-const (
-	defaultSelfAddr   = ""
-	defaultDomainAddr = ""
-)
-
 type Telemetry struct {
 	logger *slog.Logger
 	source *SnapshotSource
