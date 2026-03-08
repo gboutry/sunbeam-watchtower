@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
@@ -29,7 +27,7 @@ func newBugShowCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderBugDetail(opts.Out, opts.Output, result)
+			return renderBugDetail(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
 	}
 
@@ -61,10 +59,13 @@ func newBugListCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			errStyler := newOutputStylerForOptions(opts, opts.ErrOut, opts.Output)
 			for _, w := range result.Warnings {
-				fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
+				if err := writeWarningLine(opts.ErrOut, errStyler, w); err != nil {
+					return err
+				}
 			}
-			return renderBugTasks(opts.Out, opts.Output, result.Tasks)
+			return renderBugTasks(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.Tasks)
 		},
 	}
 
@@ -98,10 +99,13 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			errStyler := newOutputStylerForOptions(opts, opts.ErrOut, opts.Output)
 			for _, e := range result.Warnings {
-				fmt.Fprintf(opts.ErrOut, "warning: %s\n", e)
+				if err := writeWarningLine(opts.ErrOut, errStyler, e); err != nil {
+					return err
+				}
 			}
-			return renderBugSyncResult(opts.Out, opts.Output, result.Result, dryRun)
+			return renderBugSyncResult(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.Result, dryRun)
 		},
 	}
 

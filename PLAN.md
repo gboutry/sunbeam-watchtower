@@ -259,6 +259,7 @@ This distinction is important: stateful features must be designed around persist
 - corrected the releases list timestamp semantics so flat release rows now expose per-channel `released_at` data from the store, while artifact-level snapshot timestamps remain cache-sync metadata instead of being mislabeled as publication times
 - documented a concrete `project.release` example in `README.md`, including `track_map` and cross-artifact branch tracking, so the repo-driven release model is described with an actual user-facing config snippet instead of only code-level types and tests
 - grouped the root CLI help surface into `Workflows` and `Meta Commands`, so operational commands such as `auth`, `cache`, `serve`, `server`, and `version` are visually separated from the day-to-day workflow commands in Cobra help output
+- added a shared CLI output styler with theme-aware terminal colorization for human-readable output: dense tables now use restrained column tinting, key/value detail views color their labels, warnings/errors are styled consistently, JSON/YAML remain plain, and new renderer tests guard against ANSI leaking into machine-readable formats or disappearing from color-enabled text output
 
 ## Next small step
 

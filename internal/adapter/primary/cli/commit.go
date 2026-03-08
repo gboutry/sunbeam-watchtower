@@ -50,12 +50,15 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
+			errStyler := newOutputStylerForOptions(opts, opts.ErrOut, opts.Output)
 			for _, w := range result.Warnings {
-				fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
+				if err := writeWarningLine(opts.ErrOut, errStyler, w); err != nil {
+					return err
+				}
 			}
 
 			opts.Logger.Debug("commit log complete", "total_commits", len(result.Commits))
-			return renderCommits(opts.Out, opts.Output, result.Commits)
+			return renderCommits(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.Commits)
 		},
 	}
 
@@ -97,11 +100,14 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
+			errStyler := newOutputStylerForOptions(opts, opts.ErrOut, opts.Output)
 			for _, w := range result.Warnings {
-				fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
+				if err := writeWarningLine(opts.ErrOut, errStyler, w); err != nil {
+					return err
+				}
 			}
 
-			return renderCommits(opts.Out, opts.Output, result.Commits)
+			return renderCommits(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.Commits)
 		},
 	}
 

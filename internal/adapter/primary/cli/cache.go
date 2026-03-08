@@ -66,21 +66,25 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 			if opts.Output == "json" || opts.Output == "yaml" {
 				progressOut = opts.ErrOut
 			}
+			styler := newOutputStylerForOptions(opts, progressOut, opts.Output)
+			errStyler := newOutputStylerForOptions(opts, opts.ErrOut, opts.Output)
 
 			if wantCacheType(args, cacheTypeGit) {
-				fmt.Fprintln(progressOut, "syncing git caches...")
+				fmt.Fprintf(progressOut, "%s git caches...\n", styler.Action("syncing"))
 				result, err := workflow.SyncGit(cmd.Context(), frontend.CacheSyncGitRequest{Project: project})
 				if err != nil {
 					return err
 				}
 				for _, w := range result.Warnings {
-					fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
+					if err := writeWarningLine(opts.ErrOut, errStyler, w); err != nil {
+						return err
+					}
 				}
-				fmt.Fprintf(progressOut, "git sync done (%d repos synced).\n", result.Synced)
+				fmt.Fprintf(progressOut, "git sync %s (%d repos synced).\n", styler.Action("done"), result.Synced)
 			}
 
 			if wantCacheType(args, cacheTypePackagesIndex) {
-				fmt.Fprintln(progressOut, "syncing packages index...")
+				fmt.Fprintf(progressOut, "%s packages index...\n", styler.Action("syncing"))
 				if err := workflow.SyncPackagesIndex(cmd.Context(), frontend.CacheSyncPackagesIndexRequest{
 					Distros:   distros,
 					Releases:  releases,
@@ -88,47 +92,49 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 				}); err != nil {
 					return err
 				}
-				fmt.Fprintln(progressOut, "packages index sync done.")
+				fmt.Fprintf(progressOut, "packages index sync %s.\n", styler.Action("done"))
 			}
 
 			if wantCacheType(args, cacheTypeUpstreamRepos) {
-				fmt.Fprintln(progressOut, "syncing upstream repos...")
+				fmt.Fprintf(progressOut, "%s upstream repos...\n", styler.Action("syncing"))
 				result, err := workflow.SyncUpstream(cmd.Context())
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(progressOut, "upstream repos sync: %s\n", result.Status)
+				fmt.Fprintf(progressOut, "upstream repos sync: %s\n", styler.semantic(result.Status))
 			}
 
 			if wantCacheType(args, cacheTypeBugs) {
-				fmt.Fprintln(progressOut, "syncing bug caches...")
+				fmt.Fprintf(progressOut, "%s bug caches...\n", styler.Action("syncing"))
 				result, err := workflow.SyncBugs(cmd.Context(), frontend.CacheSyncBugsRequest{Project: project})
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(progressOut, "bug cache sync done (%d tasks synced).\n", result.Synced)
+				fmt.Fprintf(progressOut, "bug cache sync %s (%d tasks synced).\n", styler.Action("done"), result.Synced)
 			}
 
 			if wantCacheType(args, cacheTypeExcuses) {
-				fmt.Fprintln(progressOut, "syncing excuses caches...")
+				fmt.Fprintf(progressOut, "%s excuses caches...\n", styler.Action("syncing"))
 				result, err := workflow.SyncExcuses(cmd.Context(), frontend.CacheSyncExcusesRequest{Trackers: trackers})
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(progressOut, "excuses cache sync: %s\n", result.Status)
+				fmt.Fprintf(progressOut, "excuses cache sync: %s\n", styler.semantic(result.Status))
 			}
 
 			if wantCacheType(args, cacheTypeReleases) {
-				fmt.Fprintln(progressOut, "syncing release caches...")
+				fmt.Fprintf(progressOut, "%s release caches...\n", styler.Action("syncing"))
 				result, err := workflow.SyncReleases(cmd.Context())
 				if err != nil {
 					return err
 				}
 				for _, w := range result.Warnings {
-					fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
+					if err := writeWarningLine(opts.ErrOut, errStyler, w); err != nil {
+						return err
+					}
 				}
 				fmt.Fprintf(progressOut, "release cache sync: %s (discovered %d, synced %d, skipped %d)\n",
-					result.Status, result.Discovered, result.Synced, result.Skipped)
+					styler.semantic(result.Status), result.Discovered, result.Synced, result.Skipped)
 			}
 
 			return nil
@@ -164,53 +170,54 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 			if opts.Output == "json" || opts.Output == "yaml" {
 				progressOut = opts.ErrOut
 			}
+			styler := newOutputStylerForOptions(opts, progressOut, opts.Output)
 
 			if wantCacheType(args, cacheTypeGit) {
-				fmt.Fprintln(progressOut, "clearing git cache...")
+				fmt.Fprintf(progressOut, "%s git cache...\n", styler.Action("clearing"))
 				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "git", Project: project}); err != nil {
 					return err
 				}
-				fmt.Fprintln(progressOut, "git cache cleared.")
+				fmt.Fprintf(progressOut, "git cache %s.\n", styler.Action("cleared"))
 			}
 
 			if wantCacheType(args, cacheTypePackagesIndex) {
-				fmt.Fprintln(progressOut, "clearing packages index cache...")
+				fmt.Fprintf(progressOut, "%s packages index cache...\n", styler.Action("clearing"))
 				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "packages-index"}); err != nil {
 					return err
 				}
-				fmt.Fprintln(progressOut, "packages index cache cleared.")
+				fmt.Fprintf(progressOut, "packages index cache %s.\n", styler.Action("cleared"))
 			}
 
 			if wantCacheType(args, cacheTypeUpstreamRepos) {
-				fmt.Fprintln(progressOut, "clearing upstream repos cache...")
+				fmt.Fprintf(progressOut, "%s upstream repos cache...\n", styler.Action("clearing"))
 				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "upstream-repos"}); err != nil {
 					return err
 				}
-				fmt.Fprintln(progressOut, "upstream repos cache cleared.")
+				fmt.Fprintf(progressOut, "upstream repos cache %s.\n", styler.Action("cleared"))
 			}
 
 			if wantCacheType(args, cacheTypeBugs) {
-				fmt.Fprintln(progressOut, "clearing bug cache...")
+				fmt.Fprintf(progressOut, "%s bug cache...\n", styler.Action("clearing"))
 				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "bugs", Project: project}); err != nil {
 					return err
 				}
-				fmt.Fprintln(progressOut, "bug cache cleared.")
+				fmt.Fprintf(progressOut, "bug cache %s.\n", styler.Action("cleared"))
 			}
 
 			if wantCacheType(args, cacheTypeExcuses) {
-				fmt.Fprintln(progressOut, "clearing excuses cache...")
+				fmt.Fprintf(progressOut, "%s excuses cache...\n", styler.Action("clearing"))
 				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "excuses", Trackers: trackers}); err != nil {
 					return err
 				}
-				fmt.Fprintln(progressOut, "excuses cache cleared.")
+				fmt.Fprintf(progressOut, "excuses cache %s.\n", styler.Action("cleared"))
 			}
 
 			if wantCacheType(args, cacheTypeReleases) {
-				fmt.Fprintln(progressOut, "clearing release cache...")
+				fmt.Fprintf(progressOut, "%s release cache...\n", styler.Action("clearing"))
 				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "releases"}); err != nil {
 					return err
 				}
-				fmt.Fprintln(progressOut, "release cache cleared.")
+				fmt.Fprintf(progressOut, "release cache %s.\n", styler.Action("cleared"))
 			}
 
 			return nil
@@ -257,7 +264,7 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 			status.Releases.Directory = result.Releases.Directory
 			status.Releases.Error = result.Releases.Error
 
-			return renderCacheFullStatus(opts.Out, opts.Output, &status)
+			return renderCacheFullStatus(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), &status)
 		},
 	}
 }

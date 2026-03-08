@@ -36,7 +36,7 @@ func newReviewShowCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			return renderMergeRequestDetail(opts.Out, opts.Output, mr)
+			return renderMergeRequestDetail(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), mr)
 		},
 	}
 
@@ -77,11 +77,14 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
+			errStyler := newOutputStylerForOptions(opts, opts.ErrOut, opts.Output)
 			for _, w := range result.Warnings {
-				fmt.Fprintf(opts.ErrOut, "warning: %s\n", w)
+				if err := writeWarningLine(opts.ErrOut, errStyler, w); err != nil {
+					return err
+				}
 			}
 
-			return renderMergeRequests(opts.Out, opts.Output, result.MergeRequests)
+			return renderMergeRequests(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.MergeRequests)
 		},
 	}
 

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -50,7 +49,7 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderPackageExcuseSummaries(opts.Out, opts.Output, results)
+			return renderPackageExcuseSummaries(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), results)
 		},
 	}
 
@@ -85,7 +84,7 @@ func newPackagesExcusesShowCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderPackageExcuse(opts.Out, opts.Output, result)
+			return renderPackageExcuse(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
 	}
 
@@ -94,31 +93,31 @@ func newPackagesExcusesShowCmd(opts *Options) *cobra.Command {
 	return cmd
 }
 
-func renderPackageExcuseSummaries(w io.Writer, format string, results []dto.PackageExcuseSummary) error {
+func renderPackageExcuseSummaries(w io.Writer, format string, styler *outputStyler, results []dto.PackageExcuseSummary) error {
 	switch format {
 	case "json":
 		return renderJSON(w, results)
 	case "yaml":
 		return renderYAML(w, results)
 	default:
-		return renderPackageExcuseSummariesTable(w, results)
+		return renderPackageExcuseSummariesTable(w, styler, results)
 	}
 }
 
-func renderPackageExcuseSummariesTable(w io.Writer, results []dto.PackageExcuseSummary) error {
+func renderPackageExcuseSummariesTable(w io.Writer, styler *outputStyler, results []dto.PackageExcuseSummary) error {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No package excuses found.")
 		return nil
 	}
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "DAYS\tTRACKER\tPACKAGE\tVERSION\tCOMPONENT\tTEAM\tPRIMARY_REASON\tBLOCKED_BY\tBUG")
+	headers := []string{"DAYS", "TRACKER", "PACKAGE", "VERSION", "COMPONENT", "TEAM", "PRIMARY_REASON", "BLOCKED_BY", "BUG"}
+	rows := make([][]string, 0, len(results))
 	for _, result := range results {
 		blockedBy := strings.Join(result.BlockedBy, ", ")
 		if len(blockedBy) > 32 {
 			blockedBy = blockedBy[:29] + "..."
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			result.AgeDays,
+		rows = append(rows, []string{
+			fmt.Sprintf("%d", result.AgeDays),
 			result.Tracker,
 			result.Package,
 			result.Version,
@@ -127,63 +126,97 @@ func renderPackageExcuseSummariesTable(w io.Writer, results []dto.PackageExcuseS
 			result.PrimaryReason,
 			blockedBy,
 			result.Bug,
-		)
+		})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
-func renderPackageExcuse(w io.Writer, format string, excuse *dto.PackageExcuse) error {
+func renderPackageExcuse(w io.Writer, format string, styler *outputStyler, excuse *dto.PackageExcuse) error {
 	switch format {
 	case "json":
 		return renderJSON(w, excuse)
 	case "yaml":
 		return renderYAML(w, excuse)
 	default:
-		return renderPackageExcuseTable(w, excuse)
+		return renderPackageExcuseTable(w, styler, excuse)
 	}
 }
 
-func renderPackageExcuseTable(w io.Writer, excuse *dto.PackageExcuse) error {
-	fmt.Fprintf(w, "Tracker:       %s\n", excuse.Tracker)
-	fmt.Fprintf(w, "Package:       %s\n", excuse.Package)
-	fmt.Fprintf(w, "Item:          %s\n", excuse.ItemName)
-	fmt.Fprintf(w, "Version:       %s\n", excuse.Version)
+func renderPackageExcuseTable(w io.Writer, styler *outputStyler, excuse *dto.PackageExcuse) error {
+	if err := writeKeyValue(w, styler, "Tracker", excuse.Tracker); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Package", excuse.Package); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Item", excuse.ItemName); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Version", excuse.Version); err != nil {
+		return err
+	}
 	if excuse.OldVersion != "" {
-		fmt.Fprintf(w, "Old Version:   %s\n", excuse.OldVersion)
+		if err := writeKeyValue(w, styler, "Old Version", excuse.OldVersion); err != nil {
+			return err
+		}
 	}
 	if excuse.Component != "" {
-		fmt.Fprintf(w, "Component:     %s\n", excuse.Component)
+		if err := writeKeyValue(w, styler, "Component", excuse.Component); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(w, "Candidate:     %t\n", excuse.Candidate)
+	if err := writeKeyValue(w, styler, "Candidate", fmt.Sprintf("%t", excuse.Candidate)); err != nil {
+		return err
+	}
 	if excuse.Verdict != "" {
-		fmt.Fprintf(w, "Verdict:       %s\n", excuse.Verdict)
+		if err := writeKeyValue(w, styler, "Verdict", excuse.Verdict); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(w, "Age (days):    %d\n", excuse.AgeDays)
-	fmt.Fprintf(w, "FTBFS:         %t\n", excuse.FTBFS)
+	if err := writeKeyValue(w, styler, "Age (days)", fmt.Sprintf("%d", excuse.AgeDays)); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "FTBFS", fmt.Sprintf("%t", excuse.FTBFS)); err != nil {
+		return err
+	}
 	if excuse.Team != "" {
-		fmt.Fprintf(w, "Team:          %s\n", excuse.Team)
+		if err := writeKeyValue(w, styler, "Team", excuse.Team); err != nil {
+			return err
+		}
 	}
 	if excuse.Maintainer != "" {
-		fmt.Fprintf(w, "Maintainer:    %s\n", excuse.Maintainer)
+		if err := writeKeyValue(w, styler, "Maintainer", excuse.Maintainer); err != nil {
+			return err
+		}
 	}
 	if excuse.Bug != "" {
-		fmt.Fprintf(w, "Bug:           %s\n", excuse.Bug)
+		if err := writeKeyValue(w, styler, "Bug", excuse.Bug); err != nil {
+			return err
+		}
 	}
 	if excuse.PrimaryReason != "" {
-		fmt.Fprintf(w, "Primary:       %s\n", excuse.PrimaryReason)
+		if err := writeKeyValue(w, styler, "Primary", excuse.PrimaryReason); err != nil {
+			return err
+		}
 	}
 	if len(excuse.BlockedBy) > 0 {
-		fmt.Fprintf(w, "Blocked By:    %s\n", strings.Join(excuse.BlockedBy, ", "))
+		if err := writeKeyValue(w, styler, "Blocked By", strings.Join(excuse.BlockedBy, ", ")); err != nil {
+			return err
+		}
 	}
 	if excuse.BlocksCount > 0 {
-		fmt.Fprintf(w, "Blocks:        %d\n", excuse.BlocksCount)
+		if err := writeKeyValue(w, styler, "Blocks", fmt.Sprintf("%d", excuse.BlocksCount)); err != nil {
+			return err
+		}
 	}
 
 	if len(excuse.Reasons) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Reasons:")
+		if err := writeSectionTitle(w, styler, "Reasons:"); err != nil {
+			return err
+		}
 		for _, reason := range excuse.Reasons {
-			fmt.Fprintf(w, "  - %s", reason.Code)
+			fmt.Fprintf(w, "  - %s", styler.Value("PRIMARY_REASON", reason.Code))
 			if reason.Message != "" && reason.Message != reason.Code {
 				fmt.Fprintf(w, ": %s", reason.Message)
 			}
@@ -193,22 +226,28 @@ func renderPackageExcuseTable(w io.Writer, excuse *dto.PackageExcuse) error {
 
 	if len(excuse.Dependencies) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Dependencies:")
+		if err := writeSectionTitle(w, styler, "Dependencies:"); err != nil {
+			return err
+		}
 		for _, dep := range excuse.Dependencies {
-			fmt.Fprintf(w, "  - %s: %s\n", dep.Kind, dep.Package)
+			fmt.Fprintf(w, "  - %s: %s\n", styler.Value("KIND", dep.Kind), dep.Package)
 		}
 	}
 
 	if len(excuse.ReverseDependencies) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintf(w, "Reverse Dependencies: %s\n", strings.Join(excuse.ReverseDependencies, ", "))
+		if err := writeKeyValue(w, styler, "Reverse Dependencies", strings.Join(excuse.ReverseDependencies, ", ")); err != nil {
+			return err
+		}
 	}
 
 	if len(excuse.BuildFailures) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Build Failures:")
+		if err := writeSectionTitle(w, styler, "Build Failures:"); err != nil {
+			return err
+		}
 		for _, failure := range excuse.BuildFailures {
-			fmt.Fprintf(w, "  - %s", failure.Kind)
+			fmt.Fprintf(w, "  - %s", styler.Warning(failure.Kind))
 			if failure.Architecture != "" {
 				fmt.Fprintf(w, " on %s", failure.Architecture)
 			}
@@ -221,7 +260,9 @@ func renderPackageExcuseTable(w io.Writer, excuse *dto.PackageExcuse) error {
 
 	if len(excuse.Autopkgtests) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Autopkgtests:")
+		if err := writeSectionTitle(w, styler, "Autopkgtests:"); err != nil {
+			return err
+		}
 		for _, test := range excuse.Autopkgtests {
 			fmt.Fprintf(w, "  - %s\n", test.Message)
 		}
@@ -229,7 +270,9 @@ func renderPackageExcuseTable(w io.Writer, excuse *dto.PackageExcuse) error {
 
 	if len(excuse.Messages) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Messages:")
+		if err := writeSectionTitle(w, styler, "Messages:"); err != nil {
+			return err
+		}
 		for _, message := range excuse.Messages {
 			fmt.Fprintf(w, "  - %s\n", message)
 		}
