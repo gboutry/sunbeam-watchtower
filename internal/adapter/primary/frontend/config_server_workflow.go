@@ -50,6 +50,44 @@ func configToDTO(cfg *config.Config) *dto.Config {
 			TimeoutMinutes: cfg.Build.TimeoutMinutes,
 			ArtifactsDir:   cfg.Build.ArtifactsDir,
 		},
+		OTel: dto.OTelConfig{
+			ServiceName:        cfg.OTel.ServiceName,
+			ServiceNamespace:   cfg.OTel.ServiceNamespace,
+			ResourceAttributes: copyStringMap(cfg.OTel.ResourceAttributes),
+			Metrics: dto.OTelMetricsConfig{
+				Self: dto.OTelMetricsListenerConfig{
+					Enabled:                cfg.OTel.Metrics.Self.Enabled,
+					ListenAddr:             cfg.OTel.Metrics.Self.ListenAddr,
+					Path:                   cfg.OTel.Metrics.Self.Path,
+					Runtime:                cfg.OTel.Metrics.Self.Runtime,
+					Process:                cfg.OTel.Metrics.Self.Process,
+					DefaultRefreshInterval: cfg.OTel.Metrics.Self.DefaultRefreshInterval,
+				},
+				Domain: dto.OTelMetricsListenerConfig{
+					Enabled:                cfg.OTel.Metrics.Domain.Enabled,
+					ListenAddr:             cfg.OTel.Metrics.Domain.ListenAddr,
+					Path:                   cfg.OTel.Metrics.Domain.Path,
+					Runtime:                cfg.OTel.Metrics.Domain.Runtime,
+					Process:                cfg.OTel.Metrics.Domain.Process,
+					DefaultRefreshInterval: cfg.OTel.Metrics.Domain.DefaultRefreshInterval,
+				},
+				Collectors: dto.OTelDomainCollectorsConfig{
+					Auth:       collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Auth),
+					Operations: collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Operations),
+					Projects:   collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Projects),
+					Builds:     collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Builds),
+					Releases:   collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Releases),
+					Reviews:    collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Reviews),
+					Commits:    collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Commits),
+					Bugs:       collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Bugs),
+					Packages:   collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Packages),
+					Excuses:    collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Excuses),
+					Cache:      collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Cache),
+				},
+			},
+			Traces: signalConfigToDTO(cfg.OTel.Traces),
+			Logs:   signalConfigToDTO(cfg.OTel.Logs),
+		},
 	}
 
 	out.Gerrit.Hosts = make([]dto.GerritHost, len(cfg.Gerrit.Hosts))
@@ -171,4 +209,35 @@ func configToDTO(cfg *config.Config) *dto.Config {
 	}
 
 	return out
+}
+
+func copyStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+func collectorConfigToDTO(cfg config.OTelCollectorConfig) dto.OTelCollectorConfig {
+	return dto.OTelCollectorConfig{
+		Enabled:         cfg.Enabled,
+		RefreshInterval: cfg.RefreshInterval,
+	}
+}
+
+func signalConfigToDTO(cfg config.OTelSignalConfig) dto.OTelSignalConfig {
+	return dto.OTelSignalConfig{
+		Enabled:       cfg.Enabled,
+		Endpoint:      cfg.Endpoint,
+		Protocol:      cfg.Protocol,
+		Insecure:      cfg.Insecure,
+		Headers:       copyStringMap(cfg.Headers),
+		SamplingRatio: cfg.SamplingRatio,
+		MinLevel:      cfg.MinLevel,
+		MirrorStderr:  cfg.MirrorStderr,
+	}
 }

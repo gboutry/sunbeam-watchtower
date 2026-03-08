@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -174,6 +175,66 @@ type PackagesConfig struct {
 	Upstream *UpstreamConfig         `mapstructure:"upstream" yaml:"upstream,omitempty"`
 }
 
+// OTelSignalConfig configures one OTLP-exported signal.
+type OTelSignalConfig struct {
+	Enabled       bool              `mapstructure:"enabled" yaml:"enabled,omitempty"`
+	Endpoint      string            `mapstructure:"endpoint" yaml:"endpoint,omitempty"`
+	Protocol      string            `mapstructure:"protocol" yaml:"protocol,omitempty"`
+	Insecure      bool              `mapstructure:"insecure" yaml:"insecure,omitempty"`
+	Headers       map[string]string `mapstructure:"headers" yaml:"headers,omitempty"`
+	SamplingRatio float64           `mapstructure:"sampling_ratio" yaml:"sampling_ratio,omitempty"`
+	MinLevel      string            `mapstructure:"min_level" yaml:"min_level,omitempty"`
+	MirrorStderr  bool              `mapstructure:"mirror_stderr" yaml:"mirror_stderr,omitempty"`
+}
+
+// OTelMetricsListenerConfig configures one metrics listener.
+type OTelMetricsListenerConfig struct {
+	Enabled                bool   `mapstructure:"enabled" yaml:"enabled,omitempty"`
+	ListenAddr             string `mapstructure:"listen_addr" yaml:"listen_addr,omitempty"`
+	Path                   string `mapstructure:"path" yaml:"path,omitempty"`
+	Runtime                bool   `mapstructure:"runtime" yaml:"runtime,omitempty"`
+	Process                bool   `mapstructure:"process" yaml:"process,omitempty"`
+	DefaultRefreshInterval string `mapstructure:"default_refresh_interval" yaml:"default_refresh_interval,omitempty"`
+}
+
+// OTelCollectorConfig configures one domain metrics collector.
+type OTelCollectorConfig struct {
+	Enabled         bool   `mapstructure:"enabled" yaml:"enabled,omitempty"`
+	RefreshInterval string `mapstructure:"refresh_interval" yaml:"refresh_interval,omitempty"`
+}
+
+// OTelDomainCollectorsConfig groups supported domain metrics collectors.
+type OTelDomainCollectorsConfig struct {
+	Auth       OTelCollectorConfig `mapstructure:"auth" yaml:"auth,omitempty"`
+	Operations OTelCollectorConfig `mapstructure:"operations" yaml:"operations,omitempty"`
+	Projects   OTelCollectorConfig `mapstructure:"projects" yaml:"projects,omitempty"`
+	Builds     OTelCollectorConfig `mapstructure:"builds" yaml:"builds,omitempty"`
+	Releases   OTelCollectorConfig `mapstructure:"releases" yaml:"releases,omitempty"`
+	Reviews    OTelCollectorConfig `mapstructure:"reviews" yaml:"reviews,omitempty"`
+	Commits    OTelCollectorConfig `mapstructure:"commits" yaml:"commits,omitempty"`
+	Bugs       OTelCollectorConfig `mapstructure:"bugs" yaml:"bugs,omitempty"`
+	Packages   OTelCollectorConfig `mapstructure:"packages" yaml:"packages,omitempty"`
+	Excuses    OTelCollectorConfig `mapstructure:"excuses" yaml:"excuses,omitempty"`
+	Cache      OTelCollectorConfig `mapstructure:"cache" yaml:"cache,omitempty"`
+}
+
+// OTelMetricsConfig groups self and domain metrics configuration.
+type OTelMetricsConfig struct {
+	Self       OTelMetricsListenerConfig  `mapstructure:"self" yaml:"self,omitempty"`
+	Domain     OTelMetricsListenerConfig  `mapstructure:"domain" yaml:"domain,omitempty"`
+	Collectors OTelDomainCollectorsConfig `mapstructure:"collectors" yaml:"collectors,omitempty"`
+}
+
+// OTelConfig configures OpenTelemetry exporters and metrics listeners.
+type OTelConfig struct {
+	ServiceName        string            `mapstructure:"service_name" yaml:"service_name,omitempty"`
+	ServiceNamespace   string            `mapstructure:"service_namespace" yaml:"service_namespace,omitempty"`
+	ResourceAttributes map[string]string `mapstructure:"resource_attributes" yaml:"resource_attributes,omitempty"`
+	Metrics            OTelMetricsConfig `mapstructure:"metrics" yaml:"metrics,omitempty"`
+	Traces             OTelSignalConfig  `mapstructure:"traces" yaml:"traces,omitempty"`
+	Logs               OTelSignalConfig  `mapstructure:"logs" yaml:"logs,omitempty"`
+}
+
 // Config is the top-level configuration.
 type Config struct {
 	Launchpad LaunchpadConfig `mapstructure:"launchpad" yaml:"launchpad"`
@@ -182,6 +243,7 @@ type Config struct {
 	Projects  []ProjectConfig `mapstructure:"projects" yaml:"projects"`
 	Build     BuildConfig     `mapstructure:"build" yaml:"build"`
 	Packages  PackagesConfig  `mapstructure:"packages" yaml:"packages,omitempty"`
+	OTel      OTelConfig      `mapstructure:"otel" yaml:"otel,omitempty"`
 }
 
 // Load reads configuration from the given path. If configPath is empty,
@@ -194,6 +256,15 @@ func Load(configPath string) (*Config, error) {
 	// Defaults
 	v.SetDefault("build.timeout_minutes", 30)
 	v.SetDefault("build.artifacts_dir", "artifacts")
+	v.SetDefault("otel.metrics.self.path", "/metrics")
+	v.SetDefault("otel.metrics.domain.path", "/metrics")
+	v.SetDefault("otel.metrics.domain.default_refresh_interval", "5m")
+	v.SetDefault("otel.metrics.self.runtime", true)
+	v.SetDefault("otel.metrics.self.process", true)
+	v.SetDefault("otel.traces.protocol", "grpc")
+	v.SetDefault("otel.logs.protocol", "grpc")
+	v.SetDefault("otel.logs.min_level", "info")
+	v.SetDefault("otel.logs.mirror_stderr", true)
 
 	if configPath != "" {
 		v.SetConfigFile(configPath)
@@ -383,6 +454,76 @@ func (c *Config) Validate() error {
 		if distro.Excuses.URL == "" {
 			return fmt.Errorf("packages.distros.%s.excuses: url is required", distroName)
 		}
+	}
+	if err := validateOTelConfig(c.OTel); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateOTelConfig(cfg OTelConfig) error {
+	if err := validateMetricsListener("otel.metrics.self", cfg.Metrics.Self); err != nil {
+		return err
+	}
+	if err := validateMetricsListener("otel.metrics.domain", cfg.Metrics.Domain); err != nil {
+		return err
+	}
+	if cfg.Metrics.Self.Enabled && cfg.Metrics.Domain.Enabled && cfg.Metrics.Self.ListenAddr == cfg.Metrics.Domain.ListenAddr && cfg.Metrics.Self.ListenAddr != "" {
+		return fmt.Errorf("otel.metrics.self.listen_addr and otel.metrics.domain.listen_addr must differ")
+	}
+	if err := validateSignalConfig("otel.traces", cfg.Traces, true); err != nil {
+		return err
+	}
+	if err := validateSignalConfig("otel.logs", cfg.Logs, false); err != nil {
+		return err
+	}
+	for name, collector := range map[string]OTelCollectorConfig{
+		"auth":       cfg.Metrics.Collectors.Auth,
+		"operations": cfg.Metrics.Collectors.Operations,
+		"projects":   cfg.Metrics.Collectors.Projects,
+		"builds":     cfg.Metrics.Collectors.Builds,
+		"releases":   cfg.Metrics.Collectors.Releases,
+		"reviews":    cfg.Metrics.Collectors.Reviews,
+		"commits":    cfg.Metrics.Collectors.Commits,
+		"bugs":       cfg.Metrics.Collectors.Bugs,
+		"packages":   cfg.Metrics.Collectors.Packages,
+		"excuses":    cfg.Metrics.Collectors.Excuses,
+		"cache":      cfg.Metrics.Collectors.Cache,
+	} {
+		if collector.RefreshInterval == "" {
+			continue
+		}
+		if _, err := time.ParseDuration(collector.RefreshInterval); err != nil {
+			return fmt.Errorf("otel.metrics.collectors.%s.refresh_interval: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func validateMetricsListener(prefix string, cfg OTelMetricsListenerConfig) error {
+	if cfg.Path != "" && cfg.Path[0] != '/' {
+		return fmt.Errorf("%s.path must start with /", prefix)
+	}
+	if cfg.Enabled && cfg.ListenAddr == "" {
+		return fmt.Errorf("%s.listen_addr is required when enabled", prefix)
+	}
+	if cfg.DefaultRefreshInterval != "" {
+		if _, err := time.ParseDuration(cfg.DefaultRefreshInterval); err != nil {
+			return fmt.Errorf("%s.default_refresh_interval: %w", prefix, err)
+		}
+	}
+	return nil
+}
+
+func validateSignalConfig(prefix string, cfg OTelSignalConfig, allowSampling bool) error {
+	if cfg.Enabled && cfg.Endpoint == "" {
+		return fmt.Errorf("%s.endpoint is required when enabled", prefix)
+	}
+	if cfg.Protocol != "" && cfg.Protocol != "grpc" && cfg.Protocol != "http" {
+		return fmt.Errorf("%s.protocol must be grpc or http", prefix)
+	}
+	if allowSampling && cfg.SamplingRatio < 0 || cfg.SamplingRatio > 1 {
+		return fmt.Errorf("%s.sampling_ratio must be between 0 and 1", prefix)
 	}
 	return nil
 }
