@@ -11,6 +11,12 @@ dependenciesRules:
         - "**.internal.adapter.primary.**"
         - "**.pkg.**"
 
+  - package: "**.cmd.watchtower-tui"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.internal.adapter.primary.**"
+        - "**.pkg.**"
+
   - package: "**.internal.config"
     shouldNotDependsOn:
       internal:

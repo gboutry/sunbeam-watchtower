@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
+	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -92,30 +93,30 @@ func TestLocalServerManagerStatusRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newLocalServerManager() error = %v", err)
 	}
-	if err := os.MkdirAll(manager.paths.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(manager.Paths().Dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
-	srv := api.NewServer(logger, api.ServerOptions{UnixSocket: manager.paths.Socket})
+	srv := api.NewServer(logger, api.ServerOptions{UnixSocket: manager.Paths().Socket})
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 	defer srv.Shutdown(context.Background())
 
-	if err := os.WriteFile(manager.paths.PIDFile, []byte("1234"), 0o600); err != nil {
+	if err := os.WriteFile(manager.Paths().PIDFile, []byte("1234"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	startedAt := time.Date(2026, 3, 7, 12, 0, 0, 0, time.UTC)
-	if err := writeLocalServerMetadata(manager.paths.Metadata, localServerMetadata{
+	if err := runtimeadapter.WriteLocalServerMetadata(manager.Paths().Metadata, runtimeadapter.LocalServerMetadata{
 		PID:       1234,
-		Address:   "unix://" + manager.paths.Socket,
+		Address:   "unix://" + manager.Paths().Socket,
 		StartedAt: startedAt,
-		LogFile:   manager.paths.LogFile,
+		LogFile:   manager.Paths().LogFile,
 	}); err != nil {
 		t.Fatalf("writeLocalServerMetadata() error = %v", err)
 	}
 
-	status, err := manager.status(context.Background())
+	status, err := manager.Status(context.Background())
 	if err != nil {
 		t.Fatalf("status() error = %v", err)
 	}
@@ -125,8 +126,8 @@ func TestLocalServerManagerStatusRunning(t *testing.T) {
 	if status.PID != 1234 {
 		t.Fatalf("status.PID = %d, want 1234", status.PID)
 	}
-	if status.Address != "unix://"+manager.paths.Socket {
-		t.Fatalf("status.Address = %q, want %q", status.Address, "unix://"+manager.paths.Socket)
+	if status.Address != "unix://"+manager.Paths().Socket {
+		t.Fatalf("status.Address = %q, want %q", status.Address, "unix://"+manager.Paths().Socket)
 	}
 	if !status.StartedAt.Equal(startedAt) {
 		t.Fatalf("status.StartedAt = %s, want %s", status.StartedAt, startedAt)
@@ -143,24 +144,24 @@ func TestLocalServerManagerStatusDetectsStaleFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newLocalServerManager() error = %v", err)
 	}
-	if err := os.MkdirAll(manager.paths.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(manager.Paths().Dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	if err := os.WriteFile(manager.paths.Socket, []byte("stale"), 0o600); err != nil {
+	if err := os.WriteFile(manager.Paths().Socket, []byte("stale"), 0o600); err != nil {
 		t.Fatalf("WriteFile(socket) error = %v", err)
 	}
-	if err := os.WriteFile(manager.paths.PIDFile, []byte("9999"), 0o600); err != nil {
+	if err := os.WriteFile(manager.Paths().PIDFile, []byte("9999"), 0o600); err != nil {
 		t.Fatalf("WriteFile(pid) error = %v", err)
 	}
-	if err := writeLocalServerMetadata(manager.paths.Metadata, localServerMetadata{
+	if err := runtimeadapter.WriteLocalServerMetadata(manager.Paths().Metadata, runtimeadapter.LocalServerMetadata{
 		PID:     9999,
-		Address: manager.paths.SocketURI,
-		LogFile: manager.paths.LogFile,
+		Address: manager.Paths().SocketURI,
+		LogFile: manager.Paths().LogFile,
 	}); err != nil {
 		t.Fatalf("writeLocalServerMetadata() error = %v", err)
 	}
 
-	status, err := manager.status(context.Background())
+	status, err := manager.Status(context.Background())
 	if err != nil {
 		t.Fatalf("status() error = %v", err)
 	}
@@ -182,23 +183,23 @@ func TestLocalServerManagerStopCleansStaleFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newLocalServerManager() error = %v", err)
 	}
-	if err := os.MkdirAll(manager.paths.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(manager.Paths().Dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	for _, path := range []string{manager.paths.Socket, manager.paths.PIDFile, manager.paths.Metadata} {
+	for _, path := range []string{manager.Paths().Socket, manager.Paths().PIDFile, manager.Paths().Metadata} {
 		if err := os.WriteFile(path, []byte("stale"), 0o600); err != nil {
 			t.Fatalf("WriteFile(%s) error = %v", path, err)
 		}
 	}
 
-	stopped, err := manager.stop(context.Background())
+	stopped, err := manager.Stop(context.Background())
 	if err != nil {
 		t.Fatalf("stop() error = %v", err)
 	}
 	if stopped {
 		t.Fatal("stop() = true, want false for stale-only cleanup")
 	}
-	for _, path := range []string{manager.paths.Socket, manager.paths.PIDFile, manager.paths.Metadata} {
+	for _, path := range []string{manager.Paths().Socket, manager.Paths().PIDFile, manager.Paths().Metadata} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("expected %s to be removed, stat error = %v", path, err)
 		}
@@ -229,13 +230,13 @@ func TestServerStatusCmd_ReportsStaleFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newLocalServerManager() error = %v", err)
 	}
-	if err := os.MkdirAll(manager.paths.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(manager.Paths().Dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	if err := os.WriteFile(manager.paths.Socket, []byte("stale"), 0o600); err != nil {
+	if err := os.WriteFile(manager.Paths().Socket, []byte("stale"), 0o600); err != nil {
 		t.Fatalf("WriteFile(socket) error = %v", err)
 	}
-	if err := os.WriteFile(manager.paths.PIDFile, []byte("9999"), 0o600); err != nil {
+	if err := os.WriteFile(manager.Paths().PIDFile, []byte("9999"), 0o600); err != nil {
 		t.Fatalf("WriteFile(pid) error = %v", err)
 	}
 

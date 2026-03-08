@@ -30,7 +30,7 @@ func newServerStartCmd(opts *Options) *cobra.Command {
 				return err
 			}
 			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
-			status, started, err := manager.ensureRunning(cmd.Context())
+			status, started, err := manager.EnsureRunning(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -63,7 +63,7 @@ func newServerStatusCmd(opts *Options) *cobra.Command {
 				return err
 			}
 			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
-			status, err := manager.status(cmd.Context())
+			status, err := manager.Status(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -71,10 +71,10 @@ func newServerStatusCmd(opts *Options) *cobra.Command {
 				fmt.Fprintf(opts.Out, "Local server %s.\n", styler.Warning("not running"))
 				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Expected address:"), status.Address)
 				if status.StaleSocket {
-					fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Stale socket file detected at"), manager.paths.Socket)
+					fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Stale socket file detected at"), manager.Paths().Socket)
 				}
 				if status.StalePIDFile {
-					fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Stale pid file detected at"), manager.paths.PIDFile)
+					fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Stale pid file detected at"), manager.Paths().PIDFile)
 				}
 				return nil
 			}
@@ -107,7 +107,7 @@ func newServerStopCmd(opts *Options) *cobra.Command {
 				return err
 			}
 			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
-			stopped, err := manager.stop(cmd.Context())
+			stopped, err := manager.Stop(cmd.Context())
 			if err != nil {
 				return err
 			}

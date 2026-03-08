@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
+	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +32,7 @@ func newServeCmd(opts *Options) *cobra.Command {
 				serverOpts.ListenAddr = listen
 			}
 
-			srv := newConfiguredServer(opts.Logger, opts.App, serverOpts)
+			srv := runtimeadapter.NewConfiguredServer(opts.Logger, opts.App, serverOpts)
 
 			if err := srv.Start(); err != nil {
 				return fmt.Errorf("starting server: %w", err)

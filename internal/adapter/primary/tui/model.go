@@ -1,0 +1,1836 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
+package tui
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"runtime"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
+	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+)
+
+type viewID int
+
+const (
+	viewDashboard viewID = iota
+	viewBuilds
+	viewReleases
+)
+
+type overlayKind int
+
+const (
+	overlayNone overlayKind = iota
+	overlayHelp
+	overlayAuth
+	overlayOperations
+	overlayCache
+	overlayServer
+	overlayPrompt
+	overlayBuildFilters
+	overlayReleaseFilters
+	overlayBuildTrigger
+)
+
+type deferredActionKind int
+
+const (
+	deferredNone deferredActionKind = iota
+	deferredAuthLogin
+	deferredAuthLogout
+	deferredOperationCancel
+	deferredBuildTrigger
+	deferredSwitchServer
+)
+
+type deferredAction struct {
+	kind        deferredActionKind
+	operationID string
+	buildReq    frontend.BuildTriggerRequest
+}
+
+type toastState struct {
+	message string
+	level   string
+}
+
+type dashboardModel struct {
+	section int
+	auth    *dto.AuthStatus
+	ops     []dto.OperationJob
+	builds  []dto.Build
+	cache   *frontend.CacheStatusResponse
+	loaded  bool
+	err     string
+}
+
+type buildsFilters struct {
+	project string
+	state   string
+	active  bool
+	source  string
+}
+
+type buildsModel struct {
+	filters buildsFilters
+	rows    []dto.Build
+	index   int
+	loaded  bool
+	err     string
+}
+
+type releasesFilters struct {
+	project      string
+	artifactType string
+	risk         string
+	track        string
+	branch       string
+}
+
+type releasesModel struct {
+	filters   releasesFilters
+	rows      []dto.ReleaseListEntry
+	index     int
+	detail    *dto.ReleaseShowResult
+	detailKey string
+	loaded    bool
+	err       string
+}
+
+type operationsDrawerModel struct {
+	rows   []dto.OperationJob
+	events []dto.OperationEvent
+	index  int
+	loaded bool
+	err    string
+}
+
+type authModalModel struct {
+	status *dto.AuthStatus
+	begin  *dto.LaunchpadAuthBeginResult
+	loaded bool
+	err    string
+}
+
+type cacheModalModel struct {
+	status *frontend.CacheStatusResponse
+	loaded bool
+	err    string
+}
+
+type serverModalModel struct {
+	local  *runtimeadapter.LocalServerStatus
+	err    string
+	loaded bool
+}
+
+type formModalModel struct {
+	title    string
+	fields   []textinput.Model
+	active   int
+	submit   string
+	cancel   string
+	errorMsg string
+}
+
+type promptModel struct {
+	title  string
+	body   string
+	accept string
+	reject string
+}
+
+type dashboardLoadedMsg struct {
+	auth   *dto.AuthStatus
+	ops    []dto.OperationJob
+	builds []dto.Build
+	cache  *frontend.CacheStatusResponse
+	err    error
+}
+
+type buildsLoadedMsg struct {
+	rows []dto.Build
+	err  error
+}
+
+type releasesLoadedMsg struct {
+	rows []dto.ReleaseListEntry
+	err  error
+}
+
+type releaseDetailLoadedMsg struct {
+	key    string
+	detail *dto.ReleaseShowResult
+	err    error
+}
+
+type opsLoadedMsg struct {
+	rows   []dto.OperationJob
+	events []dto.OperationEvent
+	err    error
+}
+
+type authStatusLoadedMsg struct {
+	status *dto.AuthStatus
+	err    error
+}
+
+type authBeginMsg struct {
+	begin *dto.LaunchpadAuthBeginResult
+	err   error
+}
+
+type authFinalizeMsg struct {
+	result *dto.LaunchpadAuthFinalizeResult
+	err    error
+}
+
+type authLogoutMsg struct {
+	result *dto.LaunchpadAuthLogoutResult
+	err    error
+}
+
+type cacheLoadedMsg struct {
+	status *frontend.CacheStatusResponse
+	err    error
+}
+
+type localServerStatusMsg struct {
+	status runtimeadapter.LocalServerStatus
+	err    error
+}
+
+type buildTriggeredMsg struct {
+	job *dto.OperationJob
+	err error
+}
+
+type operationCancelledMsg struct {
+	job *dto.OperationJob
+	err error
+}
+
+type upgradedMsg struct {
+	err error
+}
+
+type browserOpenedMsg struct {
+	err error
+}
+
+type tickDashboardMsg time.Time
+type tickOperationsMsg time.Time
+type clearToastMsg struct{}
+
+type rootModel struct {
+	session *runtimeadapter.Session
+	theme   theme
+
+	width  int
+	height int
+
+	activeView viewID
+	overlay    overlayKind
+
+	lastRefresh   time.Time
+	toast         toastState
+	contentScroll int
+	overlayScroll int
+
+	dashboard dashboardModel
+	builds    buildsModel
+	releases  releasesModel
+	ops       operationsDrawerModel
+	auth      authModalModel
+	cache     cacheModalModel
+	server    serverModalModel
+
+	buildFilterForm   formModalModel
+	releaseFilterForm formModalModel
+	buildTriggerForm  formModalModel
+	prompt            promptModel
+	deferred          deferredAction
+}
+
+func newRootModel(session *runtimeadapter.Session, noColor bool) rootModel {
+	t := newTheme()
+	if noColor {
+		lipgloss.SetColorProfile(0)
+	}
+	m := rootModel{
+		session:    session,
+		theme:      t,
+		activeView: viewDashboard,
+		builds: buildsModel{
+			filters: buildsFilters{active: true, source: "remote"},
+		},
+		releases: releasesModel{
+			filters: releasesFilters{},
+		},
+	}
+	return m
+}
+
+func (m rootModel) Init() tea.Cmd {
+	return tea.Batch(
+		loadDashboardCmd(m.session),
+		loadBuildsCmd(m.session, m.builds.filters),
+		loadReleasesCmd(m.session, m.releases.filters),
+		tickDashboardCmd(),
+	)
+}
+
+func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+	case tea.KeyMsg:
+		if m.overlay != overlayNone {
+			return m.updateOverlay(msg)
+		}
+		return m.updateGlobal(msg)
+	case dashboardLoadedMsg:
+		m.dashboard.loaded = msg.err == nil
+		m.dashboard.err = errString(msg.err)
+		if msg.err == nil {
+			m.dashboard.auth = msg.auth
+			m.dashboard.ops = msg.ops
+			m.dashboard.builds = msg.builds
+			m.dashboard.cache = msg.cache
+			m.lastRefresh = time.Now()
+		}
+	case buildsLoadedMsg:
+		m.builds.loaded = msg.err == nil
+		m.builds.err = errString(msg.err)
+		if msg.err == nil {
+			m.builds.rows = msg.rows
+			if m.builds.index >= len(m.builds.rows) && len(m.builds.rows) > 0 {
+				m.builds.index = len(m.builds.rows) - 1
+			}
+			m.lastRefresh = time.Now()
+		}
+	case releasesLoadedMsg:
+		m.releases.loaded = msg.err == nil
+		m.releases.err = errString(msg.err)
+		if msg.err == nil {
+			m.releases.rows = msg.rows
+			if m.releases.index >= len(m.releases.rows) && len(m.releases.rows) > 0 {
+				m.releases.index = len(m.releases.rows) - 1
+			}
+			m.lastRefresh = time.Now()
+			if row := m.selectedRelease(); row != nil {
+				return m, loadReleaseDetailCmd(m.session, *row)
+			}
+		}
+	case releaseDetailLoadedMsg:
+		if msg.err == nil && msg.key == m.releaseDetailKey() {
+			m.releases.detail = msg.detail
+		}
+	case opsLoadedMsg:
+		m.ops.loaded = msg.err == nil
+		m.ops.err = errString(msg.err)
+		if msg.err == nil {
+			m.ops.rows = msg.rows
+			if m.ops.index >= len(m.ops.rows) && len(m.ops.rows) > 0 {
+				m.ops.index = len(m.ops.rows) - 1
+			}
+			m.ops.events = msg.events
+		}
+	case authStatusLoadedMsg:
+		m.auth.loaded = msg.err == nil
+		m.auth.err = errString(msg.err)
+		if msg.err == nil {
+			m.auth.status = msg.status
+			if m.dashboard.auth == nil {
+				m.dashboard.auth = msg.status
+			}
+		}
+	case authBeginMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			m.auth.err = msg.err.Error()
+			return m, clearToastLater()
+		}
+		m.auth.begin = msg.begin
+		m.setToast("Launchpad auth started", "info")
+		return m, clearToastLater()
+	case authFinalizeMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			m.auth.err = msg.err.Error()
+			return m, clearToastLater()
+		}
+		m.auth.begin = nil
+		m.auth.status = &dto.AuthStatus{Launchpad: msg.result.Launchpad}
+		m.dashboard.auth = m.auth.status
+		m.setToast("Launchpad login completed", "success")
+		return m, tea.Batch(clearToastLater(), loadDashboardCmd(m.session))
+	case authLogoutMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.auth.begin = nil
+		m.auth.status = &dto.AuthStatus{}
+		m.dashboard.auth = m.auth.status
+		m.setToast("Launchpad credentials cleared", "success")
+		return m, tea.Batch(clearToastLater(), loadDashboardCmd(m.session))
+	case cacheLoadedMsg:
+		m.cache.loaded = msg.err == nil
+		m.cache.err = errString(msg.err)
+		if msg.err == nil {
+			m.cache.status = msg.status
+		}
+	case localServerStatusMsg:
+		m.server.loaded = msg.err == nil
+		m.server.err = errString(msg.err)
+		if msg.err == nil {
+			status := msg.status
+			m.server.local = &status
+		}
+	case buildTriggeredMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.overlay = overlayOperations
+		m.setToast("Build trigger queued", "success")
+		if msg.job != nil {
+			m.ops.index = 0
+		}
+		return m, tea.Batch(clearToastLater(), loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)))
+	case operationCancelledMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.setToast("Operation cancelled", "success")
+		return m, tea.Batch(clearToastLater(), loadDashboardCmd(m.session), loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)))
+	case upgradedMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			m.overlay = overlayNone
+			m.deferred = deferredAction{}
+			return m, clearToastLater()
+		}
+		m.overlay = overlayNone
+		cmd := m.resumeDeferredAction()
+		m.setToast("Switched to local daemon", "success")
+		return m, tea.Batch(clearToastLater(), cmd, loadDashboardCmd(m.session))
+	case browserOpenedMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+		} else {
+			m.setToast("Opened browser", "info")
+		}
+		return m, clearToastLater()
+	case tickDashboardMsg:
+		if m.activeView == viewDashboard && m.overlay == overlayNone {
+			return m, tea.Batch(loadDashboardCmd(m.session), tickDashboardCmd())
+		}
+		return m, tickDashboardCmd()
+	case tickOperationsMsg:
+		if m.overlay == overlayOperations || hasRunningOperation(m.ops.rows) {
+			return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
+		}
+		return m, nil
+	case clearToastMsg:
+		m.toast = toastState{}
+	}
+	return m, nil
+}
+
+func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "?":
+		m.overlay = overlayHelp
+		return m, nil
+	case "a":
+		m.overlay = overlayAuth
+		return m, loadAuthStatusCmd(m.session)
+	case "o":
+		m.overlay = overlayOperations
+		return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
+	case "c":
+		m.overlay = overlayCache
+		return m, loadCacheCmd(m.session)
+	case "s":
+		m.overlay = overlayServer
+		return m, loadLocalServerStatusCmd(m.session)
+	case "1":
+		m.activeView = viewDashboard
+		m.contentScroll = 0
+		return m, nil
+	case "2":
+		m.activeView = viewBuilds
+		m.contentScroll = 0
+		return m, nil
+	case "3":
+		m.activeView = viewReleases
+		m.contentScroll = 0
+		return m, nil
+	case "tab":
+		m.activeView = (m.activeView + 1) % 3
+		m.contentScroll = 0
+		return m, nil
+	case "shift+tab":
+		m.activeView--
+		if m.activeView < 0 {
+			m.activeView = viewReleases
+		}
+		m.contentScroll = 0
+		return m, nil
+	case "r":
+		return m, m.refreshActiveView()
+	case "pgdown", "ctrl+d":
+		m.contentScroll += m.scrollStep()
+		return m, nil
+	case "pgup", "ctrl+u":
+		m.contentScroll -= m.scrollStep()
+		if m.contentScroll < 0 {
+			m.contentScroll = 0
+		}
+		return m, nil
+	case "/":
+		switch m.activeView {
+		case viewBuilds:
+			m.buildFilterForm = newBuildFilterForm(m.builds.filters)
+			m.overlay = overlayBuildFilters
+			m.overlayScroll = 0
+		case viewReleases:
+			m.releaseFilterForm = newReleaseFilterForm(m.releases.filters)
+			m.overlay = overlayReleaseFilters
+			m.overlayScroll = 0
+		}
+		return m, nil
+	case "up", "k":
+		switch m.activeView {
+		case viewDashboard:
+			if m.dashboard.section > 0 {
+				m.dashboard.section--
+			}
+		case viewBuilds:
+			if m.builds.index > 0 {
+				m.builds.index--
+			}
+		case viewReleases:
+			if m.releases.index > 0 {
+				m.releases.index--
+				if row := m.selectedRelease(); row != nil {
+					return m, loadReleaseDetailCmd(m.session, *row)
+				}
+			}
+		}
+	case "down", "j":
+		switch m.activeView {
+		case viewDashboard:
+			if m.dashboard.section < 3 {
+				m.dashboard.section++
+			}
+		case viewBuilds:
+			if m.builds.index < len(m.builds.rows)-1 {
+				m.builds.index++
+			}
+		case viewReleases:
+			if m.releases.index < len(m.releases.rows)-1 {
+				m.releases.index++
+				if row := m.selectedRelease(); row != nil {
+					return m, loadReleaseDetailCmd(m.session, *row)
+				}
+			}
+		}
+	case "enter":
+		switch m.activeView {
+		case viewDashboard:
+			switch m.dashboard.section {
+			case 0:
+				m.overlay = overlayAuth
+				m.overlayScroll = 0
+				return m, loadAuthStatusCmd(m.session)
+			case 1:
+				m.overlay = overlayOperations
+				m.overlayScroll = 0
+				return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
+			case 2:
+				m.activeView = viewBuilds
+			case 3:
+				m.activeView = viewReleases
+			}
+		case viewReleases:
+			if row := m.selectedRelease(); row != nil {
+				return m, loadReleaseDetailCmd(m.session, *row)
+			}
+		}
+	case "t":
+		if m.activeView == viewBuilds {
+			m.buildTriggerForm = newBuildTriggerForm(m.session)
+			m.overlay = overlayBuildTrigger
+			m.overlayScroll = 0
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch m.overlay {
+	case overlayHelp:
+		switch msg.String() {
+		case "esc", "q", "?":
+			m.overlay = overlayNone
+			m.overlayScroll = 0
+		case "pgdown", "ctrl+d", "down", "j":
+			m.overlayScroll += m.scrollStep()
+		case "pgup", "ctrl+u", "up", "k":
+			m.overlayScroll -= m.scrollStep()
+			if m.overlayScroll < 0 {
+				m.overlayScroll = 0
+			}
+		}
+		return m, nil
+	case overlayAuth:
+		switch msg.String() {
+		case "esc", "q":
+			m.overlay = overlayNone
+			m.overlayScroll = 0
+			return m, nil
+		case "l":
+			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
+				m.openUpgradePrompt(deferredAction{kind: deferredAuthLogin})
+				return m, nil
+			}
+			return m, beginAuthCmd(m.session)
+		case "x":
+			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
+				m.openUpgradePrompt(deferredAction{kind: deferredAuthLogout})
+				return m, nil
+			}
+			return m, logoutAuthCmd(m.session)
+		case "o":
+			if m.auth.begin != nil {
+				return m, openBrowserCmd(m.auth.begin.AuthorizeURL)
+			}
+		case "enter":
+			if m.auth.begin != nil {
+				return m, finalizeAuthCmd(m.session, m.auth.begin.FlowID)
+			}
+		}
+		return m, nil
+	case overlayOperations:
+		switch msg.String() {
+		case "esc", "q":
+			m.overlay = overlayNone
+			m.overlayScroll = 0
+			return m, nil
+		case "up", "k":
+			if m.ops.index > 0 {
+				m.ops.index--
+				return m, loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index))
+			}
+		case "down", "j":
+			if m.ops.index < len(m.ops.rows)-1 {
+				m.ops.index++
+				return m, loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index))
+			}
+		case "r":
+			return m, loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index))
+		case "x":
+			job := selectedOperation(m.ops.rows, m.ops.index)
+			if job == nil || !job.Cancellable {
+				return m, nil
+			}
+			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
+				m.openUpgradePrompt(deferredAction{kind: deferredOperationCancel, operationID: job.ID})
+				return m, nil
+			}
+			return m, cancelOperationCmd(m.session, job.ID)
+		}
+		return m, nil
+	case overlayCache:
+		switch msg.String() {
+		case "esc", "q", "r":
+			if msg.String() == "r" {
+				return m, loadCacheCmd(m.session)
+			}
+			m.overlay = overlayNone
+			m.overlayScroll = 0
+		case "pgdown", "ctrl+d", "down", "j":
+			m.overlayScroll += m.scrollStep()
+		case "pgup", "ctrl+u", "up", "k":
+			m.overlayScroll -= m.scrollStep()
+			if m.overlayScroll < 0 {
+				m.overlayScroll = 0
+			}
+		}
+		return m, nil
+	case overlayServer:
+		switch msg.String() {
+		case "esc", "q":
+			m.overlay = overlayNone
+			m.overlayScroll = 0
+			return m, nil
+		case "s", "enter":
+			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
+				m.openUpgradePrompt(deferredAction{kind: deferredSwitchServer})
+			}
+			return m, nil
+		}
+		return m, nil
+	case overlayPrompt:
+		switch msg.String() {
+		case "esc", "q":
+			m.overlay = overlayNone
+			m.overlayScroll = 0
+			m.deferred = deferredAction{}
+			return m, nil
+		case "enter", "y":
+			return m, upgradeSessionCmd(m.session)
+		case "n":
+			m.overlay = overlayNone
+			m.deferred = deferredAction{}
+			return m, nil
+		}
+		return m, nil
+	case overlayBuildFilters:
+		return m.updateBuildFilterForm(msg)
+	case overlayReleaseFilters:
+		return m.updateReleaseFilterForm(msg)
+	case overlayBuildTrigger:
+		return m.updateBuildTriggerForm(msg)
+	}
+	return m, nil
+}
+
+func (m *rootModel) openUpgradePrompt(action deferredAction) {
+	m.deferred = action
+	m.prompt = promptModel{
+		title:  "Switch to local daemon?",
+		body:   "This action needs durable state. Press Enter to switch, or Esc to stay embedded.",
+		accept: "Switch",
+		reject: "Stay embedded",
+	}
+	m.overlay = overlayPrompt
+	m.overlayScroll = 0
+}
+
+func (m rootModel) resumeDeferredAction() tea.Cmd {
+	action := m.deferred
+	m.deferred = deferredAction{}
+	switch action.kind {
+	case deferredAuthLogin:
+		return beginAuthCmd(m.session)
+	case deferredAuthLogout:
+		return logoutAuthCmd(m.session)
+	case deferredOperationCancel:
+		return cancelOperationCmd(m.session, action.operationID)
+	case deferredBuildTrigger:
+		return triggerBuildCmd(m.session, action.buildReq)
+	case deferredSwitchServer:
+		return loadLocalServerStatusCmd(m.session)
+	default:
+		return nil
+	}
+}
+
+func (m *rootModel) setToast(message, level string) {
+	m.toast = toastState{message: message, level: level}
+}
+
+func (m rootModel) View() string {
+	if m.width == 0 {
+		m.width = 120
+	}
+	if m.height == 0 {
+		m.height = 40
+	}
+
+	header := m.renderHeader()
+	tabs := m.renderTabs()
+	content := m.renderContent()
+	status := m.renderStatusBar()
+
+	bodyHeight := m.height - 4
+	if bodyHeight < 10 {
+		bodyHeight = 10
+	}
+	content = renderViewport(content, bodyHeight, m.contentScroll)
+	base := lipgloss.JoinVertical(lipgloss.Left, header, tabs, content, status)
+	if m.overlay != overlayNone {
+		return m.renderOverlay(base)
+	}
+	return base
+}
+
+func (m rootModel) renderHeader() string {
+	target := m.session.Target()
+	authText := "LP: not authenticated"
+	if m.dashboard.auth != nil && m.dashboard.auth.Launchpad.Authenticated {
+		authText = "LP: " + displayLaunchpadName(m.dashboard.auth)
+	}
+	left := m.theme.header.Render("watchtower-tui") + " " + m.theme.badge.Render(string(target.Kind))
+	if target.Address != "" {
+		left += " " + m.theme.metadata.Render(target.Address)
+	}
+	right := m.theme.subtle.Render(authText)
+	if !m.lastRefresh.IsZero() {
+		right += "  " + m.theme.subtle.Render("Refreshed "+m.lastRefresh.Format("15:04:05"))
+	}
+	if m.toast.message != "" {
+		right += "  " + renderToast(m.theme, m.toast)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, spacer(max(1, m.width-lipgloss.Width(left)-lipgloss.Width(right))), right)
+}
+
+func (m rootModel) renderTabs() string {
+	tabs := []string{
+		m.renderTab("1 Dashboard", m.activeView == viewDashboard),
+		m.renderTab("2 Builds", m.activeView == viewBuilds),
+		m.renderTab("3 Releases", m.activeView == viewReleases),
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+}
+
+func (m rootModel) renderTab(label string, active bool) string {
+	if active {
+		return m.theme.tabActive.Render(label)
+	}
+	return m.theme.tab.Render(label)
+}
+
+func (m rootModel) renderContent() string {
+	switch m.activeView {
+	case viewDashboard:
+		return m.renderDashboard()
+	case viewBuilds:
+		return m.renderBuilds()
+	case viewReleases:
+		return m.renderReleases()
+	default:
+		return ""
+	}
+}
+
+func (m rootModel) renderStatusBar() string {
+	target := strings.ToUpper(string(m.session.Target().Kind))
+	auth := "guest"
+	if m.dashboard.auth != nil && m.dashboard.auth.Launchpad.Authenticated {
+		auth = displayLaunchpadName(m.dashboard.auth)
+	}
+	runningOps := countRunningOperations(m.dashboard.ops)
+	left := fmt.Sprintf("Mode %s  LP %s  Ops %d/%d", target, auth, runningOps, len(m.dashboard.ops))
+	right := "a Auth  o Ops  c Cache  s Server  r Refresh  ? Help  q Quit"
+	return m.theme.statusBar.Width(m.width).Render(
+		lipgloss.JoinHorizontal(lipgloss.Top,
+			m.theme.statusLeft.Render(left),
+			spacer(max(1, m.width-lipgloss.Width(left)-lipgloss.Width(right)-2)),
+			m.theme.statusRight.Render(right),
+		),
+	)
+}
+
+func (m rootModel) renderDashboard() string {
+	const gap = 1
+	sections := []string{
+		m.renderDashboardSection(0, "Runtime / Auth", m.renderDashboardRuntime(), dashboardSectionWidth(m.width, false)),
+		m.renderDashboardSection(1, "Active Operations", m.renderDashboardOperations(), dashboardSectionWidth(m.width, false)),
+		m.renderDashboardSection(2, "Recent Builds", m.renderDashboardBuilds(), dashboardSectionWidth(m.width, false)),
+		m.renderDashboardSection(3, "Release Cache Freshness", m.renderDashboardReleases(), dashboardSectionWidth(m.width, false)),
+	}
+	if m.width >= 120 {
+		colWidth := dashboardSectionWidth(m.width, true)
+		sections[0] = m.renderDashboardSection(0, "Runtime / Auth", m.renderDashboardRuntime(), colWidth)
+		sections[1] = m.renderDashboardSection(1, "Active Operations", m.renderDashboardOperations(), colWidth)
+		sections[2] = m.renderDashboardSection(2, "Recent Builds", m.renderDashboardBuilds(), colWidth)
+		sections[3] = m.renderDashboardSection(3, "Release Cache Freshness", m.renderDashboardReleases(), colWidth)
+		left := lipgloss.JoinVertical(lipgloss.Left, sections[0], sections[1])
+		right := lipgloss.JoinVertical(lipgloss.Left, sections[2], sections[3])
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, spacer(gap), right)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m rootModel) renderDashboardSection(idx int, title, body string, width int) string {
+	style := m.theme.panel
+	if m.dashboard.section == idx {
+		style = style.BorderForeground(lipgloss.Color("#7DD3FC"))
+	}
+	return renderPanel(style, width, m.theme.panelTitle.Render(title), body)
+}
+
+func (m rootModel) renderDashboardRuntime() string {
+	target := m.session.Target()
+	lines := []string{
+		fmt.Sprintf("Target: %s", target.Kind),
+		fmt.Sprintf("Address: %s", target.Address),
+	}
+	if m.dashboard.auth != nil && m.dashboard.auth.Launchpad.Authenticated {
+		lines = append(lines, fmt.Sprintf("Launchpad: %s", displayLaunchpadName(m.dashboard.auth)))
+	} else {
+		lines = append(lines, "Launchpad: not authenticated")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m rootModel) renderDashboardOperations() string {
+	if len(m.dashboard.ops) == 0 {
+		return m.theme.subtle.Render("No operations yet.")
+	}
+	lines := make([]string, 0, min(5, len(m.dashboard.ops)))
+	for _, job := range m.dashboard.ops[:min(5, len(m.dashboard.ops))] {
+		lines = append(lines, fmt.Sprintf("%s  %s", m.theme.semantic(string(job.State)), job.Kind))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m rootModel) renderDashboardBuilds() string {
+	if len(m.dashboard.builds) == 0 {
+		return m.theme.subtle.Render("No builds loaded.")
+	}
+	lines := make([]string, 0, min(5, len(m.dashboard.builds)))
+	for _, build := range m.dashboard.builds[:min(5, len(m.dashboard.builds))] {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s", build.State.String(), build.Project, build.Title))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m rootModel) renderDashboardReleases() string {
+	if m.dashboard.cache == nil || len(m.dashboard.cache.Releases.Entries) == 0 {
+		return m.theme.subtle.Render("No release cache status.")
+	}
+	entries := append([]dto.ReleaseCacheStatus(nil), m.dashboard.cache.Releases.Entries...)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].LastUpdated.After(entries[j].LastUpdated)
+	})
+	lines := make([]string, 0, min(5, len(entries)))
+	for _, entry := range entries[:min(5, len(entries))] {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s", entry.Project, entry.Name, entry.LastUpdated.Format("2006-01-02 15:04")))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m rootModel) renderBuilds() string {
+	const gap = 1
+	listWidth, detailWidth := splitColumns(m.width, gap)
+	header := m.theme.panelTitle.Render("Filters") + "\n" +
+		fmt.Sprintf("project=%s  state=%s  active=%t  source=%s",
+			emptyAsAny(m.builds.filters.project),
+			emptyAsAny(m.builds.filters.state),
+			m.builds.filters.active,
+			emptyAsAny(m.builds.filters.source),
+		)
+	list := renderBuildRows(m.theme, m.builds.rows, m.builds.index, innerPanelWidth(m.theme.panel, listWidth))
+	detail := renderBuildDetail(m.theme, selectedBuild(m.builds.rows, m.builds.index), innerPanelWidth(m.theme.panel, detailWidth))
+	if m.width >= 120 {
+		left := renderPanel(m.theme.panel, listWidth, "", header+"\n\n"+list)
+		right := renderPanel(m.theme.panel, detailWidth, m.theme.panelTitle.Render("Detail"), detail)
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, spacer(gap), right)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left,
+		renderPanel(m.theme.panel, m.width, "", header),
+		renderPanel(m.theme.panel, m.width, m.theme.panelTitle.Render("Builds"), list),
+		renderPanel(m.theme.panel, m.width, m.theme.panelTitle.Render("Detail"), detail),
+	)
+}
+
+func (m rootModel) renderReleases() string {
+	const gap = 1
+	listWidth, detailWidth := splitColumns(m.width, gap)
+	header := m.theme.panelTitle.Render("Filters") + "\n" +
+		fmt.Sprintf("project=%s  type=%s  risk=%s  track=%s  branch=%s",
+			emptyAsAny(m.releases.filters.project),
+			emptyAsAny(m.releases.filters.artifactType),
+			emptyAsAny(m.releases.filters.risk),
+			emptyAsAny(m.releases.filters.track),
+			emptyAsAny(m.releases.filters.branch),
+		)
+	list := renderReleaseRows(m.theme, m.releases.rows, m.releases.index, innerPanelWidth(m.theme.panel, listWidth))
+	detail := renderReleaseDetail(m.theme, m.releases.detail, m.selectedRelease(), innerPanelWidth(m.theme.panel, detailWidth))
+	if m.width >= 120 {
+		left := renderPanel(m.theme.panel, listWidth, "", header+"\n\n"+list)
+		right := renderPanel(m.theme.panel, detailWidth, m.theme.panelTitle.Render("Detail"), detail)
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, spacer(gap), right)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left,
+		renderPanel(m.theme.panel, m.width, "", header),
+		renderPanel(m.theme.panel, m.width, m.theme.panelTitle.Render("Releases"), list),
+		renderPanel(m.theme.panel, m.width, m.theme.panelTitle.Render("Detail"), detail),
+	)
+}
+
+func (m rootModel) renderOverlay(base string) string {
+	var content string
+	fullscreen := m.width < 90 || m.overlay == overlayHelp
+	switch m.overlay {
+	case overlayHelp:
+		content = m.renderHelp()
+	case overlayAuth:
+		content = m.renderAuthModal()
+	case overlayOperations:
+		content = m.renderOperationsDrawer(fullscreen)
+	case overlayCache:
+		content = m.renderCacheModal()
+	case overlayServer:
+		content = m.renderServerModal()
+	case overlayPrompt:
+		content = m.renderPrompt()
+	case overlayBuildFilters:
+		content = renderFormModal(m.theme, m.buildFilterForm)
+	case overlayReleaseFilters:
+		content = renderFormModal(m.theme, m.releaseFilterForm)
+	case overlayBuildTrigger:
+		content = renderFormModal(m.theme, m.buildTriggerForm)
+	}
+	if fullscreen {
+		return renderViewport(content, m.height-1, m.overlayScroll)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, base, renderViewport(content, max(8, m.height/3), m.overlayScroll))
+}
+
+func (m rootModel) renderHelp() string {
+	body := strings.Join([]string{
+		"Global",
+		"1/2/3 switch workflow",
+		"Tab / Shift+Tab cycle workflows",
+		"j/k or arrows move",
+		"PgUp/PgDn or Ctrl+U/Ctrl+D scroll",
+		"Enter open detail or action",
+		"/ edit filters",
+		"a auth  o operations  c cache  s server",
+		"r refresh  q quit  esc close overlay",
+		"",
+		"Embedded rule",
+		"Auth, build trigger, and operation cancel prompt before switching to the local daemon.",
+	}, "\n")
+	return m.theme.panel.Width(m.width - 2).Height(m.height - 2).Render(m.theme.panelTitle.Render("Help") + "\n\n" + body)
+}
+
+func (m rootModel) renderAuthModal() string {
+	lines := []string{m.theme.panelTitle.Render("Auth")}
+	if m.auth.err != "" {
+		lines = append(lines, m.theme.errorText.Render(m.auth.err))
+	}
+	if m.auth.status != nil && m.auth.status.Launchpad.Authenticated {
+		lines = append(lines,
+			"Launchpad: "+displayLaunchpadName(m.auth.status),
+			"Source: "+emptyAsDash(m.auth.status.Launchpad.Source),
+			"Path: "+emptyAsDash(m.auth.status.Launchpad.CredentialsPath),
+		)
+	} else {
+		lines = append(lines, "Launchpad: not authenticated")
+	}
+	if m.auth.begin != nil {
+		lines = append(lines, "", "Authorize URL:", m.auth.begin.AuthorizeURL, "", "[o] open browser  [Enter] finalize")
+	}
+	lines = append(lines, "", "[l] login  [x] logout  [Esc] close")
+	return m.theme.panel.Width(max(50, m.width-4)).Render(strings.Join(lines, "\n"))
+}
+
+func (m rootModel) renderOperationsDrawer(fullscreen bool) string {
+	title := m.theme.panelTitle.Render("Operations")
+	rows := renderOperationRows(m.theme, m.ops.rows, m.ops.index)
+	events := renderOperationEvents(m.theme, m.ops.events)
+	box := m.theme.panel.Width(m.width - 2).Render(title + "\n\n" + rows + "\n\n" + m.theme.panelTitle.Render("Events") + "\n" + events + "\n\n[x] cancel  [r] refresh  [Esc] close")
+	if fullscreen {
+		return lipgloss.NewStyle().Height(m.height - 2).Render(box)
+	}
+	return box
+}
+
+func (m rootModel) renderCacheModal() string {
+	lines := []string{m.theme.panelTitle.Render("Cache")}
+	if m.cache.err != "" {
+		lines = append(lines, m.theme.errorText.Render(m.cache.err))
+	}
+	if m.cache.status == nil {
+		lines = append(lines, m.theme.subtle.Render("No cache status loaded."))
+	} else {
+		lines = append(lines,
+			fmt.Sprintf("Git repos: %d", len(m.cache.status.Git.Repos)),
+			fmt.Sprintf("Package sources: %d", len(m.cache.status.Packages.Sources)),
+			fmt.Sprintf("Bug entries: %d", len(m.cache.status.Bugs.Entries)),
+			fmt.Sprintf("Excuses entries: %d", len(m.cache.status.Excuses.Entries)),
+			fmt.Sprintf("Release entries: %d", len(m.cache.status.Releases.Entries)),
+		)
+	}
+	lines = append(lines, "", "[Esc] close")
+	return m.theme.panel.Width(max(50, m.width-4)).Render(strings.Join(lines, "\n"))
+}
+
+func (m rootModel) renderServerModal() string {
+	target := m.session.Target()
+	lines := []string{
+		m.theme.panelTitle.Render("Server / About"),
+		fmt.Sprintf("Version: %s", Version),
+		fmt.Sprintf("Target: %s", target.Kind),
+		fmt.Sprintf("Address: %s", emptyAsDash(target.Address)),
+	}
+	if m.server.local != nil {
+		lines = append(lines,
+			fmt.Sprintf("Local daemon running: %t", m.server.local.Running),
+			fmt.Sprintf("PID: %d", m.server.local.PID),
+			fmt.Sprintf("Log file: %s", emptyAsDash(m.server.local.LogFile)),
+		)
+	}
+	if target.Kind == runtimeadapter.TargetKindEmbedded {
+		lines = append(lines, "", "[Enter] switch to local daemon")
+	}
+	lines = append(lines, "[Esc] close")
+	return m.theme.panel.Width(max(50, m.width-4)).Render(strings.Join(lines, "\n"))
+}
+
+func (m rootModel) renderPrompt() string {
+	lines := []string{
+		m.theme.panelTitle.Render(m.prompt.title),
+		"",
+		m.prompt.body,
+		"",
+		"[Enter] " + m.prompt.accept,
+		"[Esc] " + m.prompt.reject,
+	}
+	return m.theme.panel.Width(max(50, m.width-4)).Render(strings.Join(lines, "\n"))
+}
+
+func (m rootModel) refreshActiveView() tea.Cmd {
+	switch m.activeView {
+	case viewDashboard:
+		return loadDashboardCmd(m.session)
+	case viewBuilds:
+		return loadBuildsCmd(m.session, m.builds.filters)
+	case viewReleases:
+		return tea.Batch(
+			loadReleasesCmd(m.session, m.releases.filters),
+			loadReleaseDetailCmdIfSelected(m.session, m.selectedRelease()),
+		)
+	default:
+		return nil
+	}
+}
+
+func (m rootModel) selectedRelease() *dto.ReleaseListEntry {
+	if m.releases.index < 0 || m.releases.index >= len(m.releases.rows) {
+		return nil
+	}
+	row := m.releases.rows[m.releases.index]
+	return &row
+}
+
+func (m rootModel) releaseDetailKey() string {
+	row := m.selectedRelease()
+	if row == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s|%s|%s|%s|%s", row.Project, row.Name, row.Channel, row.Track, row.Branch)
+}
+
+func (m rootModel) updateBuildFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.buildFilterForm, func(values []string) tea.Cmd {
+		m.builds.filters = buildsFilters{
+			project: strings.TrimSpace(values[0]),
+			state:   strings.TrimSpace(values[1]),
+			active:  strings.TrimSpace(values[2]) != "false",
+			source:  defaultString(strings.TrimSpace(values[3]), "remote"),
+		}
+		m.overlay = overlayNone
+		return loadBuildsCmd(m.session, m.builds.filters)
+	}, func() {
+		m.overlay = overlayNone
+	})
+	return m, cmd
+}
+
+func (m rootModel) updateReleaseFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.releaseFilterForm, func(values []string) tea.Cmd {
+		m.releases.filters = releasesFilters{
+			project:      strings.TrimSpace(values[0]),
+			artifactType: strings.TrimSpace(values[1]),
+			risk:         strings.TrimSpace(values[2]),
+			track:        strings.TrimSpace(values[3]),
+			branch:       strings.TrimSpace(values[4]),
+		}
+		m.overlay = overlayNone
+		return loadReleasesCmd(m.session, m.releases.filters)
+	}, func() {
+		m.overlay = overlayNone
+	})
+	return m, cmd
+}
+
+func (m rootModel) updateBuildTriggerForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.buildTriggerForm, func(values []string) tea.Cmd {
+		req, err := buildTriggerRequestFromValues(values)
+		if err != nil {
+			m.buildTriggerForm.errorMsg = err.Error()
+			return nil
+		}
+		if req.Project == "" {
+			m.buildTriggerForm.errorMsg = "project is required"
+			return nil
+		}
+		m.overlay = overlayNone
+		if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
+			m.openUpgradePrompt(deferredAction{kind: deferredBuildTrigger, buildReq: req})
+			return nil
+		}
+		return triggerBuildCmd(m.session, req)
+	}, func() {
+		m.overlay = overlayNone
+	})
+	return m, cmd
+}
+
+func buildTriggerRequestFromValues(values []string) (frontend.BuildTriggerRequest, error) {
+	req := frontend.BuildTriggerRequest{
+		Project:   strings.TrimSpace(values[0]),
+		Artifacts: splitCSV(values[1]),
+		Source:    defaultString(strings.TrimSpace(values[2]), "remote"),
+		LocalPath: strings.TrimSpace(values[3]),
+		Async:     true,
+	}
+	if req.Source != "remote" && req.Source != "local" {
+		return frontend.BuildTriggerRequest{}, fmt.Errorf("source must be remote or local")
+	}
+	if req.Source == "local" && req.LocalPath == "" {
+		return frontend.BuildTriggerRequest{}, fmt.Errorf("local path is required for local source")
+	}
+	return req, nil
+}
+
+func loadDashboardCmd(session *runtimeadapter.Session) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		auth, authErr := session.Frontend.Auth().Status(ctx)
+		ops, opsErr := session.Frontend.Operations().List(ctx)
+		builds, buildsErr := session.Frontend.Builds().List(ctx, frontend.BuildListRequest{All: false, DefaultAll: false, Source: "remote"})
+		cacheStatus, cacheErr := session.Frontend.Cache().Status(ctx)
+		return dashboardLoadedMsg{
+			auth:   auth,
+			ops:    ops,
+			builds: builds,
+			cache:  cacheStatus,
+			err:    errorsJoin(authErr, opsErr, buildsErr, cacheErr),
+		}
+	}
+}
+
+func loadBuildsCmd(session *runtimeadapter.Session, filters buildsFilters) tea.Cmd {
+	return func() tea.Msg {
+		rows, err := session.Frontend.Builds().List(context.Background(), frontend.BuildListRequest{
+			Projects: firstNonEmptySlice(filters.project),
+			State:    filters.state,
+			All:      !filters.active,
+			Source:   defaultString(filters.source, "remote"),
+		})
+		return buildsLoadedMsg{rows: rows, err: err}
+	}
+}
+
+func loadReleasesCmd(session *runtimeadapter.Session, filters releasesFilters) tea.Cmd {
+	return func() tea.Msg {
+		rows, err := session.Frontend.Releases().List(context.Background(), frontend.ReleasesListRequest{
+			Projects:     firstNonEmptySlice(filters.project),
+			ArtifactType: filters.artifactType,
+			Risks:        firstNonEmptySlice(filters.risk),
+			Tracks:       firstNonEmptySlice(filters.track),
+			Branches:     firstNonEmptySlice(filters.branch),
+		})
+		return releasesLoadedMsg{rows: rows, err: err}
+	}
+}
+
+func loadReleaseDetailCmdIfSelected(session *runtimeadapter.Session, row *dto.ReleaseListEntry) tea.Cmd {
+	if row == nil {
+		return nil
+	}
+	return loadReleaseDetailCmd(session, *row)
+}
+
+func loadReleaseDetailCmd(session *runtimeadapter.Session, row dto.ReleaseListEntry) tea.Cmd {
+	key := fmt.Sprintf("%s|%s|%s|%s|%s", row.Project, row.Name, row.Channel, row.Track, row.Branch)
+	return func() tea.Msg {
+		detail, err := session.Frontend.Releases().Show(context.Background(), frontend.ReleasesShowRequest{
+			Name:         row.Name,
+			ArtifactType: row.ArtifactType.String(),
+			Track:        row.Track,
+			Branch:       row.Branch,
+		})
+		return releaseDetailLoadedMsg{key: key, detail: detail, err: err}
+	}
+}
+
+func loadOperationsCmd(session *runtimeadapter.Session, selectedID string) tea.Cmd {
+	return func() tea.Msg {
+		rows, err := session.Frontend.Operations().List(context.Background())
+		var events []dto.OperationEvent
+		if err == nil && selectedID != "" {
+			events, err = session.Frontend.Operations().Events(context.Background(), selectedID)
+		}
+		return opsLoadedMsg{rows: rows, events: events, err: err}
+	}
+}
+
+func loadAuthStatusCmd(session *runtimeadapter.Session) tea.Cmd {
+	return func() tea.Msg {
+		status, err := session.Frontend.Auth().Status(context.Background())
+		return authStatusLoadedMsg{status: status, err: err}
+	}
+}
+
+func beginAuthCmd(session *runtimeadapter.Session) tea.Cmd {
+	return func() tea.Msg {
+		begin, err := session.Frontend.Auth().BeginLaunchpad(context.Background())
+		return authBeginMsg{begin: begin, err: err}
+	}
+}
+
+func finalizeAuthCmd(session *runtimeadapter.Session, flowID string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := session.Frontend.Auth().FinalizeLaunchpad(context.Background(), flowID)
+		return authFinalizeMsg{result: result, err: err}
+	}
+}
+
+func logoutAuthCmd(session *runtimeadapter.Session) tea.Cmd {
+	return func() tea.Msg {
+		result, err := session.Frontend.Auth().LogoutLaunchpad(context.Background())
+		return authLogoutMsg{result: result, err: err}
+	}
+}
+
+func loadCacheCmd(session *runtimeadapter.Session) tea.Cmd {
+	return func() tea.Msg {
+		status, err := session.Frontend.Cache().Status(context.Background())
+		return cacheLoadedMsg{status: status, err: err}
+	}
+}
+
+func loadLocalServerStatusCmd(session *runtimeadapter.Session) tea.Cmd {
+	return func() tea.Msg {
+		status, err := session.LocalServerStatus(context.Background())
+		return localServerStatusMsg{status: status, err: err}
+	}
+}
+
+func triggerBuildCmd(session *runtimeadapter.Session, req frontend.BuildTriggerRequest) tea.Cmd {
+	return func() tea.Msg {
+		result, err := session.Frontend.Builds().Trigger(context.Background(), req)
+		if err != nil {
+			return buildTriggeredMsg{err: err}
+		}
+		return buildTriggeredMsg{job: result.Job}
+	}
+}
+
+func cancelOperationCmd(session *runtimeadapter.Session, id string) tea.Cmd {
+	return func() tea.Msg {
+		job, err := session.Frontend.Operations().Cancel(context.Background(), id)
+		return operationCancelledMsg{job: job, err: err}
+	}
+}
+
+func upgradeSessionCmd(session *runtimeadapter.Session) tea.Cmd {
+	return func() tea.Msg {
+		return upgradedMsg{err: session.UpgradeToPersistent(context.Background())}
+	}
+}
+
+func openBrowserCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		return browserOpenedMsg{err: openBrowser(url)}
+	}
+}
+
+func tickDashboardCmd() tea.Cmd {
+	return tea.Tick(15*time.Second, func(t time.Time) tea.Msg { return tickDashboardMsg(t) })
+}
+
+func tickOperationsCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickOperationsMsg(t) })
+}
+
+func clearToastLater() tea.Cmd {
+	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearToastMsg{} })
+}
+
+func newBuildFilterForm(filters buildsFilters) formModalModel {
+	return newFormModal("Build Filters", []fieldDef{
+		{placeholder: "project", value: filters.project},
+		{placeholder: "state", value: filters.state},
+		{placeholder: "active (true/false)", value: fmt.Sprintf("%t", filters.active)},
+		{placeholder: "source (remote|local)", value: filters.source},
+	})
+}
+
+func newReleaseFilterForm(filters releasesFilters) formModalModel {
+	return newFormModal("Release Filters", []fieldDef{
+		{placeholder: "project", value: filters.project},
+		{placeholder: "artifact type", value: filters.artifactType},
+		{placeholder: "risk", value: filters.risk},
+		{placeholder: "track", value: filters.track},
+		{placeholder: "branch", value: filters.branch},
+	})
+}
+
+func newBuildTriggerForm(session *runtimeadapter.Session) formModalModel {
+	project := ""
+	if len(session.Config.Projects) > 0 {
+		project = session.Config.Projects[0].Name
+	}
+	return newFormModal("Trigger Build", []fieldDef{
+		{placeholder: "project", value: project},
+		{placeholder: "artifacts (comma separated)", value: ""},
+		{placeholder: "source (remote|local)", value: "remote"},
+		{placeholder: "local path", value: "."},
+	})
+}
+
+type fieldDef struct {
+	placeholder string
+	value       string
+}
+
+func newFormModal(title string, fields []fieldDef) formModalModel {
+	models := make([]textinput.Model, 0, len(fields))
+	for i, field := range fields {
+		input := textinput.New()
+		input.Placeholder = field.placeholder
+		input.SetValue(field.value)
+		if i == 0 {
+			input.Focus()
+		}
+		models = append(models, input)
+	}
+	return formModalModel{
+		title:  title,
+		fields: models,
+	}
+}
+
+func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]string) tea.Cmd, onCancel func()) tea.Cmd {
+	switch msg.String() {
+	case "esc", "q":
+		onCancel()
+		return nil
+	case "tab", "enter":
+		if modal.active == len(modal.fields)-1 {
+			values := make([]string, 0, len(modal.fields))
+			for _, field := range modal.fields {
+				values = append(values, field.Value())
+			}
+			return onSubmit(values)
+		}
+		modal.fields[modal.active].Blur()
+		modal.active++
+		modal.fields[modal.active].Focus()
+		return nil
+	case "shift+tab":
+		if modal.active > 0 {
+			modal.fields[modal.active].Blur()
+			modal.active--
+			modal.fields[modal.active].Focus()
+		}
+		return nil
+	}
+	var cmd tea.Cmd
+	modal.fields[modal.active], cmd = modal.fields[modal.active].Update(msg)
+	return cmd
+}
+
+func renderFormModal(t theme, modal formModalModel) string {
+	lines := []string{t.panelTitle.Render(modal.title)}
+	for i, field := range modal.fields {
+		label := field.Placeholder
+		value := field.View()
+		style := t.input
+		if i == modal.active {
+			style = t.inputFocused
+		}
+		lines = append(lines, label, style.Render(value))
+	}
+	if modal.errorMsg != "" {
+		lines = append(lines, t.errorText.Render(modal.errorMsg))
+	}
+	lines = append(lines, "", "[Tab] next  [Enter] submit  [Esc] cancel")
+	return t.panel.Width(70).Render(strings.Join(lines, "\n"))
+}
+
+func renderBuildRows(t theme, rows []dto.Build, selected int, width int) string {
+	if len(rows) == 0 {
+		return t.subtle.Render("No builds.")
+	}
+	lines := make([]string, 0, len(rows))
+	for i, row := range rows {
+		line := fitLine(fmt.Sprintf("%-10s  %-12s  %s", row.State.String(), row.Project, row.Title), width)
+		if i == selected {
+			line = t.selectedRow.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderBuildDetail(t theme, build *dto.Build, width int) string {
+	if build == nil {
+		return t.subtle.Render("No build selected.")
+	}
+	return fitBlock(strings.Join([]string{
+		"Project: " + build.Project,
+		"Recipe: " + build.Recipe,
+		"Title: " + build.Title,
+		"State: " + build.State.String(),
+		"Arch: " + build.Arch,
+		"Created: " + build.CreatedAt.Format(time.RFC3339),
+		"Started: " + emptyTime(build.StartedAt),
+		"Built: " + emptyTime(build.BuiltAt),
+		"Web: " + build.WebLink,
+		"Log: " + emptyAsDash(build.BuildLogURL),
+		fmt.Sprintf("Can retry: %t", build.CanRetry),
+		fmt.Sprintf("Can cancel: %t", build.CanCancel),
+		"",
+		"[t] trigger async build",
+	}, "\n"), width)
+}
+
+func renderReleaseRows(t theme, rows []dto.ReleaseListEntry, selected int, width int) string {
+	if len(rows) == 0 {
+		return t.subtle.Render("No releases.")
+	}
+	lines := make([]string, 0, len(rows))
+	for i, row := range rows {
+		line := fitLine(fmt.Sprintf("%-12s  %-20s  %-18s", row.Project, row.Name, row.Channel), width)
+		if i == selected {
+			line = t.selectedRow.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderReleaseDetail(t theme, detail *dto.ReleaseShowResult, selected *dto.ReleaseListEntry, width int) string {
+	if detail == nil || selected == nil {
+		return t.subtle.Render("Select a release row to load details.")
+	}
+	lines := []string{
+		"Project: " + detail.Project,
+		"Name: " + detail.Name,
+		"Type: " + detail.ArtifactType.String(),
+		"Updated: " + emptyTime(detail.UpdatedAt),
+		"",
+		"Channels:",
+	}
+	for _, channel := range detail.Channels {
+		prefix := "  "
+		if channel.Channel == selected.Channel {
+			prefix = "* "
+		}
+		lines = append(lines, fmt.Sprintf("%s%s (%d targets)", prefix, channel.Channel, len(channel.Targets)))
+	}
+	return fitBlock(strings.Join(lines, "\n"), width)
+}
+
+func renderOperationRows(t theme, rows []dto.OperationJob, selected int) string {
+	if len(rows) == 0 {
+		return t.subtle.Render("No operations.")
+	}
+	lines := make([]string, 0, len(rows))
+	for i, row := range rows {
+		line := fmt.Sprintf("%-12s  %-12s  %s", row.State, row.Kind, row.Summary)
+		if i == selected {
+			line = t.selectedRow.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderOperationEvents(t theme, events []dto.OperationEvent) string {
+	if len(events) == 0 {
+		return t.subtle.Render("No events.")
+	}
+	lines := make([]string, 0, min(8, len(events)))
+	for _, event := range events[max(0, len(events)-8):] {
+		lines = append(lines, fmt.Sprintf("%s  %s", event.Time.Format("15:04:05"), defaultString(event.Message, event.Type)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func dashboardSectionWidth(totalWidth int, twoColumns bool) int {
+	if !twoColumns {
+		return totalWidth
+	}
+	const gap = 1
+	return max(20, (totalWidth-gap)/2)
+}
+
+func splitColumns(totalWidth, gap int) (int, int) {
+	left := max(20, (totalWidth-gap)/2)
+	right := max(20, totalWidth-gap-left)
+	return left, right
+}
+
+func renderPanel(style lipgloss.Style, totalWidth int, title, body string) string {
+	if totalWidth < 8 {
+		totalWidth = 8
+	}
+	innerWidth := innerPanelWidth(style, totalWidth)
+	content := fitBlock(body, innerWidth)
+	if title != "" {
+		content = title + "\n" + content
+	}
+	return style.Width(innerWidth).MaxWidth(totalWidth).Render(content)
+}
+
+func innerPanelWidth(style lipgloss.Style, totalWidth int) int {
+	innerWidth := totalWidth - style.GetHorizontalFrameSize()
+	if innerWidth < 1 {
+		return 1
+	}
+	return innerWidth
+}
+
+func fitBlock(text string, width int) string {
+	if width <= 0 {
+		return text
+	}
+	lines := strings.Split(text, "\n")
+	fit := make([]string, 0, len(lines))
+	for _, line := range lines {
+		fit = append(fit, fitLine(line, width))
+	}
+	return strings.Join(fit, "\n")
+}
+
+func fitLine(text string, width int) string {
+	if width <= 0 {
+		return text
+	}
+	if lipgloss.Width(text) <= width {
+		return text
+	}
+	if width == 1 {
+		return "…"
+	}
+	runes := []rune(text)
+	out := make([]rune, 0, len(runes))
+	for _, r := range runes {
+		candidate := string(append(out, r))
+		if lipgloss.Width(candidate+"…") > width {
+			break
+		}
+		out = append(out, r)
+	}
+	return string(out) + "…"
+}
+
+func renderViewport(content string, height, offset int) string {
+	if height <= 0 {
+		return ""
+	}
+	lines := strings.Split(content, "\n")
+	if len(lines) <= height {
+		return lipgloss.NewStyle().Height(height).Render(strings.Join(lines, "\n"))
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(lines)-height {
+		offset = len(lines) - height
+	}
+	end := offset + height
+	return lipgloss.NewStyle().Height(height).Render(strings.Join(lines[offset:end], "\n"))
+}
+
+func (m rootModel) scrollStep() int {
+	if m.height <= 0 {
+		return 5
+	}
+	step := m.height / 4
+	if step < 3 {
+		return 3
+	}
+	return step
+}
+
+func selectedBuild(rows []dto.Build, idx int) *dto.Build {
+	if idx < 0 || idx >= len(rows) {
+		return nil
+	}
+	row := rows[idx]
+	return &row
+}
+
+func selectedOperation(rows []dto.OperationJob, idx int) *dto.OperationJob {
+	if idx < 0 || idx >= len(rows) {
+		return nil
+	}
+	row := rows[idx]
+	return &row
+}
+
+func selectedOperationID(rows []dto.OperationJob, idx int) string {
+	if job := selectedOperation(rows, idx); job != nil {
+		return job.ID
+	}
+	return ""
+}
+
+func countRunningOperations(rows []dto.OperationJob) int {
+	count := 0
+	for _, row := range rows {
+		if row.State == dto.OperationStateQueued || row.State == dto.OperationStateRunning {
+			count++
+		}
+	}
+	return count
+}
+
+func hasRunningOperation(rows []dto.OperationJob) bool {
+	return countRunningOperations(rows) > 0
+}
+
+func displayLaunchpadName(status *dto.AuthStatus) string {
+	if status == nil {
+		return "guest"
+	}
+	if status.Launchpad.DisplayName != "" {
+		return status.Launchpad.DisplayName
+	}
+	if status.Launchpad.Username != "" {
+		return status.Launchpad.Username
+	}
+	return "guest"
+}
+
+func renderToast(t theme, toast toastState) string {
+	switch toast.level {
+	case "success":
+		return t.success.Render(toast.message)
+	case "error":
+		return t.errorText.Render(toast.message)
+	default:
+		return t.info.Render(toast.message)
+	}
+}
+
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		if _, err := exec.LookPath("xdg-open"); err == nil {
+			cmd = exec.Command("xdg-open", url)
+		} else if _, err := exec.LookPath("wslview"); err == nil {
+			cmd = exec.Command("wslview", url)
+		} else {
+			return fmt.Errorf("no browser opener available")
+		}
+	}
+	return cmd.Start()
+}
+
+func emptyAsAny(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "any"
+	}
+	return value
+}
+
+func emptyAsDash(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
+}
+
+func defaultString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func emptyTime(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return t.Format(time.RFC3339)
+}
+
+func firstNonEmptySlice(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return []string{value}
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func errorsJoin(errs ...error) error {
+	var parts []string
+	for _, err := range errs {
+		if err != nil {
+			parts = append(parts, err.Error())
+		}
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(parts, "; "))
+}
+
+func spacer(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return strings.Repeat(" ", width)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
