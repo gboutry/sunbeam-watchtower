@@ -1,6 +1,9 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
+	"github.com/spf13/cobra"
+)
 
 func newConfigCmd(opts *Options) *cobra.Command {
 	cmd := &cobra.Command{
@@ -13,7 +16,7 @@ func newConfigCmd(opts *Options) *cobra.Command {
 }
 
 func newConfigShowCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "show",
 		Short: "Display the current configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -29,5 +32,5 @@ func newConfigShowCmd(opts *Options) *cobra.Command {
 				return renderYAML(opts.Out, cfg)
 			}
 		},
-	}
+	}, frontend.ActionConfigShow)
 }

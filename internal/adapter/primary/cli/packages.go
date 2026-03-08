@@ -16,10 +16,10 @@ import (
 )
 
 func newPackagesCmd(opts *Options) *cobra.Command {
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "packages",
 		Short: "Compare source package versions across distros",
-	}
+	}, frontend.ActionPackagesDsc)
 	cmd.AddCommand(
 		newPackagesDiffCmd(opts),
 		newPackagesShowCmd(opts),
@@ -41,7 +41,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 	var onlyIn string
 	var constraints string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "diff <set>",
 		Short: "Compare package versions across distros",
 		Args:  cobra.ExactArgs(1),
@@ -68,7 +68,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 
 			return renderDiffResults(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), response.Results, response.Sources, response.Merge, response.HasUpstream)
 		},
-	}
+	}, frontend.ActionPackagesDiff)
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
@@ -89,7 +89,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 	var merge bool
 	var upstreamRelease string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "show-version <package>",
 		Short: "Show all versions of a package across distros",
 		Args:  cobra.ExactArgs(1),
@@ -112,7 +112,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 
 			return renderDiffResults(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), []dto.PackageDiffResult{response.Result}, response.Sources, response.Merge, response.HasUpstream)
 		},
-	}
+	}, frontend.ActionPackagesShowVersion)
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
@@ -126,7 +126,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 func newPackagesShowDetailCmd(opts *Options) *cobra.Command {
 	var distros, releases, suites, backports []string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "show <package> [version]",
 		Short: "Show full APT metadata for a package",
 		Long: `Show all fields from the APT Sources index for a specific package.
@@ -157,7 +157,7 @@ match. Otherwise, returns the highest version found across the configured
 
 			return renderPackageInfo(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
-	}
+	}, frontend.ActionPackagesShowDetail)
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
@@ -171,7 +171,7 @@ func newPackagesListCmd(opts *Options) *cobra.Command {
 	var distros, releases, backports []string
 	var suites, components []string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "list",
 		Short: "List packages in a distro",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -191,7 +191,7 @@ func newPackagesListCmd(opts *Options) *cobra.Command {
 
 			return renderSourcePackages(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
-	}
+	}, frontend.ActionPackagesList)
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
@@ -427,7 +427,7 @@ func formatBytes(b int64) string {
 func newPackagesDscCmd(opts *Options) *cobra.Command {
 	var distros, releases, backports []string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "dsc <pkg> <version> [<pkg> <version> ...]",
 		Short: "Look up .dsc file URLs for source package/version pairs",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -457,7 +457,7 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 
 			return renderDscResults(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), results)
 		},
-	}
+	}, frontend.ActionPackagesRdepends)
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")
@@ -506,7 +506,7 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 	var distros, releases, backports []string
 	var suites []string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "rdepends <package>",
 		Short: "Find source packages that build-depend on a given package",
 		Args:  cobra.ExactArgs(1),
@@ -534,7 +534,7 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 
 			return renderSourcePackageDetails(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), results)
 		},
-	}
+	}, frontend.ActionPackagesRdepends)
 
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to query (default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to query (default: all configured)")

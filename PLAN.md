@@ -54,6 +54,7 @@ The following are implemented and should be treated as the current baseline:
 - shared frontend facade for auth, operations, project, build, cache, package, bug, review, commit, release, and config workflows
 - shared runtime/bootstrap layer for env defaults, logger setup, config loading, embedded server startup, local daemon management, and target resolution
 - shared runtime session target policies for CLI and TUI, covering embedded, discovered-daemon, and persistent-daemon resolution
+- shared action access catalog and runtime access mode plumbing for CLI, TUI, and future MCP surfaces
 - backend-neutral prepared-build contract using canonical `target_ref`, `repository_ref`, and `recipes` fields
 - narrower internal/app build/runtime factory helpers for recipe builders, repo managers, auth-flow stores, and operation stores
 - local daemon lifecycle commands and explicit runtime resolution order
@@ -83,6 +84,7 @@ These are the main known gaps that still matter:
 ### Frontend/runtime
 
 - keep future frontends such as MCP on the same frontend/runtime seams now shared by CLI and TUI
+- keep the shared operation access catalog authoritative so future MCP surfaces can expose read-only actions by default and require explicit override for writes
 
 ### TUI
 

@@ -20,6 +20,31 @@ For split workflows, client-side code may inspect or prepare local worktrees, bu
 
 CLI, TUI, and API work should go through `internal/adapter/primary/frontend` and `internal/adapter/primary/runtime` where possible instead of adding new raw `pkg/client` call sites or wiring business flows directly out of `internal/app`.
 
+### Operation access classification is mandatory
+
+Every new or modified user-invoked operation must be assigned one canonical `ActionID` in the shared frontend action catalog under `internal/adapter/primary/frontend`.
+
+Classification rules:
+
+- classification lives in the shared frontend action catalog, not only in CLI, TUI, or API wrappers
+- every action must declare:
+  - mutability
+  - local effect
+  - runtime requirement
+  - MCP export policy
+- dry-run variants must be separate action IDs whenever the effective mutability changes
+- auth/session operations are always mutating
+- local-only output generation may still be classified as read-only
+- command/action tests must be updated whenever classification changes
+- if a new or changed operation expands the authorization surface, `PLAN.md` must be updated in the same change
+
+Reviewer checklist:
+
+- action catalog updated intentionally
+- CLI and TUI mappings updated where relevant
+- tests cover the new or changed classification
+- MCP export policy was chosen deliberately
+
 ### Adapter boundaries are enforced mechanically
 
 Primary adapters must not import secondary adapters directly, `internal/adapter/*` packages must not define interfaces, and boundary changes should come with matching architecture-test updates instead of one-off exceptions.

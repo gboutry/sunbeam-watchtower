@@ -36,6 +36,7 @@ func Run(ctx context.Context, opts Options) error {
 		LogWriter:      opts.ErrOut,
 		ExecutablePath: opts.ExecutablePath,
 		TargetPolicy:   runtimeadapter.TargetPolicyPreferEmbedded,
+		AccessMode:     runtimeadapter.AccessModeFull,
 	})
 	if err != nil {
 		return err

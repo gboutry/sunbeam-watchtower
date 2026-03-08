@@ -50,7 +50,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 	var distros, releases, backports []string
 	var trackers []string
 
-	cmd := &cobra.Command{
+	cmd := withActionSelector(&cobra.Command{
 		Use:   "sync [types...]",
 		Short: "Sync caches (git repos and/or APT packages index)",
 		Long: fmt.Sprintf("Sync one or more cache types. If no types are given, all are synced.\n\nValid types: %s",
@@ -139,7 +139,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			return nil
 		},
-	}
+	}, "cache.sync")
 
 	cmd.Flags().StringVar(&project, "project", "", "sync only this project (git only)")
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to update (packages-index only, default: all configured)")
@@ -154,7 +154,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 	var project string
 	var trackers []string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "clear [types...]",
 		Short: "Clear cached data (git repos and/or APT packages index)",
 		Long: fmt.Sprintf("Clear one or more cache types. If no types are given, all are cleared.\n\nValid types: %s",
@@ -222,7 +222,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			return nil
 		},
-	}
+	}, frontend.ActionCacheClear)
 
 	cmd.Flags().StringVar(&project, "project", "", "clear only this project (git only)")
 	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to clear (excuses only, default: all configured trackers)")
@@ -230,7 +230,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 }
 
 func newCacheStatusCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "status",
 		Short: "Show size and freshness of all cached data",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -266,5 +266,5 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 
 			return renderCacheFullStatus(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), &status)
 		},
-	}
+	}, frontend.ActionCacheStatus)
 }

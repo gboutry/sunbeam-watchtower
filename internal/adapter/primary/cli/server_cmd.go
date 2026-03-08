@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +22,7 @@ func newServerCmd(opts *Options) *cobra.Command {
 }
 
 func newServerStartCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "start",
 		Short: "Start the local persistent Watchtower server",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,11 +51,11 @@ func newServerStartCmd(opts *Options) *cobra.Command {
 			}
 			return nil
 		},
-	}
+	}, frontend.ActionServerStart)
 }
 
 func newServerStatusCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "status",
 		Short: "Show local persistent server status",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -94,11 +95,11 @@ func newServerStatusCmd(opts *Options) *cobra.Command {
 			}
 			return nil
 		},
-	}
+	}, frontend.ActionServerStatus)
 }
 
 func newServerStopCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "stop",
 		Short: "Stop the local persistent Watchtower server",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -118,5 +119,5 @@ func newServerStopCmd(opts *Options) *cobra.Command {
 			fmt.Fprintf(opts.Out, "%s local server.\n", styler.Action("Stopped"))
 			return nil
 		},
-	}
+	}, frontend.ActionServerStop)
 }

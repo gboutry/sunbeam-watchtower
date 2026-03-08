@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	"github.com/spf13/cobra"
 )
@@ -16,7 +17,7 @@ import (
 func newServeCmd(opts *Options) *cobra.Command {
 	var listen string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "serve",
 		Short: "Start the HTTP API server",
 		Long:  "Start the Watchtower HTTP API server. The server provides a RESTful API for all watchtower operations and serves an OpenAPI spec at /openapi.json.",
@@ -57,7 +58,7 @@ func newServeCmd(opts *Options) *cobra.Command {
 
 			return srv.Shutdown(shutdownCtx)
 		},
-	}
+	}, frontend.ActionServeStart)
 
 	cmd.Flags().StringVar(&listen, "listen", "127.0.0.1:8472", "listen address (tcp://host:port, unix:///path, or host:port)")
 	return cmd

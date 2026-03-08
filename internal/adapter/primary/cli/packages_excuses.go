@@ -28,7 +28,7 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 	var ftbfs, autopkgtest, bugged, reverse bool
 	var minAge, maxAge, limit int
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "list",
 		Short: "List package migration excuses",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,7 +51,7 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 			}
 			return renderPackageExcuseSummaries(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), results)
 		},
-	}
+	}, frontend.ActionPackagesExcusesList)
 
 	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to query (default: configured default tracker)")
 	cmd.Flags().StringVar(&name, "name", "", "case-insensitive regex to filter source package names")
@@ -71,7 +71,7 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 func newPackagesExcusesShowCmd(opts *Options) *cobra.Command {
 	var tracker, version string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "show <package>",
 		Short: "Show a detailed package migration excuse",
 		Args:  cobra.ExactArgs(1),
@@ -86,7 +86,7 @@ func newPackagesExcusesShowCmd(opts *Options) *cobra.Command {
 			}
 			return renderPackageExcuse(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
-	}
+	}, frontend.ActionPackagesExcusesShow)
 
 	cmd.Flags().StringVar(&tracker, "tracker", "", "excuses tracker to query (default: configured default tracker)")
 	cmd.Flags().StringVar(&version, "version", "", "exact Debian version string")

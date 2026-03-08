@@ -18,7 +18,7 @@ func newBugCmd(opts *Options) *cobra.Command {
 }
 
 func newBugShowCmd(opts *Options) *cobra.Command {
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "show <id>",
 		Short: "Show a bug and its tasks",
 		Args:  cobra.ExactArgs(1),
@@ -29,7 +29,7 @@ func newBugShowCmd(opts *Options) *cobra.Command {
 			}
 			return renderBugDetail(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
-	}
+	}, frontend.ActionBugShow)
 
 	return cmd
 }
@@ -44,7 +44,7 @@ func newBugListCmd(opts *Options) *cobra.Command {
 		since      string
 	)
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "list",
 		Short: "List bug tasks across bug trackers",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -67,7 +67,7 @@ func newBugListCmd(opts *Options) *cobra.Command {
 			}
 			return renderBugTasks(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.Tasks)
 		},
-	}
+	}, frontend.ActionBugList)
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")
 	cmd.Flags().StringSliceVar(&status, "status", nil, "filter by status: New, Confirmed, Triaged, In Progress, etc. (repeatable)")
@@ -86,7 +86,7 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 		since    string
 	)
 
-	cmd := &cobra.Command{
+	cmd := withActionSelector(&cobra.Command{
 		Use:   "sync",
 		Short: "Update LP bug statuses from cached commits",
 		Long:  "Scans cached commits for LP bug references and updates bug task statuses to Fix Committed. Also assigns bugs to the appropriate LP series based on which branches contain the fix.",
@@ -107,7 +107,7 @@ func newBugSyncCmd(opts *Options) *cobra.Command {
 			}
 			return renderBugSyncResult(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.Result, dryRun)
 		},
-	}
+	}, "bug.sync")
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would change without updating")

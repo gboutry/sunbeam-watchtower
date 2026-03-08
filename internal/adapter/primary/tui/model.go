@@ -457,6 +457,11 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setToast("Opened browser", "info")
 		}
 		return m, clearToastLater()
+	case actionDeniedMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
 	case tickDashboardMsg:
 		if m.activeView == viewDashboard && m.overlay == overlayNone {
 			return m, tea.Batch(loadDashboardCmd(m.session), tickDashboardCmd())
@@ -1350,7 +1355,7 @@ func buildTriggerRequestFromValues(values []string) (frontend.BuildTriggerReques
 }
 
 func loadDashboardCmd(session *runtimeadapter.Session) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionDashboardRefresh, func() tea.Msg {
 		ctx := context.Background()
 		auth, authErr := session.Frontend.Auth().Status(ctx)
 		ops, opsErr := session.Frontend.Operations().List(ctx)
@@ -1363,11 +1368,11 @@ func loadDashboardCmd(session *runtimeadapter.Session) tea.Cmd {
 			cache:  cacheStatus,
 			err:    errorsJoin(authErr, opsErr, buildsErr, cacheErr),
 		}
-	}
+	})
 }
 
 func loadBuildsCmd(session *runtimeadapter.Session, filters buildsFilters) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionBuildsRefresh, func() tea.Msg {
 		rows, err := session.Frontend.Builds().List(context.Background(), frontend.BuildListRequest{
 			Projects: firstNonEmptySlice(filters.project),
 			State:    filters.state,
@@ -1375,11 +1380,11 @@ func loadBuildsCmd(session *runtimeadapter.Session, filters buildsFilters) tea.C
 			Source:   defaultString(filters.source, "remote"),
 		})
 		return buildsLoadedMsg{rows: rows, err: err}
-	}
+	})
 }
 
 func loadReleasesCmd(session *runtimeadapter.Session, filters releasesFilters) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionReleasesRefresh, func() tea.Msg {
 		rows, err := session.Frontend.Releases().List(context.Background(), frontend.ReleasesListRequest{
 			Projects:     firstNonEmptySlice(filters.project),
 			ArtifactType: filters.artifactType,
@@ -1388,7 +1393,7 @@ func loadReleasesCmd(session *runtimeadapter.Session, filters releasesFilters) t
 			Branches:     firstNonEmptySlice(filters.branch),
 		})
 		return releasesLoadedMsg{rows: rows, err: err}
-	}
+	})
 }
 
 func loadReleaseDetailCmdIfSelected(session *runtimeadapter.Session, artifact *releaseArtifactSummary) tea.Cmd {
@@ -1400,89 +1405,89 @@ func loadReleaseDetailCmdIfSelected(session *runtimeadapter.Session, artifact *r
 
 func loadReleaseDetailCmd(session *runtimeadapter.Session, artifact releaseArtifactSummary) tea.Cmd {
 	key := fmt.Sprintf("%s|%s|%s", artifact.Project, artifact.Name, artifact.ArtifactType.String())
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionReleaseDetailRefresh, func() tea.Msg {
 		detail, err := session.Frontend.Releases().Show(context.Background(), frontend.ReleasesShowRequest{
 			Name:         artifact.Name,
 			ArtifactType: artifact.ArtifactType.String(),
 		})
 		return releaseDetailLoadedMsg{key: key, detail: detail, err: err}
-	}
+	})
 }
 
 func loadOperationsCmd(session *runtimeadapter.Session, selectedID string) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionOperationsRefresh, func() tea.Msg {
 		rows, err := session.Frontend.Operations().List(context.Background())
 		var events []dto.OperationEvent
 		if err == nil && selectedID != "" {
 			events, err = session.Frontend.Operations().Events(context.Background(), selectedID)
 		}
 		return opsLoadedMsg{rows: rows, events: events, err: err}
-	}
+	})
 }
 
 func loadAuthStatusCmd(session *runtimeadapter.Session) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionAuthRefresh, func() tea.Msg {
 		status, err := session.Frontend.Auth().Status(context.Background())
 		return authStatusLoadedMsg{status: status, err: err}
-	}
+	})
 }
 
 func beginAuthCmd(session *runtimeadapter.Session) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionAuthLaunchpadBegin, func() tea.Msg {
 		begin, err := session.Frontend.Auth().BeginLaunchpad(context.Background())
 		return authBeginMsg{begin: begin, err: err}
-	}
+	})
 }
 
 func finalizeAuthCmd(session *runtimeadapter.Session, flowID string) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionAuthLaunchpadFinalize, func() tea.Msg {
 		result, err := session.Frontend.Auth().FinalizeLaunchpad(context.Background(), flowID)
 		return authFinalizeMsg{result: result, err: err}
-	}
+	})
 }
 
 func logoutAuthCmd(session *runtimeadapter.Session) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionAuthLaunchpadLogout, func() tea.Msg {
 		result, err := session.Frontend.Auth().LogoutLaunchpad(context.Background())
 		return authLogoutMsg{result: result, err: err}
-	}
+	})
 }
 
 func loadCacheCmd(session *runtimeadapter.Session) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionCacheRefresh, func() tea.Msg {
 		status, err := session.Frontend.Cache().Status(context.Background())
 		return cacheLoadedMsg{status: status, err: err}
-	}
+	})
 }
 
 func loadLocalServerStatusCmd(session *runtimeadapter.Session) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionServerStatus, func() tea.Msg {
 		status, err := session.LocalServerStatus(context.Background())
 		return localServerStatusMsg{status: status, err: err}
-	}
+	})
 }
 
 func triggerBuildCmd(session *runtimeadapter.Session, req frontend.BuildTriggerRequest) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionBuildTrigger, func() tea.Msg {
 		result, err := session.Frontend.Builds().Trigger(context.Background(), req)
 		if err != nil {
 			return buildTriggeredMsg{err: err}
 		}
 		return buildTriggeredMsg{job: result.Job}
-	}
+	})
 }
 
 func cancelOperationCmd(session *runtimeadapter.Session, id string) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionOperationCancel, func() tea.Msg {
 		job, err := session.Frontend.Operations().Cancel(context.Background(), id)
 		return operationCancelledMsg{job: job, err: err}
-	}
+	})
 }
 
 func upgradeSessionCmd(session *runtimeadapter.Session) tea.Cmd {
-	return func() tea.Msg {
+	return guardSessionAction(session, frontend.ActionServerSwitchTarget, func() tea.Msg {
 		return upgradedMsg{err: session.UpgradeToPersistent(context.Background())}
-	}
+	})
 }
 
 func openBrowserCmd(url string) tea.Cmd {
