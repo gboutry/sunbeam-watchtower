@@ -35,6 +35,7 @@ func Run(ctx context.Context, opts Options) error {
 		Verbose:        opts.Verbose,
 		LogWriter:      opts.ErrOut,
 		ExecutablePath: opts.ExecutablePath,
+		TargetPolicy:   runtimeadapter.TargetPolicyPreferEmbedded,
 	})
 	if err != nil {
 		return err

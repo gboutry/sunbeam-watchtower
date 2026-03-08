@@ -1,13 +1,10 @@
 package cli
 
 import (
-	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"os"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
@@ -18,7 +15,6 @@ import (
 
 // Options holds resolved CLI state shared across commands.
 type Options struct {
-	Config         *config.Config
 	ConfigPath     string
 	Verbose        bool
 	Output         string // "table", "json", "yaml"
@@ -26,12 +22,15 @@ type Options struct {
 	Logger         *slog.Logger
 	Out            io.Writer
 	ErrOut         io.Writer
-	App            *app.App
-	Client         *client.Client
 	ServerAddr     string // external server address (--server / WATCHTOWER_SERVER)
 	ExecutablePath string
 
-	embeddedSrv    *api.Server // auto-started embedded server
+	Session *runtimeadapter.Session
+
+	Client *client.Client
+	App    *app.App
+
+	config         *config.Config
 	frontendFacade *frontend.ClientFacade
 	frontendClient *client.Client
 	frontendApp    *app.App
@@ -39,12 +38,23 @@ type Options struct {
 
 // Frontend returns the shared client-side frontend facade for the current command execution.
 func (o *Options) Frontend() *frontend.ClientFacade {
-	if o.frontendFacade == nil || o.frontendClient != o.Client || o.frontendApp != o.App {
-		o.frontendFacade = frontend.NewClientFacade(frontend.NewClientTransport(o.Client), o.App)
-		o.frontendClient = o.Client
-		o.frontendApp = o.App
+	if o.Session == nil {
+		if o.frontendFacade == nil || o.frontendClient != o.Client || o.frontendApp != o.App {
+			o.frontendFacade = frontend.NewClientFacade(frontend.NewClientTransport(o.Client), o.App)
+			o.frontendClient = o.Client
+			o.frontendApp = o.App
+		}
+		return o.frontendFacade
 	}
-	return o.frontendFacade
+	return o.Session.Frontend
+}
+
+// Application returns the app for the current command execution.
+func (o *Options) Application() *app.App {
+	if o.Session != nil {
+		return o.Session.App
+	}
+	return o.App
 }
 
 // NewRootCmd creates the root watchtower command with all subcommands.
@@ -90,69 +100,54 @@ func NewRootCmd(opts *Options) *cobra.Command {
 
 			opts.Logger = runtimeadapter.NewLogger(opts.Verbose, opts.ErrOut)
 
+			if commandNeedsSession(cmd) {
+				session, err := runtimeadapter.NewSession(cmd.Context(), runtimeadapter.Options{
+					ConfigPath:     opts.ConfigPath,
+					ServerAddr:     opts.ServerAddr,
+					Verbose:        opts.Verbose,
+					Logger:         opts.Logger,
+					LogWriter:      opts.ErrOut,
+					ExecutablePath: opts.ExecutablePath,
+					TargetPolicy:   targetPolicyForCommand(cmd),
+				})
+				if err != nil {
+					return err
+				}
+				opts.Session = session
+				opts.config = session.Config
+				opts.ServerAddr = session.Target().Address
+				return nil
+			}
+
 			if commandNeedsConfig(cmd) {
 				cfg, err := config.Load(opts.ConfigPath)
 				if err != nil {
 					return err
 				}
-				opts.Config = cfg
+				opts.config = cfg
 			}
 
 			if commandNeedsApp(cmd) {
-				opts.App = app.NewAppWithOptions(opts.Config, opts.Logger, app.Options{
-					RuntimeMode: runtimeModeForCommand(cmd, opts),
+				opts.App = app.NewAppWithOptions(opts.config, opts.Logger, app.Options{
+					RuntimeMode: app.RuntimeModePersistent,
 				})
-			}
-
-			if commandNeedsClient(cmd) {
-				manager, err := newLocalServerManager(opts)
-				if err != nil {
-					return err
-				}
-				daemonStatus, err := manager.Status(cmd.Context())
-				if err != nil {
-					return err
-				}
-
-				switch clientTargetModeForCommand(cmd, opts.ServerAddr, daemonStatus.Running) {
-				case clientTargetExplicit:
-					opts.Client = client.NewClient(opts.ServerAddr)
-				case clientTargetDaemon:
-					opts.ServerAddr = daemonStatus.Address
-					opts.Client = client.NewClient(daemonStatus.Address)
-				case clientTargetEnsureDaemon:
-					status, started, err := manager.EnsureRunning(cmd.Context())
-					if err != nil {
-						return err
-					}
-					if started {
-						opts.Logger.Info("started local watchtower server", "address", status.Address, "pid", status.PID, "log_file", status.LogFile)
-					}
-					opts.ServerAddr = status.Address
-					opts.Client = client.NewClient(status.Address)
-				case clientTargetEmbedded:
-					srv := runtimeadapter.NewConfiguredServer(opts.Logger, opts.App, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
-					if err := srv.Start(); err != nil {
-						return err
-					}
-					opts.embeddedSrv = srv
-					opts.Client = client.NewClient("http://" + srv.Addr())
-				}
 			}
 			return nil
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-			var err error
-			if opts.embeddedSrv != nil {
-				err = opts.embeddedSrv.Shutdown(context.Background())
+			if opts.Session != nil {
+				err := opts.Session.Close()
+				opts.Session = nil
+				opts.config = nil
+				return err
 			}
 			if opts.App != nil {
-				err = errors.Join(err, opts.App.Close())
+				err := opts.App.Close()
+				opts.App = nil
+				opts.config = nil
+				return err
 			}
-			opts.frontendFacade = nil
-			opts.frontendClient = nil
-			opts.frontendApp = nil
-			return err
+			return nil
 		},
 	}
 

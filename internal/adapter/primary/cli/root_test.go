@@ -5,36 +5,43 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"strings"
 	"testing"
 
+	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
-	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 )
 
-func TestOptionsFrontendCachesPerClientAndApp(t *testing.T) {
-	opts := &Options{
-		Client: client.NewClient("http://example.invalid"),
-	}
+func TestOptionsFrontendUsesSessionFacade(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 
-	first := opts.Frontend()
-	second := opts.Frontend()
-	if first != second {
-		t.Fatal("Frontend() should cache the facade when client/app are unchanged")
+	session, err := runtimeadapter.NewSession(context.Background(), runtimeadapter.Options{
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: runtimeadapter.TargetPolicyPreferEmbedded,
+	})
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
 	}
+	defer session.Close()
 
-	opts.Client = client.NewClient("http://example-2.invalid")
-	third := opts.Frontend()
-	if third == second {
-		t.Fatal("Frontend() should rebuild the facade when the client changes")
+	opts := &Options{Session: session}
+	if opts.Frontend() != session.Frontend {
+		t.Fatal("Frontend() should return the session facade")
 	}
+	if opts.Application() != session.App {
+		t.Fatal("Application() should return the session app")
+	}
+}
 
+func TestOptionsApplicationFallsBackToStandaloneApp(t *testing.T) {
+	opts := &Options{}
 	opts.App = app.NewApp(&config.Config{}, discardTestLogger())
-	fourth := opts.Frontend()
-	if fourth == third {
-		t.Fatal("Frontend() should rebuild the facade when the app changes")
+
+	if opts.Application() != opts.App {
+		t.Fatal("Application() should return the standalone app when no session is active")
 	}
 }
 

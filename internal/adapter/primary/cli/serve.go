@@ -32,7 +32,7 @@ func newServeCmd(opts *Options) *cobra.Command {
 				serverOpts.ListenAddr = listen
 			}
 
-			srv := runtimeadapter.NewConfiguredServer(opts.Logger, opts.App, serverOpts)
+			srv := runtimeadapter.NewConfiguredServer(opts.Logger, opts.Application(), serverOpts)
 
 			if err := srv.Start(); err != nil {
 				return fmt.Errorf("starting server: %w", err)

@@ -532,7 +532,8 @@ func newEmbeddedTestSession(t *testing.T) *runtimeadapter.Session {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 
 	session, err := runtimeadapter.NewSession(context.Background(), runtimeadapter.Options{
-		LogWriter: &bytes.Buffer{},
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: runtimeadapter.TargetPolicyPreferEmbedded,
 	})
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)

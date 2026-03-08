@@ -62,7 +62,7 @@ func TestCommandNeedsPersistentServer(t *testing.T) {
 	})
 }
 
-func TestClientTargetModeForCommand(t *testing.T) {
+func TestTargetPolicyForCommand(t *testing.T) {
 	auth := &cobra.Command{Use: "auth"}
 	authStatus := &cobra.Command{Use: "status"}
 	auth.AddCommand(authStatus)
@@ -71,17 +71,11 @@ func TestClientTargetModeForCommand(t *testing.T) {
 	reviewList := &cobra.Command{Use: "list"}
 	review.AddCommand(reviewList)
 
-	if got := clientTargetModeForCommand(authStatus, "http://example", false); got != clientTargetExplicit {
-		t.Fatalf("explicit target mode = %v, want %v", got, clientTargetExplicit)
+	if got := targetPolicyForCommand(authStatus); got != runtimeadapter.TargetPolicyRequirePersistent {
+		t.Fatalf("auth policy = %v, want %v", got, runtimeadapter.TargetPolicyRequirePersistent)
 	}
-	if got := clientTargetModeForCommand(reviewList, "", true); got != clientTargetDaemon {
-		t.Fatalf("daemon target mode = %v, want %v", got, clientTargetDaemon)
-	}
-	if got := clientTargetModeForCommand(authStatus, "", false); got != clientTargetEnsureDaemon {
-		t.Fatalf("auth target mode = %v, want %v", got, clientTargetEnsureDaemon)
-	}
-	if got := clientTargetModeForCommand(reviewList, "", false); got != clientTargetEmbedded {
-		t.Fatalf("review target mode = %v, want %v", got, clientTargetEmbedded)
+	if got := targetPolicyForCommand(reviewList); got != runtimeadapter.TargetPolicyPreferExistingDaemon {
+		t.Fatalf("review policy = %v, want %v", got, runtimeadapter.TargetPolicyPreferExistingDaemon)
 	}
 }
 

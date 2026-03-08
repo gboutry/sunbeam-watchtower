@@ -4,17 +4,6 @@ import (
 	"github.com/spf13/cobra"
 
 	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
-	"github.com/gboutry/sunbeam-watchtower/internal/app"
-)
-
-type clientTargetMode int
-
-const (
-	clientTargetNone clientTargetMode = iota
-	clientTargetExplicit
-	clientTargetDaemon
-	clientTargetEnsureDaemon
-	clientTargetEmbedded
 )
 
 func commandNeedsConfig(cmd *cobra.Command) bool {
@@ -32,7 +21,7 @@ func commandSkipsConfig(cmd *cobra.Command) bool {
 	}
 }
 
-func commandNeedsClient(cmd *cobra.Command) bool {
+func commandNeedsSession(cmd *cobra.Command) bool {
 	switch {
 	case cmd.Name() == "version":
 		return false
@@ -47,12 +36,10 @@ func commandNeedsClient(cmd *cobra.Command) bool {
 
 func commandNeedsApp(cmd *cobra.Command) bool {
 	switch {
-	case cmd.Name() == "version":
-		return false
-	case isServerLifecycleCommand(cmd):
-		return false
-	default:
+	case cmd.Name() == "serve":
 		return true
+	default:
+		return false
 	}
 }
 
@@ -89,29 +76,12 @@ func isServerLifecycleCommand(cmd *cobra.Command) bool {
 	return cmd.Parent().Name() == "server"
 }
 
-func runtimeModeForCommand(cmd *cobra.Command, opts *Options) app.RuntimeMode {
+func targetPolicyForCommand(cmd *cobra.Command) runtimeadapter.TargetPolicy {
 	switch {
-	case cmd.Name() == "serve":
-		return app.RuntimeModePersistent
-	case opts.ServerAddr != "":
-		return app.RuntimeModeEphemeral
-	default:
-		return app.RuntimeModeEphemeral
-	}
-}
-
-func clientTargetModeForCommand(cmd *cobra.Command, explicitServer string, daemonRunning bool) clientTargetMode {
-	switch {
-	case !commandNeedsClient(cmd):
-		return clientTargetNone
-	case explicitServer != "":
-		return clientTargetExplicit
-	case daemonRunning:
-		return clientTargetDaemon
 	case commandNeedsPersistentServer(cmd):
-		return clientTargetEnsureDaemon
+		return runtimeadapter.TargetPolicyRequirePersistent
 	default:
-		return clientTargetEmbedded
+		return runtimeadapter.TargetPolicyPreferExistingDaemon
 	}
 }
 
