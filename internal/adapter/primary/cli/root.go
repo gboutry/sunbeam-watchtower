@@ -9,6 +9,7 @@ import (
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
+	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
@@ -46,25 +47,6 @@ func (o *Options) Frontend() *frontend.ClientFacade {
 	return o.frontendFacade
 }
 
-// envDefaults applies WATCHTOWER_* environment variables as defaults.
-func envDefaults(opts *Options) {
-	if v := os.Getenv("WATCHTOWER_CONFIG"); v != "" && opts.ConfigPath == "" {
-		opts.ConfigPath = v
-	}
-	if v := os.Getenv("WATCHTOWER_VERBOSE"); v != "" && !opts.Verbose {
-		opts.Verbose = v == "1" || v == "true" || v == "TRUE" || v == "True"
-	}
-	if v := os.Getenv("WATCHTOWER_OUTPUT"); v != "" && opts.Output == "table" {
-		opts.Output = v
-	}
-	if v := os.Getenv("WATCHTOWER_NO_COLOR"); v != "" && !opts.NoColor {
-		opts.NoColor = v == "1" || v == "true" || v == "TRUE" || v == "True"
-	}
-	if v := os.Getenv("WATCHTOWER_SERVER"); v != "" && opts.ServerAddr == "" {
-		opts.ServerAddr = v
-	}
-}
-
 // NewRootCmd creates the root watchtower command with all subcommands.
 func NewRootCmd(opts *Options) *cobra.Command {
 	if opts.Out == nil {
@@ -81,13 +63,32 @@ func NewRootCmd(opts *Options) *cobra.Command {
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Apply env var defaults for flags not explicitly set.
-			envDefaults(opts)
-
-			level := slog.LevelInfo
-			if opts.Verbose {
-				level = slog.LevelDebug
+			runtimeOpts := runtimeadapter.Options{
+				ConfigPath: opts.ConfigPath,
+				ServerAddr: opts.ServerAddr,
+				Verbose:    opts.Verbose,
 			}
-			opts.Logger = slog.New(slog.NewTextHandler(opts.ErrOut, &slog.HandlerOptions{Level: level}))
+			runtimeadapter.ApplyEnvDefaults(&runtimeOpts)
+			opts.ConfigPath = runtimeOpts.ConfigPath
+			opts.ServerAddr = runtimeOpts.ServerAddr
+			opts.Verbose = runtimeOpts.Verbose
+			if v := os.Getenv("WATCHTOWER_CONFIG"); v != "" && opts.ConfigPath == "" {
+				opts.ConfigPath = v
+			}
+			if v := os.Getenv("WATCHTOWER_VERBOSE"); v != "" && !opts.Verbose {
+				opts.Verbose = v == "1" || v == "true" || v == "TRUE" || v == "True"
+			}
+			if v := os.Getenv("WATCHTOWER_OUTPUT"); v != "" && opts.Output == "table" {
+				opts.Output = v
+			}
+			if v := os.Getenv("WATCHTOWER_NO_COLOR"); v != "" && !opts.NoColor {
+				opts.NoColor = v == "1" || v == "true" || v == "TRUE" || v == "True"
+			}
+			if v := os.Getenv("WATCHTOWER_SERVER"); v != "" && opts.ServerAddr == "" {
+				opts.ServerAddr = v
+			}
+
+			opts.Logger = runtimeadapter.NewLogger(opts.Verbose, opts.ErrOut)
 
 			if commandNeedsConfig(cmd) {
 				cfg, err := config.Load(opts.ConfigPath)
@@ -108,7 +109,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				daemonStatus, err := manager.status(cmd.Context())
+				daemonStatus, err := manager.Status(cmd.Context())
 				if err != nil {
 					return err
 				}
@@ -120,7 +121,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 					opts.ServerAddr = daemonStatus.Address
 					opts.Client = client.NewClient(daemonStatus.Address)
 				case clientTargetEnsureDaemon:
-					status, started, err := manager.ensureRunning(cmd.Context())
+					status, started, err := manager.EnsureRunning(cmd.Context())
 					if err != nil {
 						return err
 					}
@@ -130,7 +131,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 					opts.ServerAddr = status.Address
 					opts.Client = client.NewClient(status.Address)
 				case clientTargetEmbedded:
-					srv := newConfiguredServer(opts.Logger, opts.App, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
+					srv := runtimeadapter.NewConfiguredServer(opts.Logger, opts.App, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
 					if err := srv.Start(); err != nil {
 						return err
 					}

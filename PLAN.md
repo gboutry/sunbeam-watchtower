@@ -47,7 +47,7 @@ The bug correlation system is one of the most important features. Its purpose is
 Sunbeam Watchtower now follows a stricter hexagonal layout:
 
 - **Entrypoint**: `cmd/watchtower`
-- **Primary adapters**: `internal/adapter/primary/api`, `internal/adapter/primary/cli`, and `internal/adapter/primary/frontend`
+- **Primary adapters**: `internal/adapter/primary/api`, `internal/adapter/primary/cli`, `internal/adapter/primary/frontend`, `internal/adapter/primary/runtime`, and `internal/adapter/primary/tui`
 - **Composition root**: `internal/app`
 - **Core ports**: `internal/core/port` (interfaces only)
 - **Core services**: `internal/core/service/*`
@@ -75,7 +75,10 @@ internal/
 ├── adapter/
 │   ├── primary/
 │   │   ├── api/
-│   │   └── cli/
+│   │   ├── cli/
+│   │   ├── frontend/
+│   │   ├── runtime/
+│   │   └── tui/
 │   └── secondary/
 │       ├── bugcache/
 │       ├── distrocache/
@@ -217,6 +220,9 @@ This distinction is important: stateful features must be designed around persist
 
 ## Recent refactor outcomes
 
+- added a first `watchtower-tui` primary adapter and separate binary, with an MVP Bubble Tea shell for `Dashboard`, `Builds`, and `Releases`, plus bottom-bar META surfaces for auth, operations, cache, server/about, and help
+- extracted shared frontend bootstrap/runtime concerns into `internal/adapter/primary/runtime`, so the CLI and TUI now share env-default resolution, logger setup, embedded-server startup, local-daemon management, and frontend session wiring instead of duplicating that logic
+- implemented the TUI runtime policy agreed for the MVP: `watchtower-tui` starts embedded by default, prompts before switching to the local persistent daemon for auth and async actions, and then stays on the daemon for the rest of the session once upgraded
 - migrated the old `internal/api`, `internal/cli`, `internal/service`, and `internal/port` layout into the new `internal/adapter/*` and `internal/core/*` split
 - moved reusable client and contract packages to root `pkg/`
 - introduced public config DTOs under `pkg/dto/v1`, so `pkg/client` no longer leaks `internal/config`
@@ -565,10 +571,11 @@ The prefix-based discovery is implemented via:
 
 ### Remaining follow-ups
 
-These are still the main gaps before TUI and MCP work:
+These are still the main gaps before broader TUI and MCP work:
 
 - Launchpad auth now has an application/API surface, but it is still Launchpad-only; future work should extend the same model to GitHub/Gerrit when authenticated workflows are needed
-- the TUI/MCP adapters still need to consume the shared frontend/client facade and persistent-server operation model instead of inventing parallel runtime access patterns
+- the initial TUI now consumes the shared frontend facade and runtime layer, but only `Dashboard`, `Builds`, and `Releases` are implemented; `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects` still need first-class workflow views
+- the TUI does not yet expose cache mutation, config browsing beyond server/about context, or direct build retry/cancel flows; those still need dedicated frontend/API decisions where required
 - `internal/app` still has bootstrap logic that should continue moving into focused modules so the composition root remains easy to evolve in parallel
 - environment-sensitive test assumptions still need targeted cleanup, especially around loopback-bound API tests and any host-dependent git/runtime behavior
 
