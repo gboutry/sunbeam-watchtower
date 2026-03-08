@@ -4,6 +4,32 @@ Every feature implementation must be followed by a sync to the PLAN.md file at r
 
 Non-obvious behaviours encountered during development.
 
+## Runtime model
+
+### Stateful features are persistent-server-first
+
+Auth flows, async operations, and any workflow that claims durable state must be designed around persistent server semantics first. Embedded mode is convenience-only and must not pretend to preserve durable state across invocations.
+
+### Local paths stay local
+
+For split workflows, client-side code may inspect or prepare local worktrees, but the server must receive prepared references rather than raw local filesystem access.
+
+## Architecture guardrails
+
+### Frontends should reuse shared frontend/runtime seams
+
+CLI, TUI, and API work should go through `internal/adapter/primary/frontend` and `internal/adapter/primary/runtime` where possible instead of adding new raw `pkg/client` call sites or wiring business flows directly out of `internal/app`.
+
+### Adapter boundaries are enforced mechanically
+
+Primary adapters must not import secondary adapters directly, `internal/adapter/*` packages must not define interfaces, and boundary changes should come with matching architecture-test updates instead of one-off exceptions.
+
+## Quality gates
+
+### Changed-package coverage is part of the merge contract
+
+`tools/coverageguard`, `pre-commit`, and CI enforce changed-package coverage floors. Feature work in a guarded package should normally include the tests needed to keep that package above its threshold.
+
 ## Launchpad API
 
 ### Creation endpoints return empty bodies
