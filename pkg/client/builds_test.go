@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func TestBuildsTriggerUsesTargetProject(t *testing.T) {
+func TestBuildsTriggerUsesTargetRef(t *testing.T) {
 	var body map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -23,18 +23,18 @@ func TestBuildsTriggerUsesTargetProject(t *testing.T) {
 	defer ts.Close()
 
 	_, err := NewClient(ts.URL).BuildsTrigger(context.Background(), BuildsTriggerOptions{
-		Project:       "demo",
-		TargetProject: "target-project",
+		Project:   "demo",
+		TargetRef: "target-ref",
 	})
 	if err != nil {
 		t.Fatalf("BuildsTrigger() error = %v", err)
 	}
-	if body["target_project"] != "target-project" {
-		t.Fatalf("target_project = %v, want target-project", body["target_project"])
+	if body["target_ref"] != "target-ref" {
+		t.Fatalf("target_ref = %v, want target-ref", body["target_ref"])
 	}
 }
 
-func TestBuildsListUsesTargetProjectQuery(t *testing.T) {
+func TestBuildsListUsesTargetRefQuery(t *testing.T) {
 	var rawQuery string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rawQuery = r.URL.RawQuery
@@ -43,17 +43,17 @@ func TestBuildsListUsesTargetProjectQuery(t *testing.T) {
 	defer ts.Close()
 
 	_, err := NewClient(ts.URL).BuildsList(context.Background(), BuildsListOptions{
-		TargetProject: "target-project",
+		TargetRef: "target-ref",
 	})
 	if err != nil {
 		t.Fatalf("BuildsList() error = %v", err)
 	}
-	if !strings.Contains(rawQuery, "target_project=target-project") {
-		t.Fatalf("query = %q, want target_project", rawQuery)
+	if !strings.Contains(rawQuery, "target_ref=target-ref") {
+		t.Fatalf("query = %q, want target_ref", rawQuery)
 	}
 }
 
-func TestBuildsDownloadUsesTargetProject(t *testing.T) {
+func TestBuildsDownloadUsesTargetRef(t *testing.T) {
 	var body map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -64,18 +64,18 @@ func TestBuildsDownloadUsesTargetProject(t *testing.T) {
 	defer ts.Close()
 
 	err := NewClient(ts.URL).BuildsDownload(context.Background(), BuildsDownloadOptions{
-		Project:       "demo",
-		TargetProject: "target-project",
+		Project:   "demo",
+		TargetRef: "target-ref",
 	})
 	if err != nil {
 		t.Fatalf("BuildsDownload() error = %v", err)
 	}
-	if body["target_project"] != "target-project" {
-		t.Fatalf("target_project = %v, want target-project", body["target_project"])
+	if body["target_ref"] != "target-ref" {
+		t.Fatalf("target_ref = %v, want target-ref", body["target_ref"])
 	}
 }
 
-func TestBuildsTriggerAsyncUsesTargetProject(t *testing.T) {
+func TestBuildsTriggerAsyncUsesTargetRef(t *testing.T) {
 	var body map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -86,8 +86,8 @@ func TestBuildsTriggerAsyncUsesTargetProject(t *testing.T) {
 	defer ts.Close()
 
 	got, err := NewClient(ts.URL).BuildsTriggerAsync(context.Background(), BuildsTriggerOptions{
-		Project:       "demo",
-		TargetProject: "target-project",
+		Project:   "demo",
+		TargetRef: "target-ref",
 	})
 	if err != nil {
 		t.Fatalf("BuildsTriggerAsync() error = %v", err)
@@ -95,7 +95,7 @@ func TestBuildsTriggerAsyncUsesTargetProject(t *testing.T) {
 	if got.ID != "op-1" {
 		t.Fatalf("job = %+v, want op-1", got)
 	}
-	if body["target_project"] != "target-project" {
-		t.Fatalf("target_project = %v, want target-project", body["target_project"])
+	if body["target_ref"] != "target-ref" {
+		t.Fatalf("target_ref = %v, want target-ref", body["target_ref"])
 	}
 }

@@ -164,8 +164,8 @@ type PreparedBuildRecipe struct {
 // durable build workflow without needing local filesystem access.
 type PreparedBuildSource struct {
 	Backend       PreparedBuildBackend           `json:"backend,omitempty" yaml:"backend,omitempty"`
-	TargetProject string                         `json:"target_project,omitempty" yaml:"target_project,omitempty"`
-	Repository    string                         `json:"repository,omitempty" yaml:"repository,omitempty"`
+	TargetRef     string                         `json:"target_ref,omitempty" yaml:"target_ref,omitempty"`
+	RepositoryRef string                         `json:"repository_ref,omitempty" yaml:"repository_ref,omitempty"`
 	Recipes       map[string]PreparedBuildRecipe `json:"recipes,omitempty" yaml:"recipes,omitempty"`
 }
 
@@ -176,7 +176,7 @@ func (p *PreparedBuildSource) Normalize() *PreparedBuildSource {
 	}
 
 	normalized := *p
-	if normalized.Backend == "" && (normalized.TargetProject != "" || normalized.Repository != "" || len(normalized.Recipes) > 0) {
+	if normalized.Backend == "" && (normalized.TargetRef != "" || normalized.RepositoryRef != "" || len(normalized.Recipes) > 0) {
 		normalized.Backend = PreparedBuildBackendLaunchpad
 	}
 	return &normalized

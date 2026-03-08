@@ -7,8 +7,8 @@ import "testing"
 
 func TestPreparedBuildSourceNormalizeDefaultsBackend(t *testing.T) {
 	source := (&PreparedBuildSource{
-		TargetProject: "lp-project",
-		Repository:    "/repo/demo",
+		TargetRef:     "lp-project",
+		RepositoryRef: "/repo/demo",
 		Recipes: map[string]PreparedBuildRecipe{
 			"tmp-keystone": {SourceRef: "/ref/tmp-keystone", BuildPath: "rocks/keystone"},
 		},
@@ -20,7 +20,7 @@ func TestPreparedBuildSourceNormalizeDefaultsBackend(t *testing.T) {
 	if source.Backend != PreparedBuildBackendLaunchpad {
 		t.Fatalf("Backend = %q, want %q", source.Backend, PreparedBuildBackendLaunchpad)
 	}
-	if source.TargetProject != "lp-project" || source.Repository != "/repo/demo" {
+	if source.TargetRef != "lp-project" || source.RepositoryRef != "/repo/demo" {
 		t.Fatalf("unexpected normalized source: %+v", source)
 	}
 	recipe := source.Recipes["tmp-keystone"]
@@ -32,14 +32,14 @@ func TestPreparedBuildSourceNormalizeDefaultsBackend(t *testing.T) {
 func TestPreparedBuildSourceNormalizePreservesGenericFields(t *testing.T) {
 	source := (&PreparedBuildSource{
 		Backend:       PreparedBuildBackendLaunchpad,
-		TargetProject: "generic-project",
-		Repository:    "/repo/generic",
+		TargetRef:     "generic-project",
+		RepositoryRef: "/repo/generic",
 		Recipes: map[string]PreparedBuildRecipe{
 			"tmp-keystone": {SourceRef: "/ref/generic", BuildPath: "rocks/keystone"},
 		},
 	}).Normalize()
 
-	if source.TargetProject != "generic-project" || source.Repository != "/repo/generic" {
+	if source.TargetRef != "generic-project" || source.RepositoryRef != "/repo/generic" {
 		t.Fatalf("Normalize() overwrote generic fields: %+v", source)
 	}
 	recipe := source.Recipes["tmp-keystone"]
