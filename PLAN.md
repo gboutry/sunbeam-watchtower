@@ -258,6 +258,7 @@ This distinction is important: stateful features must be designed around persist
 - added `project.release.skip_artifacts` so mono repos can explicitly exclude discovered snap/charm artifacts that are not published upstream, preventing known no-op artifacts from turning release-cache syncs into hard failures
 - corrected the releases list timestamp semantics so flat release rows now expose per-channel `released_at` data from the store, while artifact-level snapshot timestamps remain cache-sync metadata instead of being mislabeled as publication times
 - documented a concrete `project.release` example in `README.md`, including `track_map` and cross-artifact branch tracking, so the repo-driven release model is described with an actual user-facing config snippet instead of only code-level types and tests
+- grouped the root CLI help surface into `Workflows` and `Meta Commands`, so operational commands such as `auth`, `cache`, `serve`, `server`, and `version` are visually separated from the day-to-day workflow commands in Cobra help output
 
 ## Next small step
 

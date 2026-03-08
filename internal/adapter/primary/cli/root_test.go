@@ -6,6 +6,7 @@ package cli
 import (
 	"bytes"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
@@ -34,6 +35,40 @@ func TestOptionsFrontendCachesPerClientAndApp(t *testing.T) {
 	fourth := opts.Frontend()
 	if fourth == third {
 		t.Fatal("Frontend() should rebuild the facade when the app changes")
+	}
+}
+
+func TestNewRootCmd_HelpGroupsCommands(t *testing.T) {
+	var out bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &out,
+	}
+
+	cmd := NewRootCmd(opts)
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{
+		"Workflows",
+		"Meta Commands",
+		"review",
+		"build",
+		"releases",
+		"auth",
+		"cache",
+		"serve",
+		"server",
+		"version",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("help output missing %q:\n%s", want, help)
+		}
 	}
 }
 
