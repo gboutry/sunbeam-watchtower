@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sort"
 	"time"
 
@@ -133,10 +132,9 @@ func (a *App) discoverTrackedReleases(ctx context.Context) ([]dto.TrackedPublica
 
 // BuildReleaseSources creates the release sources supported by the current process.
 func (a *App) BuildReleaseSources() map[dto.ArtifactType]port.ReleaseSource {
-	client := &http.Client{Timeout: 30 * time.Second}
 	return map[dto.ArtifactType]port.ReleaseSource{
-		dto.ArtifactSnap:  snapstore.NewSource(client),
-		dto.ArtifactCharm: charmhub.NewSource(client),
+		dto.ArtifactSnap:  snapstore.NewSource(a.upstreamHTTPClient("snapstore", 30*time.Second)),
+		dto.ArtifactCharm: charmhub.NewSource(a.upstreamHTTPClient("charmhub", 30*time.Second)),
 	}
 }
 

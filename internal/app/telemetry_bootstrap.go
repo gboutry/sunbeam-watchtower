@@ -31,7 +31,7 @@ func (a *App) Telemetry(ctx context.Context) (*oteladapter.Telemetry, error) {
 		if !otelConfigured(a.Config) {
 			return
 		}
-		a.telemetry, a.telemetryErr = oteladapter.New(ctx, a.Config.OTel, a.Logger, &telemetrySnapshotSource{app: a})
+		a.telemetry, a.telemetryErr = oteladapter.New(ctx, a.Config.OTel, a.Logger, newTelemetrySnapshotSource(a))
 		if a.telemetryErr == nil && a.telemetry != nil {
 			a.Logger = a.telemetry.Logger(a.Logger)
 		}
@@ -52,6 +52,23 @@ func otelConfigured(cfg *config.Config) bool {
 
 type telemetrySnapshotSource struct {
 	app *App
+}
+
+func newTelemetrySnapshotSource(app *App) *oteladapter.SnapshotSource {
+	source := &telemetrySnapshotSource{app: app}
+	return &oteladapter.SnapshotSource{
+		AuthSnapshot:      source.AuthSnapshot,
+		OperationSnapshot: source.OperationSnapshot,
+		ProjectSnapshot:   source.ProjectSnapshot,
+		BuildSnapshot:     source.BuildSnapshot,
+		ReleaseSnapshot:   source.ReleaseSnapshot,
+		ReviewSnapshot:    source.ReviewSnapshot,
+		CommitSnapshot:    source.CommitSnapshot,
+		BugSnapshot:       source.BugSnapshot,
+		PackageSnapshot:   source.PackageSnapshot,
+		ExcusesSnapshot:   source.ExcusesSnapshot,
+		CacheSnapshot:     source.CacheSnapshot,
+	}
 }
 
 func (s *telemetrySnapshotSource) AuthSnapshot(ctx context.Context) (*oteladapter.AuthSnapshot, error) {
@@ -388,7 +405,3 @@ func defaultMetricValue(value string) string {
 	}
 	return strings.TrimSpace(value)
 }
-
-var (
-	_ oteladapter.SnapshotSource = (*telemetrySnapshotSource)(nil)
-)

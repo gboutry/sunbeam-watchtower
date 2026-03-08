@@ -7,7 +7,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/andygrunwald/go-gerrit"
 	"github.com/google/go-github/v68/github"
@@ -24,6 +26,10 @@ import (
 // NewLaunchpadClient creates an LP client with credentials from the credential store.
 // Returns nil if no credentials are available.
 func NewLaunchpadClient(store port.LaunchpadCredentialStore, logger *slog.Logger) *lp.Client {
+	return newLaunchpadClient(store, logger, nil)
+}
+
+func newLaunchpadClient(store port.LaunchpadCredentialStore, logger *slog.Logger, httpClient *http.Client) *lp.Client {
 	record, err := store.Load(context.Background())
 	if err != nil {
 		logger.Warn("failed to load LP credentials", "error", err)
@@ -32,12 +38,12 @@ func NewLaunchpadClient(store port.LaunchpadCredentialStore, logger *slog.Logger
 	if record == nil || record.Credentials == nil {
 		return nil
 	}
-	return lp.NewClient(record.Credentials, logger)
+	return lp.NewClient(record.Credentials, logger, httpClient)
 }
 
 // NewLaunchpadForge creates a LaunchpadForge client, or nil if no auth is available.
 func NewLaunchpadForge(store port.LaunchpadCredentialStore, logger *slog.Logger) *forge.LaunchpadForge {
-	client := NewLaunchpadClient(store, logger)
+	client := newLaunchpadClient(store, logger, nil)
 	if client == nil {
 		return nil
 	}
@@ -118,7 +124,7 @@ func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
 		switch code.Forge {
 		case "github":
 			if ghClient == nil {
-				ghClient = forge.NewGitHubForge(github.NewClient(nil))
+				ghClient = forge.NewGitHubForge(github.NewClient(a.upstreamHTTPClient("github", 30*time.Second)))
 			}
 			pf = review.ProjectForge{
 				Forge:     ghClient,
@@ -128,7 +134,7 @@ func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
 		case "gerrit":
 			gc, ok := gerritClients[code.Host]
 			if !ok {
-				client, err := gerrit.NewClient(context.Background(), code.Host, nil)
+				client, err := gerrit.NewClient(context.Background(), code.Host, a.upstreamHTTPClient("gerrit", 30*time.Second))
 				if err != nil {
 					return nil, fmt.Errorf("creating Gerrit client for %s: %w", code.Host, err)
 				}
@@ -142,11 +148,12 @@ func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
 
 		case "launchpad":
 			if lpClient == nil {
-				lpClient = NewLaunchpadForge(a.LaunchpadCredentialStore(), a.Logger)
-			}
-			if lpClient == nil {
-				a.Logger.Warn("skipping Launchpad project (no auth configured)", "project", proj.Name)
-				continue
+				raw := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
+				if raw == nil {
+					a.Logger.Warn("skipping Launchpad project (no auth configured)", "project", proj.Name)
+					continue
+				}
+				lpClient = forge.NewLaunchpadForge(raw)
 			}
 			pf = review.ProjectForge{
 				Forge:     lpClient,
@@ -185,7 +192,7 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 			switch b.Forge {
 			case "launchpad":
 				if lpBugTracker == nil {
-					lpClient := NewLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger)
+					lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
 					if lpClient == nil {
 						a.Logger.Warn("skipping Launchpad bug tracker (no auth configured)", "project", proj.Name)
 						continue

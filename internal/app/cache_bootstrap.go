@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/bugcache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/distrocache"
@@ -47,7 +48,7 @@ func (a *App) DistroCache() (*distrocache.Cache, error) {
 			a.distroErr = err
 			return
 		}
-		a.distroCache, a.distroErr = distrocache.NewCache(path, a.Logger)
+		a.distroCache, a.distroErr = distrocache.NewCache(path, a.Logger, a.upstreamHTTPClient("packages", 5*time.Minute))
 	})
 	return a.distroCache, a.distroErr
 }
@@ -87,7 +88,7 @@ func (a *App) ExcusesCache() (*excusescache.Cache, error) {
 			a.excusesErr = err
 			return
 		}
-		a.excusesCache, a.excusesErr = excusescache.NewCache(path, a.ExcusesSources(), a.Logger)
+		a.excusesCache, a.excusesErr = excusescache.NewCache(path, a.ExcusesSources(), a.Logger, a.upstreamHTTPClient("excuses", 2*time.Minute))
 	})
 	return a.excusesCache, a.excusesErr
 }
