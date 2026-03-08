@@ -115,6 +115,60 @@ type PackagesConfig struct {
 	Upstream *UpstreamConfig         `json:"upstream,omitempty" yaml:"upstream,omitempty"`
 }
 
+type OTelSignalConfig struct {
+	Enabled       bool              `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Endpoint      string            `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Protocol      string            `json:"protocol,omitempty" yaml:"protocol,omitempty"`
+	Insecure      bool              `json:"insecure,omitempty" yaml:"insecure,omitempty"`
+	Headers       map[string]string `json:"headers,omitempty" yaml:"headers,omitempty"`
+	SamplingRatio float64           `json:"sampling_ratio,omitempty" yaml:"sampling_ratio,omitempty"`
+	MinLevel      string            `json:"min_level,omitempty" yaml:"min_level,omitempty"`
+	MirrorStderr  bool              `json:"mirror_stderr,omitempty" yaml:"mirror_stderr,omitempty"`
+}
+
+type OTelMetricsListenerConfig struct {
+	Enabled                bool   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	ListenAddr             string `json:"listen_addr,omitempty" yaml:"listen_addr,omitempty"`
+	Path                   string `json:"path,omitempty" yaml:"path,omitempty"`
+	Runtime                bool   `json:"runtime,omitempty" yaml:"runtime,omitempty"`
+	Process                bool   `json:"process,omitempty" yaml:"process,omitempty"`
+	DefaultRefreshInterval string `json:"default_refresh_interval,omitempty" yaml:"default_refresh_interval,omitempty"`
+}
+
+type OTelCollectorConfig struct {
+	Enabled         bool   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	RefreshInterval string `json:"refresh_interval,omitempty" yaml:"refresh_interval,omitempty"`
+}
+
+type OTelDomainCollectorsConfig struct {
+	Auth       OTelCollectorConfig `json:"auth,omitempty" yaml:"auth,omitempty"`
+	Operations OTelCollectorConfig `json:"operations,omitempty" yaml:"operations,omitempty"`
+	Projects   OTelCollectorConfig `json:"projects,omitempty" yaml:"projects,omitempty"`
+	Builds     OTelCollectorConfig `json:"builds,omitempty" yaml:"builds,omitempty"`
+	Releases   OTelCollectorConfig `json:"releases,omitempty" yaml:"releases,omitempty"`
+	Reviews    OTelCollectorConfig `json:"reviews,omitempty" yaml:"reviews,omitempty"`
+	Commits    OTelCollectorConfig `json:"commits,omitempty" yaml:"commits,omitempty"`
+	Bugs       OTelCollectorConfig `json:"bugs,omitempty" yaml:"bugs,omitempty"`
+	Packages   OTelCollectorConfig `json:"packages,omitempty" yaml:"packages,omitempty"`
+	Excuses    OTelCollectorConfig `json:"excuses,omitempty" yaml:"excuses,omitempty"`
+	Cache      OTelCollectorConfig `json:"cache,omitempty" yaml:"cache,omitempty"`
+}
+
+type OTelMetricsConfig struct {
+	Self       OTelMetricsListenerConfig  `json:"self,omitempty" yaml:"self,omitempty"`
+	Domain     OTelMetricsListenerConfig  `json:"domain,omitempty" yaml:"domain,omitempty"`
+	Collectors OTelDomainCollectorsConfig `json:"collectors,omitempty" yaml:"collectors,omitempty"`
+}
+
+type OTelConfig struct {
+	ServiceName        string            `json:"service_name,omitempty" yaml:"service_name,omitempty"`
+	ServiceNamespace   string            `json:"service_namespace,omitempty" yaml:"service_namespace,omitempty"`
+	ResourceAttributes map[string]string `json:"resource_attributes,omitempty" yaml:"resource_attributes,omitempty"`
+	Metrics            OTelMetricsConfig `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	Traces             OTelSignalConfig  `json:"traces,omitempty" yaml:"traces,omitempty"`
+	Logs               OTelSignalConfig  `json:"logs,omitempty" yaml:"logs,omitempty"`
+}
+
 type Config struct {
 	Launchpad LaunchpadConfig `json:"launchpad" yaml:"launchpad"`
 	GitHub    GitHubConfig    `json:"github" yaml:"github"`
@@ -122,4 +176,5 @@ type Config struct {
 	Projects  []ProjectConfig `json:"projects" yaml:"projects"`
 	Build     BuildConfig     `json:"build" yaml:"build"`
 	Packages  PackagesConfig  `json:"packages,omitempty" yaml:"packages,omitempty"`
+	OTel      OTelConfig      `json:"otel,omitempty" yaml:"otel,omitempty"`
 }

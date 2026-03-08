@@ -51,6 +51,8 @@ type ServerOptions struct {
 	// UnixSocket, if set, makes the server listen on a unix domain socket
 	// instead of TCP.
 	UnixSocket string
+	// Middleware wraps the root HTTP handler before the server starts serving.
+	Middleware func(http.Handler) http.Handler
 }
 
 // Server is the HTTP server for Sunbeam Watchtower.
@@ -66,6 +68,9 @@ type Server struct {
 // NewServer creates a new Server with a chi router and huma API.
 func NewServer(logger *slog.Logger, opts ServerOptions) *Server {
 	router := chi.NewMux()
+	if opts.Middleware != nil {
+		router.Use(opts.Middleware)
+	}
 	cfg := huma.DefaultConfig("Sunbeam Watchtower API", Version)
 	cfg.Components.Schemas = huma.NewMapRegistry("#/components/schemas/", schemaNamer)
 	api := humachi.New(router, cfg)

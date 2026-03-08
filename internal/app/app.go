@@ -4,6 +4,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/distrocache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/excusescache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/gitcache"
+	oteladapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/otel"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/releasecache"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
@@ -74,6 +76,10 @@ type App struct {
 
 	operationServiceOnce sync.Once
 	operationService     *opsvc.Service
+
+	telemetryOnce sync.Once
+	telemetry     *oteladapter.Telemetry
+	telemetryErr  error
 }
 
 // NewApp creates a new App instance.
@@ -123,6 +129,11 @@ func (a *App) Close() error {
 	}
 	if closer, ok := a.operationStore.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if a.telemetry != nil {
+		if err := a.telemetry.Shutdown(context.Background()); err != nil {
 			errs = append(errs, err)
 		}
 	}

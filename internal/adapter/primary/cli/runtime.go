@@ -68,6 +68,17 @@ type localServerManager struct {
 }
 
 func newConfiguredServer(logger *slog.Logger, application *app.App, serverOpts api.ServerOptions) *api.Server {
+	if application != nil {
+		if telemetry, err := application.Telemetry(context.Background()); err == nil && telemetry != nil {
+			serverOpts.Middleware = telemetry.Middleware
+			if wrapped := telemetry.Logger(logger); wrapped != nil {
+				logger = wrapped
+				application.Logger = wrapped
+			}
+		} else if err != nil && logger != nil {
+			logger.Warn("failed to initialize telemetry", "error", err)
+		}
+	}
 	srv := api.NewServer(logger, serverOpts)
 	api.RegisterAuthAPI(srv.API(), application)
 	api.RegisterPackagesAPI(srv.API(), application)

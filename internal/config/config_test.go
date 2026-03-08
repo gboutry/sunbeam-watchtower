@@ -697,3 +697,28 @@ func TestValidate_ReleaseSkipArtifactsRejectsEmptyAndDuplicateValues(t *testing.
 		t.Fatal("Validate() should reject duplicate release.skip_artifacts values")
 	}
 }
+
+func TestValidate_OTelMetricsListenerRequiresAddressWhenEnabled(t *testing.T) {
+	cfg := &Config{OTel: OTelConfig{Metrics: OTelMetricsConfig{Self: OTelMetricsListenerConfig{Enabled: true}}}}
+	if err := cfg.Validate(); err == nil {
+		fatalf := t.Fatalf
+		fatalf("Validate() expected error for enabled self metrics without listen_addr")
+	}
+}
+
+func TestValidate_OTelTraceSignalRequiresEndpointWhenEnabled(t *testing.T) {
+	cfg := &Config{OTel: OTelConfig{Traces: OTelSignalConfig{Enabled: true}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() expected error for enabled traces without endpoint")
+	}
+}
+
+func TestValidate_OTelListenerCollision(t *testing.T) {
+	cfg := &Config{OTel: OTelConfig{Metrics: OTelMetricsConfig{
+		Self:   OTelMetricsListenerConfig{Enabled: true, ListenAddr: "127.0.0.1:9464"},
+		Domain: OTelMetricsListenerConfig{Enabled: true, ListenAddr: "127.0.0.1:9464"},
+	}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() expected error for listener collision")
+	}
+}
