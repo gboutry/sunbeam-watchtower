@@ -28,7 +28,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	var wait, download, async bool
 	var timeout time.Duration
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "trigger <project> [artifacts...]",
 		Short: "Trigger builds for a project",
 		Args:  cobra.MinimumNArgs(1),
@@ -86,7 +86,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 
 			return errors.Join(response.Errors...)
 		},
-	}
+	}, frontend.ActionBuildTrigger)
 
 	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait for builds to complete")
@@ -106,7 +106,7 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 	var all bool
 	var state, source, sha, prefix, owner string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "list [projects...]",
 		Short: "List builds across projects",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -135,7 +135,7 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 
 			return renderBuilds(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), builds)
 		},
-	}
+	}, frontend.ActionBuildList)
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name")
 	cmd.Flags().BoolVar(&all, "all", false, "show all builds (not just active)")
@@ -151,7 +151,7 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 func newBuildDownloadCmd(opts *Options) *cobra.Command {
 	var artifactsDir, source, sha, prefix, owner string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "download <project> [artifacts...]",
 		Short: "Download build artifacts",
 		Args:  cobra.MinimumNArgs(1),
@@ -175,7 +175,7 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 				Owner:        owner,
 			})
 		},
-	}
+	}, frontend.ActionBuildDownload)
 
 	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory (default from config)")
 	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
@@ -190,7 +190,7 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 	var project, owner, prefix string
 	var dryRun bool
 
-	cmd := &cobra.Command{
+	cmd := withActionSelector(&cobra.Command{
 		Use:   "cleanup",
 		Short: "Delete temporary build recipes",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -206,7 +206,7 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 
 			return renderStringList(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), deleted)
 		},
-	}
+	}, "build.cleanup")
 
 	cmd.Flags().StringVar(&project, "project", "", "filter to specific project")
 	cmd.Flags().StringVar(&owner, "owner", "", "LP owner")

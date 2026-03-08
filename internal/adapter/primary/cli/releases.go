@@ -21,7 +21,7 @@ func newReleasesListCmd(opts *Options) *cobra.Command {
 	var names, projects, tracks, branches, risks []string
 	var artifactType string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "list [names...]",
 		Short: "List cached published snap and charm releases",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -39,7 +39,7 @@ func newReleasesListCmd(opts *Options) *cobra.Command {
 			}
 			return renderReleaseList(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), results)
 		},
-	}
+	}, frontend.ActionReleaseList)
 
 	cmd.Flags().StringSliceVar(&names, "name", nil, "filter by published artifact name")
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by watchtower project")
@@ -54,7 +54,7 @@ func newReleasesListCmd(opts *Options) *cobra.Command {
 func newReleasesShowCmd(opts *Options) *cobra.Command {
 	var artifactType, track, branch string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "show <name>",
 		Short: "Show the full cached release matrix for one published artifact",
 		Args:  cobra.ExactArgs(1),
@@ -70,7 +70,7 @@ func newReleasesShowCmd(opts *Options) *cobra.Command {
 			}
 			return renderReleaseShow(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
-	}
+	}, frontend.ActionReleaseShow)
 
 	cmd.Flags().StringVar(&artifactType, "type", "", "artifact type to disambiguate duplicate names (snap|charm)")
 	cmd.Flags().StringVar(&track, "track", "", "optional track filter")

@@ -25,7 +25,7 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 		async    bool
 	)
 
-	cmd := &cobra.Command{
+	cmd := withActionSelector(&cobra.Command{
 		Use:   "sync",
 		Short: "Ensure LP projects have declared series and development focus",
 		Long:  "Iterates over all unique LP projects from bug tracker config entries, ensures each declared series exists (creating if missing), and sets the development focus to the configured series.",
@@ -63,7 +63,7 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 			}
 			return renderProjectSyncResult(opts.Out, opts.Output, styler, syncResult, dryRun)
 		},
-	}
+	}, "project.sync")
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter to specific LP project names")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be done without making changes")

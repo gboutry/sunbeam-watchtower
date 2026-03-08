@@ -1,6 +1,7 @@
 package cli
 
 import (
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 
 	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
@@ -44,9 +45,28 @@ func commandNeedsApp(cmd *cobra.Command) bool {
 }
 
 func commandNeedsPersistentServer(cmd *cobra.Command) bool {
+	actionID := commandActionID(cmd, nil)
+	if actionID != "" {
+		desc := frontend.DescribeAction(actionID)
+		if desc.RuntimeRequirement == frontend.RuntimePersistentRequired {
+			return true
+		}
+	}
+
 	parent := ""
 	if p := cmd.Parent(); p != nil {
 		parent = p.Name()
+	}
+
+	switch actionID {
+	case frontend.ActionBuildTrigger:
+		if cmd.Name() == "trigger" {
+			async, _ := cmd.Flags().GetBool("async")
+			return async
+		}
+	case frontend.ActionProjectSyncApply, frontend.ActionProjectSyncDryRun:
+		async, _ := cmd.Flags().GetBool("async")
+		return async
 	}
 
 	switch parent {

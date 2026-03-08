@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	"github.com/spf13/cobra"
 )
@@ -21,7 +22,7 @@ func newAuthCmd(opts *Options) *cobra.Command {
 }
 
 func newAuthLoginCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "login",
 		Short: "Authenticate with Launchpad (interactive browser flow)",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,11 +52,11 @@ func newAuthLoginCmd(opts *Options) *cobra.Command {
 			}
 			return nil
 		},
-	}
+	}, frontend.ActionAuthLaunchpadBegin)
 }
 
 func newAuthStatusCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "status",
 		Short: "Show authentication status",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -80,11 +81,11 @@ func newAuthStatusCmd(opts *Options) *cobra.Command {
 			}
 			return nil
 		},
-	}
+	}, frontend.ActionAuthStatus)
 }
 
 func newAuthLogoutCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "logout",
 		Short: "Clear persisted Launchpad credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -105,5 +106,5 @@ func newAuthLogoutCmd(opts *Options) *cobra.Command {
 			fmt.Fprintf(opts.Out, "%s persisted Launchpad credentials.\n", styler.Action("Removed"))
 			return nil
 		},
-	}
+	}, frontend.ActionAuthLaunchpadLogout)
 }

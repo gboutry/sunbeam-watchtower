@@ -27,7 +27,7 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 		includeMRs bool
 	)
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "log",
 		Short: "List commits across forges",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -60,7 +60,7 @@ func newCommitLogCmd(opts *Options) *cobra.Command {
 			opts.Logger.Debug("commit log complete", "total_commits", len(result.Commits))
 			return renderCommits(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.Commits)
 		},
-	}
+	}, frontend.ActionCommitLog)
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")
 	cmd.Flags().StringSliceVar(&forges, "forge", nil, "filter by forge type: github, launchpad, gerrit (repeatable)")
@@ -80,7 +80,7 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 		includeMRs bool
 	)
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "track",
 		Short: "Find commits referencing a bug ID",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -109,7 +109,7 @@ func newCommitTrackCmd(opts *Options) *cobra.Command {
 
 			return renderCommits(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.Commits)
 		},
-	}
+	}, frontend.ActionCommitTrack)
 
 	cmd.Flags().StringVar(&bugID, "bug-id", "", "LP bug ID to track (required)")
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")

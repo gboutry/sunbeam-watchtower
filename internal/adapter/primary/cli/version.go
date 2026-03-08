@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/spf13/cobra"
 )
 
@@ -10,7 +11,7 @@ import (
 var Version = "dev"
 
 func newVersionCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -18,5 +19,5 @@ func newVersionCmd(opts *Options) *cobra.Command {
 			fmt.Fprintf(opts.Out, "%s %s\n", styler.Section("watchtower"), Version)
 			return nil
 		},
-	}
+	}, frontend.ActionVersionShow)
 }

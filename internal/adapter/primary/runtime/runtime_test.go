@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/api"
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 )
@@ -71,6 +72,9 @@ func TestNewSession_DefaultsToRemoteWhenServerAddrProvided(t *testing.T) {
 	if got := session.Target().Address; got != "http://127.0.0.1:9999" {
 		t.Fatalf("Target().Address = %q", got)
 	}
+	if got := session.AccessMode(); got != AccessModeFull {
+		t.Fatalf("AccessMode() = %q, want %q", got, AccessModeFull)
+	}
 }
 
 func TestNewSession_PreferEmbeddedFallsBackToEmbedded(t *testing.T) {
@@ -93,6 +97,24 @@ func TestNewSession_PreferEmbeddedFallsBackToEmbedded(t *testing.T) {
 	}
 	if session.Frontend == nil {
 		t.Fatal("session.Frontend = nil")
+	}
+}
+
+func TestNewSession_UsesConfiguredAccessMode(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	session, err := NewSession(context.Background(), Options{
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: TargetPolicyPreferEmbedded,
+		AccessMode:   AccessModeReadOnly,
+	})
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	defer session.Close()
+
+	if got := session.AccessMode(); got != AccessModeReadOnly {
+		t.Fatalf("AccessMode() = %q, want %q", got, AccessModeReadOnly)
 	}
 }
 
@@ -205,4 +227,37 @@ func writeRuntimeHelperWrapper(t *testing.T) string {
 		t.Fatalf("WriteFile(%s) error = %v", wrapper, err)
 	}
 	return wrapper
+}
+
+func TestCheckActionAccess(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      AccessMode
+		actionID  frontend.ActionID
+		override  bool
+		wantError bool
+	}{
+		{name: "full mode allows write", mode: AccessModeFull, actionID: frontend.ActionBuildTrigger},
+		{name: "read only allows read", mode: AccessModeReadOnly, actionID: frontend.ActionBuildDownload},
+		{name: "read only blocks write", mode: AccessModeReadOnly, actionID: frontend.ActionBuildTrigger, wantError: true},
+		{name: "read only override allows write", mode: AccessModeReadOnly, actionID: frontend.ActionBuildTrigger, override: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := CheckActionAccess(tt.mode, tt.actionID, tt.override)
+			if tt.wantError {
+				if err == nil {
+					t.Fatal("CheckActionAccess() error = nil, want error")
+				}
+				if _, ok := err.(*ActionAccessError); !ok {
+					t.Fatalf("CheckActionAccess() error = %T, want *ActionAccessError", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CheckActionAccess() error = %v", err)
+			}
+		})
+	}
 }

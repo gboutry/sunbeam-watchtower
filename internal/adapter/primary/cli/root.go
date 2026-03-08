@@ -19,6 +19,7 @@ type Options struct {
 	Verbose        bool
 	Output         string // "table", "json", "yaml"
 	NoColor        bool
+	AccessMode     runtimeadapter.AccessMode
 	Logger         *slog.Logger
 	Out            io.Writer
 	ErrOut         io.Writer
@@ -99,6 +100,12 @@ func NewRootCmd(opts *Options) *cobra.Command {
 			}
 
 			opts.Logger = runtimeadapter.NewLogger(opts.Verbose, opts.ErrOut)
+			if opts.AccessMode == "" {
+				opts.AccessMode = runtimeadapter.AccessModeFull
+			}
+			if err := preflightCommandAccess(opts, cmd, args); err != nil {
+				return err
+			}
 
 			if commandNeedsSession(cmd) {
 				session, err := runtimeadapter.NewSession(cmd.Context(), runtimeadapter.Options{
@@ -109,6 +116,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 					LogWriter:      opts.ErrOut,
 					ExecutablePath: opts.ExecutablePath,
 					TargetPolicy:   targetPolicyForCommand(cmd),
+					AccessMode:     opts.AccessMode,
 				})
 				if err != nil {
 					return err

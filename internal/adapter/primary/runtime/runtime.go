@@ -43,6 +43,14 @@ const (
 	TargetPolicyRequirePersistent    TargetPolicy = "require_persistent"
 )
 
+// AccessMode controls whether a frontend session can run mutating actions.
+type AccessMode string
+
+const (
+	AccessModeFull     AccessMode = "full"
+	AccessModeReadOnly AccessMode = "read_only"
+)
+
 // Options controls runtime/session construction for frontends.
 type Options struct {
 	ConfigPath     string
@@ -52,6 +60,7 @@ type Options struct {
 	LogWriter      io.Writer
 	ExecutablePath string
 	TargetPolicy   TargetPolicy
+	AccessMode     AccessMode
 }
 
 // ApplyEnvDefaults applies WATCHTOWER_* environment variables as defaults.
@@ -442,6 +451,7 @@ type Session struct {
 	Client   *client.Client
 	Frontend *frontend.ClientFacade
 
+	accessMode  AccessMode
 	target      TargetInfo
 	manager     *LocalServerManager
 	embeddedSrv *api.Server
@@ -451,6 +461,9 @@ type Session struct {
 // NewSession creates one frontend session.
 func NewSession(ctx context.Context, opts Options) (*Session, error) {
 	ApplyEnvDefaults(&opts)
+	if opts.AccessMode == "" {
+		opts.AccessMode = AccessModeFull
+	}
 	logger := opts.Logger
 	if logger == nil {
 		logger = NewLogger(opts.Verbose, opts.LogWriter)
@@ -475,11 +488,12 @@ func NewSession(ctx context.Context, opts Options) (*Session, error) {
 	}
 
 	session := &Session{
-		Config:  cfg,
-		Logger:  logger,
-		App:     application,
-		manager: manager,
-		opts:    opts,
+		Config:     cfg,
+		Logger:     logger,
+		App:        application,
+		accessMode: opts.AccessMode,
+		manager:    manager,
+		opts:       opts,
 	}
 
 	if opts.ServerAddr != "" {
@@ -535,12 +549,47 @@ func (s *Session) Target() TargetInfo {
 	return s.target
 }
 
+// AccessMode reports how the session should gate mutating actions.
+func (s *Session) AccessMode() AccessMode {
+	if s == nil || s.accessMode == "" {
+		return AccessModeFull
+	}
+	return s.accessMode
+}
+
 // LocalServerStatus reports the current local daemon status.
 func (s *Session) LocalServerStatus(ctx context.Context) (LocalServerStatus, error) {
 	if s == nil || s.manager == nil {
 		return LocalServerStatus{}, errors.New("runtime session does not have a local server manager")
 	}
 	return s.manager.Status(ctx)
+}
+
+// ActionAccessError reports that a mutating action was denied in read-only mode.
+type ActionAccessError struct {
+	Action     frontend.ActionDescriptor
+	AccessMode AccessMode
+}
+
+func (e *ActionAccessError) Error() string {
+	return fmt.Sprintf("action %q requires an explicit override in %s mode", e.Action.ID, e.AccessMode)
+}
+
+// CheckActionAccess validates one action against the current access mode.
+func CheckActionAccess(mode AccessMode, actionID frontend.ActionID, override bool) error {
+	if mode == "" {
+		mode = AccessModeFull
+	}
+	if mode != AccessModeReadOnly {
+		return nil
+	}
+	if frontend.IsAllowedInReadOnlyMode(actionID, override) {
+		return nil
+	}
+	return &ActionAccessError{
+		Action:     frontend.DescribeAction(actionID),
+		AccessMode: mode,
+	}
 }
 
 // UpgradeToPersistent switches the session from embedded mode to the local daemon.

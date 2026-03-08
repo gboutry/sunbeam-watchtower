@@ -21,7 +21,7 @@ func newReviewCmd(opts *Options) *cobra.Command {
 func newReviewShowCmd(opts *Options) *cobra.Command {
 	var project string
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "show <id>",
 		Short: "Show a merge request",
 		Args:  cobra.ExactArgs(1),
@@ -38,7 +38,7 @@ func newReviewShowCmd(opts *Options) *cobra.Command {
 
 			return renderMergeRequestDetail(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), mr)
 		},
-	}
+	}, frontend.ActionReviewShow)
 
 	cmd.Flags().StringVar(&project, "project", "", "project name (required)")
 
@@ -54,7 +54,7 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 		since    string
 	)
 
-	cmd := &cobra.Command{
+	cmd := withActionID(&cobra.Command{
 		Use:   "list",
 		Short: "List merge requests across forges",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -86,7 +86,7 @@ func newReviewListCmd(opts *Options) *cobra.Command {
 
 			return renderMergeRequests(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result.MergeRequests)
 		},
-	}
+	}, frontend.ActionReviewList)
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")
 	cmd.Flags().StringSliceVar(&forges, "forge", nil, "filter by forge type: github, launchpad, gerrit (repeatable)")

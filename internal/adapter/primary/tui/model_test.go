@@ -527,6 +527,48 @@ func TestEmbeddedBuildTriggerPromptsForUpgrade(t *testing.T) {
 	}
 }
 
+func TestReadOnlyTriggerBuildIsDenied(t *testing.T) {
+	session := newReadOnlyEmbeddedTestSession(t)
+	defer session.Close()
+
+	msg := triggerBuildCmd(session, frontend.BuildTriggerRequest{Project: "demo", Async: true})()
+	result, ok := msg.(actionDeniedMsg)
+	if !ok {
+		t.Fatalf("msg = %T, want actionDeniedMsg", msg)
+	}
+	if result.err == nil {
+		t.Fatal("actionDeniedMsg.err = nil, want read-only denial")
+	}
+}
+
+func TestReadOnlyLogoutIsDenied(t *testing.T) {
+	session := newReadOnlyEmbeddedTestSession(t)
+	defer session.Close()
+
+	msg := logoutAuthCmd(session)()
+	result, ok := msg.(actionDeniedMsg)
+	if !ok {
+		t.Fatalf("msg = %T, want actionDeniedMsg", msg)
+	}
+	if result.err == nil {
+		t.Fatal("actionDeniedMsg.err = nil, want read-only denial")
+	}
+}
+
+func TestReadOnlyOperationCancelIsDenied(t *testing.T) {
+	session := newReadOnlyEmbeddedTestSession(t)
+	defer session.Close()
+
+	msg := cancelOperationCmd(session, "op-1")()
+	result, ok := msg.(actionDeniedMsg)
+	if !ok {
+		t.Fatalf("msg = %T, want actionDeniedMsg", msg)
+	}
+	if result.err == nil {
+		t.Fatal("actionDeniedMsg.err = nil, want read-only denial")
+	}
+}
+
 func newEmbeddedTestSession(t *testing.T) *runtimeadapter.Session {
 	t.Helper()
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
@@ -534,6 +576,21 @@ func newEmbeddedTestSession(t *testing.T) *runtimeadapter.Session {
 	session, err := runtimeadapter.NewSession(context.Background(), runtimeadapter.Options{
 		LogWriter:    &bytes.Buffer{},
 		TargetPolicy: runtimeadapter.TargetPolicyPreferEmbedded,
+	})
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	return session
+}
+
+func newReadOnlyEmbeddedTestSession(t *testing.T) *runtimeadapter.Session {
+	t.Helper()
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	session, err := runtimeadapter.NewSession(context.Background(), runtimeadapter.Options{
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: runtimeadapter.TargetPolicyPreferEmbedded,
+		AccessMode:   runtimeadapter.AccessModeReadOnly,
 	})
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
