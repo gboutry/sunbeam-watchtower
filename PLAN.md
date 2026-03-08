@@ -221,6 +221,7 @@ This distinction is important: stateful features must be designed around persist
 ## Recent refactor outcomes
 
 - added a first `watchtower-tui` primary adapter and separate binary, with an MVP Bubble Tea shell for `Dashboard`, `Builds`, and `Releases`, plus bottom-bar META surfaces for auth, operations, cache, server/about, and help
+- refined the TUI interaction model with vim-style `gg`/`G` jumps, a dedicated meta/shortcuts pane, and autocomplete-backed release filter fields so keyboard navigation is closer to a real daily-driver terminal UI
 - extracted shared frontend bootstrap/runtime concerns into `internal/adapter/primary/runtime`, so the CLI and TUI now share env-default resolution, logger setup, embedded-server startup, local-daemon management, and frontend session wiring instead of duplicating that logic
 - implemented the TUI runtime policy agreed for the MVP: `watchtower-tui` starts embedded by default, prompts before switching to the local persistent daemon for auth and async actions, and then stays on the daemon for the rest of the session once upgraded
 - migrated the old `internal/api`, `internal/cli`, `internal/service`, and `internal/port` layout into the new `internal/adapter/*` and `internal/core/*` split
