@@ -161,20 +161,36 @@ func NewRootCmd(opts *Options) *cobra.Command {
 	root.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "disable colored output")
 	root.PersistentFlags().StringVar(&opts.ServerAddr, "server", "", "server address (http://host:port or unix:///path)")
 
-	root.AddCommand(newVersionCmd(opts))
-	root.AddCommand(newConfigCmd(opts))
-	root.AddCommand(newAuthCmd(opts))
-	root.AddCommand(newReviewCmd(opts))
-	root.AddCommand(newCommitCmd(opts))
-	root.AddCommand(newBugCmd(opts))
-	root.AddCommand(newBuildCmd(opts))
-	root.AddCommand(newReleasesCmd(opts))
-	root.AddCommand(newOperationCmd(opts))
-	root.AddCommand(newCacheCmd(opts))
-	root.AddCommand(newProjectCmd(opts))
-	root.AddCommand(newPackagesCmd(opts))
-	root.AddCommand(newServeCmd(opts))
-	root.AddCommand(newServerCmd(opts))
+	root.AddGroup(
+		&cobra.Group{ID: "workflow", Title: "Workflows"},
+		&cobra.Group{ID: "meta", Title: "Meta Commands"},
+	)
+	root.SetHelpCommandGroupID("meta")
+	root.SetCompletionCommandGroupID("meta")
+
+	root.AddCommand(
+		withGroupID(newReviewCmd(opts), "workflow"),
+		withGroupID(newCommitCmd(opts), "workflow"),
+		withGroupID(newBugCmd(opts), "workflow"),
+		withGroupID(newBuildCmd(opts), "workflow"),
+		withGroupID(newReleasesCmd(opts), "workflow"),
+		withGroupID(newProjectCmd(opts), "workflow"),
+		withGroupID(newPackagesCmd(opts), "workflow"),
+	)
+	root.AddCommand(
+		withGroupID(newVersionCmd(opts), "meta"),
+		withGroupID(newConfigCmd(opts), "meta"),
+		withGroupID(newAuthCmd(opts), "meta"),
+		withGroupID(newOperationCmd(opts), "meta"),
+		withGroupID(newCacheCmd(opts), "meta"),
+		withGroupID(newServeCmd(opts), "meta"),
+		withGroupID(newServerCmd(opts), "meta"),
+	)
 
 	return root
+}
+
+func withGroupID(cmd *cobra.Command, groupID string) *cobra.Command {
+	cmd.GroupID = groupID
+	return cmd
 }
