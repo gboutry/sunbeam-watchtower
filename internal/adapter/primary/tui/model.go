@@ -162,6 +162,14 @@ type promptModel struct {
 	reject string
 }
 
+type releaseFilterOptions struct {
+	projects      []string
+	artifactTypes []string
+	risks         []string
+	tracks        []string
+	branches      []string
+}
+
 type dashboardLoadedMsg struct {
 	auth   *dto.AuthStatus
 	ops    []dto.OperationJob
@@ -258,6 +266,7 @@ type rootModel struct {
 	toast         toastState
 	contentScroll int
 	overlayScroll int
+	pendingG      bool
 
 	dashboard dashboardModel
 	builds    buildsModel
@@ -467,10 +476,25 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "g":
+		if m.pendingG {
+			m.pendingG = false
+			return m.jumpActiveTop()
+		}
+		m.pendingG = true
+		return m, nil
+	case "G":
+		m.pendingG = false
+		return m.jumpActiveBottom()
+	default:
+		m.pendingG = false
+	}
+	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
-	case "?":
+	case "m", "?":
 		m.overlay = overlayHelp
+		m.overlayScroll = 0
 		return m, nil
 	case "a":
 		m.overlay = overlayAuth
@@ -525,7 +549,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayBuildFilters
 			m.overlayScroll = 0
 		case viewReleases:
-			m.releaseFilterForm = newReleaseFilterForm(m.releases.filters)
+			m.releaseFilterForm = newReleaseFilterForm(m.session, m.releases)
 			m.overlay = overlayReleaseFilters
 			m.overlayScroll = 0
 		}
@@ -603,6 +627,22 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.overlay {
 	case overlayHelp:
 		switch msg.String() {
+		case "g":
+			if m.pendingG {
+				m.pendingG = false
+				m.overlayScroll = 0
+				return m, nil
+			}
+			m.pendingG = true
+			return m, nil
+		case "G":
+			m.pendingG = false
+			m.overlayScroll = viewportEndOffset()
+			return m, nil
+		default:
+			m.pendingG = false
+		}
+		switch msg.String() {
 		case "esc", "q", "?":
 			m.overlay = overlayNone
 			m.overlayScroll = 0
@@ -616,6 +656,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case overlayAuth:
+		m.pendingG = false
 		switch msg.String() {
 		case "esc", "q":
 			m.overlay = overlayNone
@@ -644,6 +685,25 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case overlayOperations:
+		switch msg.String() {
+		case "g":
+			if m.pendingG {
+				m.pendingG = false
+				m.ops.index = 0
+				return m, loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index))
+			}
+			m.pendingG = true
+			return m, nil
+		case "G":
+			m.pendingG = false
+			if len(m.ops.rows) == 0 {
+				return m, nil
+			}
+			m.ops.index = len(m.ops.rows) - 1
+			return m, loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index))
+		default:
+			m.pendingG = false
+		}
 		switch msg.String() {
 		case "esc", "q":
 			m.overlay = overlayNone
@@ -675,6 +735,22 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case overlayCache:
 		switch msg.String() {
+		case "g":
+			if m.pendingG {
+				m.pendingG = false
+				m.overlayScroll = 0
+				return m, nil
+			}
+			m.pendingG = true
+			return m, nil
+		case "G":
+			m.pendingG = false
+			m.overlayScroll = viewportEndOffset()
+			return m, nil
+		default:
+			m.pendingG = false
+		}
+		switch msg.String() {
 		case "esc", "q", "r":
 			if msg.String() == "r" {
 				return m, loadCacheCmd(m.session)
@@ -691,6 +767,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case overlayServer:
+		m.pendingG = false
 		switch msg.String() {
 		case "esc", "q":
 			m.overlay = overlayNone
@@ -704,6 +781,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case overlayPrompt:
+		m.pendingG = false
 		switch msg.String() {
 		case "esc", "q":
 			m.overlay = overlayNone
@@ -719,10 +797,13 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case overlayBuildFilters:
+		m.pendingG = false
 		return m.updateBuildFilterForm(msg)
 	case overlayReleaseFilters:
+		m.pendingG = false
 		return m.updateReleaseFilterForm(msg)
 	case overlayBuildTrigger:
+		m.pendingG = false
 		return m.updateBuildTriggerForm(msg)
 	}
 	return m, nil
@@ -845,7 +926,7 @@ func (m rootModel) renderStatusBar() string {
 	}
 	runningOps := countRunningOperations(m.dashboard.ops)
 	left := fmt.Sprintf("Mode %s  LP %s  Ops %d/%d", target, auth, runningOps, len(m.dashboard.ops))
-	right := "a Auth  o Ops  c Cache  s Server  r Refresh  ? Help  q Quit"
+	right := "m Meta  a Auth  o Ops  c Cache  s Server  r Refresh  q Quit"
 	return m.theme.statusBar.Width(m.width).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top,
 			m.theme.statusLeft.Render(left),
@@ -1015,20 +1096,29 @@ func (m rootModel) renderOverlay(base string) string {
 
 func (m rootModel) renderHelp() string {
 	body := strings.Join([]string{
-		"Global",
+		"Shortcuts",
 		"1/2/3 switch workflow",
 		"Tab / Shift+Tab cycle workflows",
-		"j/k or arrows move",
+		"j/k or arrows move selection",
+		"gg jump to the beginning",
+		"G jump to the end",
 		"PgUp/PgDn or Ctrl+U/Ctrl+D scroll",
 		"Enter open detail or action",
 		"/ edit filters",
+		"m or ? open this meta pane",
 		"a auth  o operations  c cache  s server",
 		"r refresh  q quit  esc close overlay",
+		"",
+		"Forms",
+		"Up/Down cycle autocomplete suggestions",
+		"Tab accepts a suggestion when shown, otherwise moves forward",
+		"Shift+Tab moves backward between fields",
+		"Enter moves forward or submits on the last field",
 		"",
 		"Embedded rule",
 		"Auth, build trigger, and operation cancel prompt before switching to the local daemon.",
 	}, "\n")
-	return m.theme.panel.Width(m.width - 2).Height(m.height - 2).Render(m.theme.panelTitle.Render("Help") + "\n\n" + body)
+	return m.theme.panel.Width(m.width - 2).Height(m.height - 2).Render(m.theme.panelTitle.Render("Meta") + "\n\n" + body)
 }
 
 func (m rootModel) renderAuthModal() string {
@@ -1131,6 +1221,46 @@ func (m rootModel) refreshActiveView() tea.Cmd {
 	default:
 		return nil
 	}
+}
+
+func (m rootModel) jumpActiveTop() (tea.Model, tea.Cmd) {
+	m.contentScroll = 0
+	switch m.activeView {
+	case viewDashboard:
+		m.dashboard.section = 0
+	case viewBuilds:
+		m.builds.index = 0
+	case viewReleases:
+		if len(m.releases.artifacts) == 0 {
+			return m, nil
+		}
+		m.releases.index = 0
+		if artifact := m.selectedReleaseArtifact(); artifact != nil {
+			return m, loadReleaseDetailCmd(m.session, *artifact)
+		}
+	}
+	return m, nil
+}
+
+func (m rootModel) jumpActiveBottom() (tea.Model, tea.Cmd) {
+	m.contentScroll = viewportEndOffset()
+	switch m.activeView {
+	case viewDashboard:
+		m.dashboard.section = 3
+	case viewBuilds:
+		if len(m.builds.rows) > 0 {
+			m.builds.index = len(m.builds.rows) - 1
+		}
+	case viewReleases:
+		if len(m.releases.artifacts) == 0 {
+			return m, nil
+		}
+		m.releases.index = len(m.releases.artifacts) - 1
+		if artifact := m.selectedReleaseArtifact(); artifact != nil {
+			return m, loadReleaseDetailCmd(m.session, *artifact)
+		}
+	}
+	return m, nil
 }
 
 func (m rootModel) selectedReleaseArtifact() *releaseArtifactSummary {
@@ -1385,13 +1515,14 @@ func newBuildFilterForm(filters buildsFilters) formModalModel {
 	})
 }
 
-func newReleaseFilterForm(filters releasesFilters) formModalModel {
+func newReleaseFilterForm(session *runtimeadapter.Session, releases releasesModel) formModalModel {
+	suggestions := releaseFilterSuggestions(session, releases)
 	return newFormModal("Release Filters", []fieldDef{
-		{placeholder: "project", value: filters.project},
-		{placeholder: "artifact type", value: filters.artifactType},
-		{placeholder: "risk", value: filters.risk},
-		{placeholder: "track", value: filters.track},
-		{placeholder: "branch", value: filters.branch},
+		{placeholder: "project", value: releases.filters.project, suggestions: suggestions.projects},
+		{placeholder: "artifact type", value: releases.filters.artifactType, suggestions: suggestions.artifactTypes},
+		{placeholder: "risk", value: releases.filters.risk, suggestions: suggestions.risks},
+		{placeholder: "track", value: releases.filters.track, suggestions: suggestions.tracks},
+		{placeholder: "branch", value: releases.filters.branch, suggestions: suggestions.branches},
 	})
 }
 
@@ -1408,9 +1539,51 @@ func newBuildTriggerForm(session *runtimeadapter.Session) formModalModel {
 	})
 }
 
+func releaseFilterSuggestions(session *runtimeadapter.Session, releases releasesModel) releaseFilterOptions {
+	projects := []string{}
+	if session != nil {
+		projects = make([]string, 0, len(session.Config.Projects))
+		for _, project := range session.Config.Projects {
+			projects = append(projects, project.Name)
+		}
+	}
+	artifactTypes := make([]string, 0, 3+len(releases.rows)+1)
+	artifactTypes = append(artifactTypes,
+		dto.ArtifactRock.String(),
+		dto.ArtifactCharm.String(),
+		dto.ArtifactSnap.String(),
+	)
+	risks := make([]string, 0, len(dto.KnownReleaseRisks()))
+	for _, risk := range dto.KnownReleaseRisks() {
+		risks = append(risks, string(risk))
+	}
+	tracks := make([]string, 0, len(releases.rows))
+	branches := make([]string, 0, len(releases.rows))
+	for _, row := range releases.rows {
+		projects = append(projects, row.Project)
+		artifactTypes = append(artifactTypes, row.ArtifactType.String())
+		risks = append(risks, string(row.Risk))
+		tracks = append(tracks, row.Track)
+		branches = append(branches, row.Branch)
+	}
+	projects = append(projects, releases.filters.project)
+	artifactTypes = append(artifactTypes, releases.filters.artifactType)
+	risks = append(risks, releases.filters.risk)
+	tracks = append(tracks, releases.filters.track)
+	branches = append(branches, releases.filters.branch)
+	return releaseFilterOptions{
+		projects:      uniqueSortedStrings(projects...),
+		artifactTypes: uniqueSortedStrings(artifactTypes...),
+		risks:         orderedReleaseRiskSuggestions(risks...),
+		tracks:        uniqueSortedStrings(tracks...),
+		branches:      uniqueSortedStrings(branches...),
+	}
+}
+
 type fieldDef struct {
 	placeholder string
 	value       string
+	suggestions []string
 }
 
 func newFormModal(title string, fields []fieldDef) formModalModel {
@@ -1419,6 +1592,10 @@ func newFormModal(title string, fields []fieldDef) formModalModel {
 		input := textinput.New()
 		input.Placeholder = field.placeholder
 		input.SetValue(field.value)
+		if len(field.suggestions) > 0 {
+			input.ShowSuggestions = true
+			input.SetSuggestions(field.suggestions)
+		}
 		if i == 0 {
 			input.Focus()
 		}
@@ -1435,7 +1612,22 @@ func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]stri
 	case "esc", "q":
 		onCancel()
 		return nil
-	case "tab", "enter":
+	case "tab":
+		if acceptFormSuggestion(modal) {
+			return nil
+		}
+		if modal.active == len(modal.fields)-1 {
+			values := make([]string, 0, len(modal.fields))
+			for _, field := range modal.fields {
+				values = append(values, field.Value())
+			}
+			return onSubmit(values)
+		}
+		modal.fields[modal.active].Blur()
+		modal.active++
+		modal.fields[modal.active].Focus()
+		return nil
+	case "enter":
 		if modal.active == len(modal.fields)-1 {
 			values := make([]string, 0, len(modal.fields))
 			for _, field := range modal.fields {
@@ -1460,6 +1652,20 @@ func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]stri
 	return cmd
 }
 
+func acceptFormSuggestion(modal *formModalModel) bool {
+	if modal.active < 0 || modal.active >= len(modal.fields) {
+		return false
+	}
+	field := &modal.fields[modal.active]
+	suggestion := strings.TrimSpace(field.CurrentSuggestion())
+	if suggestion == "" || suggestion == field.Value() {
+		return false
+	}
+	field.SetValue(suggestion)
+	field.CursorEnd()
+	return true
+}
+
 func renderFormModal(t theme, modal formModalModel) string {
 	lines := []string{t.panelTitle.Render(modal.title)}
 	for i, field := range modal.fields {
@@ -1474,7 +1680,7 @@ func renderFormModal(t theme, modal formModalModel) string {
 	if modal.errorMsg != "" {
 		lines = append(lines, t.errorText.Render(modal.errorMsg))
 	}
-	lines = append(lines, "", "[Tab] next  [Enter] submit  [Esc] cancel")
+	lines = append(lines, "", "[Up/Down] suggestions  [Tab] accept/next  [Enter] next/submit  [Esc] cancel")
 	return t.panel.Width(70).Render(strings.Join(lines, "\n"))
 }
 
@@ -1519,10 +1725,28 @@ func renderReleaseArtifacts(t theme, artifacts []releaseArtifactSummary, selecte
 	if len(artifacts) == 0 {
 		return t.subtle.Render("No artifacts.")
 	}
+	const (
+		gapWidth     = 2
+		typeColWidth = 5
+		dateColWidth = 16
+		minNameWidth = 10
+		maxNameWidth = 32
+	)
 	lines := make([]string, 0, len(artifacts))
+	nameColWidth := width - typeColWidth - dateColWidth - (gapWidth * 2)
+	if nameColWidth < minNameWidth {
+		nameColWidth = minNameWidth
+	}
+	if nameColWidth > maxNameWidth {
+		nameColWidth = maxNameWidth
+	}
 	for i, artifact := range artifacts {
-		released := emptyTime(artifact.ReleasedAt)
-		line := fitLine(fmt.Sprintf("%-24s  %-8s  %s", artifact.Name, artifact.ArtifactType.String(), released), width)
+		released := formatListTime(artifact.ReleasedAt)
+		line := padRight(truncateToWidth(artifact.Name, nameColWidth), nameColWidth) +
+			spacer(gapWidth) +
+			padRight(artifact.ArtifactType.String(), typeColWidth) +
+			spacer(gapWidth) +
+			padRight(released, dateColWidth)
 		if i == selected {
 			line = t.selectedRow.Render(line)
 		}
@@ -1759,6 +1983,36 @@ func fitLine(text string, width int) string {
 	return string(out) + "…"
 }
 
+func truncateToWidth(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(text) <= width {
+		return text
+	}
+	if width == 1 {
+		return "…"
+	}
+	runes := []rune(text)
+	out := make([]rune, 0, len(runes))
+	for _, r := range runes {
+		candidate := string(append(out, r))
+		if lipgloss.Width(candidate+"…") > width {
+			break
+		}
+		out = append(out, r)
+	}
+	return string(out) + "…"
+}
+
+func padRight(text string, width int) string {
+	padding := width - lipgloss.Width(text)
+	if padding <= 0 {
+		return text
+	}
+	return text + spacer(padding)
+}
+
 func renderViewport(content string, height, offset int) string {
 	if height <= 0 {
 		return ""
@@ -1775,6 +2029,10 @@ func renderViewport(content string, height, offset int) string {
 	}
 	end := offset + height
 	return lipgloss.NewStyle().Height(height).Render(strings.Join(lines[offset:end], "\n"))
+}
+
+func viewportEndOffset() int {
+	return 1 << 30
 }
 
 func (m rootModel) scrollStep() int {
@@ -1889,11 +2147,53 @@ func defaultString(value, fallback string) string {
 	return value
 }
 
+func uniqueSortedStrings(values ...string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func orderedReleaseRiskSuggestions(values ...string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(dto.KnownReleaseRisks()))
+	for _, risk := range dto.KnownReleaseRisks() {
+		value := string(risk)
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	for _, value := range uniqueSortedStrings(values...) {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
 func emptyTime(t time.Time) string {
 	if t.IsZero() {
 		return "-"
 	}
 	return t.Format(time.RFC3339)
+}
+
+func formatListTime(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	return t.Format("2006-01-02 15:04")
 }
 
 func firstNonEmptySlice(value string) []string {
