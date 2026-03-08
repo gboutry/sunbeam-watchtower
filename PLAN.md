@@ -55,6 +55,7 @@ The following are implemented and should be treated as the current baseline:
 - shared runtime/bootstrap layer for env defaults, logger setup, config loading, embedded server startup, local daemon management, and target resolution
 - shared runtime session target policies for CLI and TUI, covering embedded, discovered-daemon, and persistent-daemon resolution
 - backend-neutral prepared-build contract using canonical `target_ref`, `repository_ref`, and `recipes` fields
+- narrower internal/app build/runtime factory helpers for recipe builders, repo managers, auth-flow stores, and operation stores
 - local daemon lifecycle commands and explicit runtime resolution order
 - Launchpad auth flows with durable server-side coordination
 - durable operations surface for async workflows
@@ -70,7 +71,7 @@ These are the main known gaps that still matter:
 - Launchpad auth is implemented, but the same authenticated-flow model is not yet extended to other forges such as GitHub or Gerrit
 - the TUI only covers `Dashboard`, `Builds`, and `Releases`; `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects` still need first-class views
 - the TUI does not yet expose cache mutation, config browsing beyond server/about context, or direct build retry/cancel flows
-- `internal/app` still contains bootstrap logic that should continue moving into narrower builders/factories
+- some forge/package bootstrap paths in `internal/app` still contain logic that should continue moving into narrower builders/factories
 - some tests still have environment-sensitive assumptions and need further hardening
 
 ## Active Roadmap
