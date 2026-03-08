@@ -162,6 +162,7 @@ Watchtower now supports a top-level `otel` configuration block for persistent se
 
 - `otel.metrics.self` exposes a dedicated Prometheus listener for server/self metrics such as request counts, request latency, in-flight requests, runtime state, and collector health
 - `otel.metrics.domain` exposes a separate Prometheus listener for domain metrics such as releases, reviews, operations, packages, excuses, and cache freshness
+- domain metrics are cache-first by default; live upstream collector fan-out is enabled only for systems listed in `otel.metrics.domain.live_systems`
 - `otel.traces` configures OTLP trace export for server request spans and telemetry collector refresh spans
 - `otel.logs` configures OTLP log export from the server logger while optionally mirroring logs to stderr
 
@@ -170,6 +171,7 @@ Telemetry is intentionally a server concern:
 - persistent server mode may start the configured self/domain metrics listeners and OTLP exporters
 - ephemeral embedded CLI servers do not start telemetry by default
 - OTel and Prometheus dependencies are confined to `internal/adapter/secondary/otel`
+- the intended production model is periodic cache refresh plus Prometheus scraping, not scrape-time remote fan-out
 
 ## Runtime model
 
@@ -276,6 +278,7 @@ This distinction is important: stateful features must be designed around persist
 - documented a concrete `project.release` example in `README.md`, including `track_map` and cross-artifact branch tracking, so the repo-driven release model is described with an actual user-facing config snippet instead of only code-level types and tests
 - added a dedicated `otel` configuration surface plus a confined telemetry adapter, so persistent servers can expose separate self/domain Prometheus listeners, emit OTLP traces/logs, and export bounded domain metrics without leaking observability dependencies into primary adapters or core services
 - added server-side request telemetry and bounded domain collectors for auth, operations, projects, builds, releases, reviews, commits, bugs, packages, excuses, and cache freshness, with mechanical tests that keep OTel and Prometheus imports confined to the telemetry adapter package
+- switched domain telemetry to a cache-first operating model: cache/internal collectors stay default-on, while live upstream collectors (`reviews`, `builds`, `bugs`, `commits`) now require explicit allow-listing via `otel.metrics.domain.live_systems`
 - grouped the root CLI help surface into `Workflows` and `Meta Commands`, so operational commands such as `auth`, `cache`, `serve`, `server`, and `version` are visually separated from the day-to-day workflow commands in Cobra help output
 - added a shared CLI output styler with theme-aware terminal colorization for human-readable output: dense tables now use restrained column tinting, key/value detail views color their labels, warnings/errors are styled consistently, JSON/YAML remain plain, and new renderer tests guard against ANSI leaking into machine-readable formats or disappearing from color-enabled text output
 

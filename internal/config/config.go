@@ -189,12 +189,13 @@ type OTelSignalConfig struct {
 
 // OTelMetricsListenerConfig configures one metrics listener.
 type OTelMetricsListenerConfig struct {
-	Enabled                bool   `mapstructure:"enabled" yaml:"enabled,omitempty"`
-	ListenAddr             string `mapstructure:"listen_addr" yaml:"listen_addr,omitempty"`
-	Path                   string `mapstructure:"path" yaml:"path,omitempty"`
-	Runtime                bool   `mapstructure:"runtime" yaml:"runtime,omitempty"`
-	Process                bool   `mapstructure:"process" yaml:"process,omitempty"`
-	DefaultRefreshInterval string `mapstructure:"default_refresh_interval" yaml:"default_refresh_interval,omitempty"`
+	Enabled                bool     `mapstructure:"enabled" yaml:"enabled,omitempty"`
+	ListenAddr             string   `mapstructure:"listen_addr" yaml:"listen_addr,omitempty"`
+	Path                   string   `mapstructure:"path" yaml:"path,omitempty"`
+	Runtime                bool     `mapstructure:"runtime" yaml:"runtime,omitempty"`
+	Process                bool     `mapstructure:"process" yaml:"process,omitempty"`
+	DefaultRefreshInterval string   `mapstructure:"default_refresh_interval" yaml:"default_refresh_interval,omitempty"`
+	LiveSystems            []string `mapstructure:"live_systems" yaml:"live_systems,omitempty"`
 }
 
 // OTelCollectorConfig configures one domain metrics collector.
@@ -259,6 +260,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("otel.metrics.self.path", "/metrics")
 	v.SetDefault("otel.metrics.domain.path", "/metrics")
 	v.SetDefault("otel.metrics.domain.default_refresh_interval", "5m")
+	v.SetDefault("otel.metrics.domain.live_systems", []string{})
 	v.SetDefault("otel.metrics.self.runtime", true)
 	v.SetDefault("otel.metrics.self.process", true)
 	v.SetDefault("otel.traces.protocol", "grpc")
@@ -477,6 +479,22 @@ func validateOTelConfig(cfg OTelConfig) error {
 	if err := validateSignalConfig("otel.logs", cfg.Logs, false); err != nil {
 		return err
 	}
+	validLiveSystems := map[string]bool{
+		"reviews": true,
+		"builds":  true,
+		"bugs":    true,
+		"commits": true,
+	}
+	seenLiveSystems := make(map[string]bool, len(cfg.Metrics.Domain.LiveSystems))
+	for _, system := range cfg.Metrics.Domain.LiveSystems {
+		if !validLiveSystems[system] {
+			return fmt.Errorf("otel.metrics.domain.live_systems contains unknown system %q", system)
+		}
+		if seenLiveSystems[system] {
+			return fmt.Errorf("otel.metrics.domain.live_systems contains duplicate %q", system)
+		}
+		seenLiveSystems[system] = true
+	}
 	for name, collector := range map[string]OTelCollectorConfig{
 		"auth":       cfg.Metrics.Collectors.Auth,
 		"operations": cfg.Metrics.Collectors.Operations,
@@ -511,6 +529,9 @@ func validateMetricsListener(prefix string, cfg OTelMetricsListenerConfig) error
 		if _, err := time.ParseDuration(cfg.DefaultRefreshInterval); err != nil {
 			return fmt.Errorf("%s.default_refresh_interval: %w", prefix, err)
 		}
+	}
+	if len(cfg.LiveSystems) > 0 && prefix != "otel.metrics.domain" {
+		return fmt.Errorf("%s.live_systems is only supported on otel.metrics.domain", prefix)
 	}
 	return nil
 }

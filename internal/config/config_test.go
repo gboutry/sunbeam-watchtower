@@ -722,3 +722,26 @@ func TestValidate_OTelListenerCollision(t *testing.T) {
 		t.Fatal("Validate() expected error for listener collision")
 	}
 }
+
+func TestValidate_OTelDomainLiveSystemsRejectsUnknownAndDuplicateValues(t *testing.T) {
+	cfg := &Config{OTel: OTelConfig{Metrics: OTelMetricsConfig{
+		Domain: OTelMetricsListenerConfig{LiveSystems: []string{"reviews", "unknown"}},
+	}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() expected error for unknown live system")
+	}
+
+	cfg.OTel.Metrics.Domain.LiveSystems = []string{"reviews", "reviews"}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() expected error for duplicate live system")
+	}
+}
+
+func TestValidate_OTelSelfLiveSystemsRejected(t *testing.T) {
+	cfg := &Config{OTel: OTelConfig{Metrics: OTelMetricsConfig{
+		Self: OTelMetricsListenerConfig{LiveSystems: []string{"reviews"}},
+	}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() expected error for self live_systems")
+	}
+}

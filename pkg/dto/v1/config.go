@@ -127,12 +127,13 @@ type OTelSignalConfig struct {
 }
 
 type OTelMetricsListenerConfig struct {
-	Enabled                bool   `json:"enabled,omitempty" yaml:"enabled,omitempty"`
-	ListenAddr             string `json:"listen_addr,omitempty" yaml:"listen_addr,omitempty"`
-	Path                   string `json:"path,omitempty" yaml:"path,omitempty"`
-	Runtime                bool   `json:"runtime,omitempty" yaml:"runtime,omitempty"`
-	Process                bool   `json:"process,omitempty" yaml:"process,omitempty"`
-	DefaultRefreshInterval string `json:"default_refresh_interval,omitempty" yaml:"default_refresh_interval,omitempty"`
+	Enabled                bool     `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	ListenAddr             string   `json:"listen_addr,omitempty" yaml:"listen_addr,omitempty"`
+	Path                   string   `json:"path,omitempty" yaml:"path,omitempty"`
+	Runtime                bool     `json:"runtime,omitempty" yaml:"runtime,omitempty"`
+	Process                bool     `json:"process,omitempty" yaml:"process,omitempty"`
+	DefaultRefreshInterval string   `json:"default_refresh_interval,omitempty" yaml:"default_refresh_interval,omitempty"`
+	LiveSystems            []string `json:"live_systems,omitempty" yaml:"live_systems,omitempty"`
 }
 
 type OTelCollectorConfig struct {

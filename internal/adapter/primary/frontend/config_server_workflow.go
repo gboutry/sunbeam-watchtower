@@ -70,6 +70,7 @@ func configToDTO(cfg *config.Config) *dto.Config {
 					Runtime:                cfg.OTel.Metrics.Domain.Runtime,
 					Process:                cfg.OTel.Metrics.Domain.Process,
 					DefaultRefreshInterval: cfg.OTel.Metrics.Domain.DefaultRefreshInterval,
+					LiveSystems:            append([]string(nil), cfg.OTel.Metrics.Domain.LiveSystems...),
 				},
 				Collectors: dto.OTelDomainCollectorsConfig{
 					Auth:       collectorConfigToDTO(cfg.OTel.Metrics.Collectors.Auth),
