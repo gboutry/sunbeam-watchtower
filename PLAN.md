@@ -1,305 +1,111 @@
 # Sunbeam Watchtower — Plan
 
-## Foreword
+## Goal
 
-You LLM reader, these next section (up to bug correlation included) are the original plan for Watchtower. You are not allowed to edit them, but you can read them for context. The "Current architecture" section and everything below is a summary of the recent refactor outcomes, which you can edit and update as needed.
+Watchtower is a unified tracking and management tool for Canonical OpenStack (Sunbeam) across development, release, and maintenance. It brings package, bug, build, review, release, and cache state behind one application surface so operators do not need to coordinate across multiple external systems manually.
 
-## Goal of the project
+The long-term design constraints remain:
 
-Watchtower is a unified tracking and management tool for Canonical OpenStack (Sunbeam) across its full lifecycle — development, release, and maintenance. It integrates with git repos, bug trackers, build systems, and package archives to provide a single pane of glass for monitoring project health, synchronizing data, and triggering actions.
+- keep the core forge-agnostic and push Sunbeam-specific behavior to adapters
+- preserve the hexagonal boundary between primary adapters, core ports/services, and secondary adapters
+- support server-first operation, with CLI, TUI, and future MCP surfaces reusing the same application/runtime seams
 
-### Why Watchtower exists
+## Architecture Snapshot
 
-Canonical OpenStack (based on Sunbeam) is a complex ecosystem composed of many build artifacts spread across multiple forges, bug trackers, and git repositories. A single Sunbeam deployment involves:
+### Main packages
 
-| Artifact type    | Count | Description                                                        |
-|------------------|-------|--------------------------------------------------------------------|
-| Packages         | many  | APT metadata, source packages, and binary packages                 |
-| Rocks            | 40+   | OCI images built from Ubuntu packages                              |
-| Snaps            | 5+    | Snap packages built from Ubuntu packages                           |
-| Charms           | 40+   | Juju operators that manage the Rocks and Snaps                     |
-| snap-openstack   | 1     | Orchestration layer that ties everything together                  |
+- Entrypoints: `cmd/watchtower`, `cmd/watchtower-tui`
+- Primary adapters: `internal/adapter/primary/api`, `cli`, `frontend`, `runtime`, `tui`
+- Composition root: `internal/app`
+- Core interfaces: `internal/core/port`
+- Core services: `internal/core/service/*`
+- Secondary adapters: `internal/adapter/secondary/*`
+- Public client/contracts: `pkg/client`, `pkg/dto/v1`, `pkg/distro/v1`, `pkg/forge/v1`, `pkg/launchpad/v1`
 
-This adds up to hundreds of individually tracked items. Without a unified tool, monitoring and managing them requires manual coordination across many separate systems. Watchtower eliminates that burden.
+### Enforced boundaries
 
-### Scope and design constraints
-
-1. **General-purpose core, Sunbeam-specific adapters.** The API and core services are not Sunbeam-specific. Any software ecosystem with similar complexity (many artifacts, multiple forges, multiple trackers) should be manageable through Watchtower. All Canonical OpenStack–specific logic lives in the adapter layer; core services and ports remain forge-agnostic and reusable.
-
-2. **Forge-pluggable architecture.** Launchpad is the primary forge today (bug tracker, build system). The architecture must allow adding other forges (GitHub, Gerrit, etc.) without changing the core application logic.
-
-3. **Hexagonal architecture.** Ports define interfaces; services implement domain logic; adapters bridge external systems. Primary adapters (API, CLI) and secondary adapters (Launchpad, git, caches) never cross-import.
-
-### Features in scope for the initial implementation
-
-- **Unified query API** — package metadata, bug status, build status, project health, and migration excuses from a single endpoint surface.
-- **Cache synchronization** — local caches synced with upstream data sources (git repos, bug trackers, build systems, package archives, excuses feeds).
-- **Build triggering** — request, monitor, retry, cancel, and download builds via the API and CLI.
-- **CLI** — command-line interface for common operations (sync, build trigger, status checks, cache management).
-- **Authentication and credential management** — OAuth and credential flows for upstream services (Launchpad today; extensible to others).
-
-### Bug correlation (high-priority feature)
-
-The bug correlation system is one of the most important features. Its purpose is to identify where a bug was fixed (which commit, which repo, which artifact) and ensure the fix is properly recorded in the relevant trackers. This is critical for maintaining Canonical OpenStack, where a single upstream fix may need to be tracked across multiple packages, charms, and rocks. The system must be accurate and reliable, as incorrect or missing correlation directly impacts release quality.
-
-## Current architecture
-
-Sunbeam Watchtower now follows a stricter hexagonal layout:
-
-- **Entrypoint**: `cmd/watchtower`
-- **Primary adapters**: `internal/adapter/primary/api`, `internal/adapter/primary/cli`, `internal/adapter/primary/frontend`, `internal/adapter/primary/runtime`, and `internal/adapter/primary/tui`
-- **Composition root**: `internal/app`
-- **Core ports**: `internal/core/port` (interfaces only)
-- **Core services**: `internal/core/service/*`
-- **Secondary adapters**: `internal/adapter/secondary/*`
-- **Public reusable packages**: `pkg/client`, `pkg/dto/v1`, `pkg/distro/v1`, `pkg/forge/v1`, `pkg/launchpad/v1`
-- **Configuration loading**: `internal/config`
-
-The practical request from this refactor is in place:
-
-- reusable DTOs and client-facing contracts live under `pkg/`
-- `internal/core/service/*` depends only on `internal/core/port/*` and `pkg/*`
 - `internal/core/port/*` contains interfaces only
+- `internal/adapter/*` packages are implementation packages and must not define interfaces
 - primary adapters do not import secondary adapters directly
-- public `pkg/*` code no longer imports `internal/*`
-- `internal/app` remains the shared wiring layer used by the CLI and HTTP API
+- public `pkg/*` packages do not import `internal/*`
+- `internal/app` remains the wiring layer, not a grab-bag frontend API
 
-## Package layout
+### Shared frontend/runtime model
 
-```text
-cmd/
-└── watchtower/
-    └── main.go
+- CLI, TUI, and API reuse the frontend workflow layer under `internal/adapter/primary/frontend`
+- shared bootstrap/runtime concerns live in `internal/adapter/primary/runtime`
+- stateful frontend code should prefer the shared facade/runtime seams over raw `pkg/client` usage
 
-internal/
-├── adapter/
-│   ├── primary/
-│   │   ├── api/
-│   │   ├── cli/
-│   │   ├── frontend/
-│   │   ├── runtime/
-│   │   └── tui/
-│   └── secondary/
-│       ├── bugcache/
-│       ├── distrocache/
-│       ├── git/
-│       ├── gitcache/
-│       ├── launchpad/
-│       └── openstack/
-├── app/
-├── config/
-└── core/
-    ├── port/
-    └── service/
-        ├── bug/
-        ├── bugsync/
-        ├── build/
-        ├── commit/
-        ├── package/
-        ├── project/
-        └── review/
+## Runtime Model
 
-pkg/
-├── client/
-├── distro/v1/
-├── dto/v1/
-├── forge/v1/
-└── launchpad/v1/
-```
+Watchtower is now explicitly server-first.
 
-The tree above is intentionally summarized. The current codebase also includes:
+- Persistent server mode is the durable coordination boundary for auth, async operations, and multi-client workflows.
+- Embedded mode exists for convenience, but it is ephemeral and must not pretend to offer durable state across invocations.
+- Split workflows are allowed: local preparation happens on the client side, durable execution happens on the server side.
+- Local filesystem paths stay local. The server should receive prepared references, not direct local-path access.
 
-- `internal/adapter/primary/frontend` for frontend-facing async workflow helpers
-- `internal/adapter/secondary/authflowstore` for pending auth-flow persistence
-- `internal/adapter/secondary/charmhub` for public charm publication lookups
-- `internal/adapter/secondary/credentials` for Launchpad credential persistence
-- `internal/adapter/secondary/excusescache` for migration-excuses caching
-- `internal/adapter/secondary/operationstore` for long-running operation persistence
-- `internal/adapter/secondary/otel` for telemetry export and metrics listeners
-- `internal/adapter/secondary/releasecache` for published snap/charm release snapshots
-- `internal/adapter/secondary/snapstore` for public snap publication lookups
-- `internal/core/service/auth` for application-surface authentication workflows
-- `internal/core/service/operation` for long-running operation orchestration
-- `internal/core/service/release` for cached published snap/charm release tracking
+## Current State
 
-## Architecture rules enforced in CI
+The following are implemented and should be treated as the current baseline:
 
-- `arch-go` enforces the package dependency model above with 100% compliance and coverage.
-- `depguard` mirrors the same boundaries in `golangci-lint`:
-  - `cmd/watchtower` enters through primary adapters only
-  - primary adapters do not import secondary adapters
-  - core services do not import adapters, config, or app wiring
-  - secondary adapters do not import primary adapters or core services
-  - public `pkg/*` packages stay independent from `internal/*`
-- `internal/adapter/*` packages are implementation packages and must not define interfaces.
-- `internal/core/port/*` is reserved for interfaces only.
+- strict hexagonal layout under `internal/adapter/*`, `internal/core/*`, and `pkg/*`
+- HTTP API for auth, builds, releases, cache, packages, bugs, reviews, commits, config, and project sync
+- shared frontend facade for auth, operations, project, build, cache, package, bug, review, commit, release, and config workflows
+- shared runtime/bootstrap layer for env defaults, logger setup, config loading, embedded server startup, local daemon management, and target resolution
+- local daemon lifecycle commands and explicit runtime resolution order
+- Launchpad auth flows with durable server-side coordination
+- durable operations surface for async workflows
+- release tracking and release cache support for snaps and charms
+- cache-first OpenTelemetry support confined to `internal/adapter/secondary/otel`
+- initial `watchtower-tui` shell with `Dashboard`, `Builds`, and `Releases`
+- TUI meta surfaces for auth, operations, cache, server/about, and shortcuts
 
-## API surface
+## Current Gaps
 
-The HTTP API remains the application boundary for non-CLI consumers.
+These are the main known gaps that still matter:
 
-- `GET /openapi.json` — OpenAPI 3.1 spec
-- `GET /docs` — interactive docs UI
-- `GET /api/v1/health` — health check
-- `GET /api/v1/auth/status`
-- `POST /api/v1/auth/launchpad/begin`
-- `POST /api/v1/auth/launchpad/finalize`
-- `POST /api/v1/auth/launchpad/logout`
-- `GET /api/v1/packages/*` / `POST /api/v1/packages/cache/sync`
-  - `GET /api/v1/packages/detail/{name}` — full APT metadata for a package
-  - `GET /api/v1/packages/excuses` / `GET /api/v1/packages/excuses/{name}` — normalized migration excuses from Ubuntu/Debian trackers
-- `GET /api/v1/bugs*` / `POST /api/v1/bugs/sync`
-- `GET /api/v1/reviews*`
-- `GET /api/v1/commits*`
-- `POST /api/v1/builds/*` / `GET /api/v1/builds`
-- `GET /api/v1/releases` / `GET /api/v1/releases/{name}`
-- `POST /api/v1/projects/sync`
-- `POST /api/v1/cache/sync/git` / `POST /api/v1/cache/sync/upstream` / `POST /api/v1/cache/sync/bugs` / `POST /api/v1/cache/sync/excuses` / `POST /api/v1/cache/sync/releases`
-- `DELETE /api/v1/cache/{type}` (git, packages-index, upstream-repos, bugs, excuses, releases)
-- `GET /api/v1/cache/status`
-- `GET /api/v1/config`
+- Launchpad auth is implemented, but the same authenticated-flow model is not yet extended to other forges such as GitHub or Gerrit
+- the TUI only covers `Dashboard`, `Builds`, and `Releases`; `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects` still need first-class views
+- the TUI does not yet expose cache mutation, config browsing beyond server/about context, or direct build retry/cancel flows
+- `internal/app` still contains bootstrap logic that should continue moving into narrower builders/factories
+- some tests still have environment-sensitive assumptions and need further hardening
 
-## Observability
+## Active Roadmap
 
-Watchtower now supports a top-level `otel` configuration block for persistent server runtimes.
+### Near term
 
-- `otel.metrics.self` exposes a dedicated Prometheus listener for server/self metrics such as request counts, request latency, in-flight requests, runtime state, and collector health
-- `otel.metrics.domain` exposes a separate Prometheus listener for domain metrics such as releases, reviews, operations, packages, excuses, and cache freshness
-- domain metrics are cache-first by default; live upstream collector fan-out is enabled only for systems listed in `otel.metrics.domain.live_systems`
-- `otel.traces` configures OTLP trace export for server request spans and telemetry collector refresh spans
-- `otel.logs` configures OTLP log export from the server logger while optionally mirroring logs to stderr
-- outbound HTTP spans are emitted for Launchpad, GitHub, Gerrit, Snap Store, Charmhub, package feeds, and excuses feeds through one traced transport seam in `internal/adapter/secondary/otel`
+- add an optional `--risk` filter to `watchtower releases show`
+- continue shrinking `internal/app` so it stays a composition root instead of absorbing feature logic
+- keep runtime and user documentation aligned with the implemented daemon/embedded behavior
+- keep stateful workflows explicitly durable-first and avoid backsliding into implicit in-memory assumptions
 
-Telemetry is intentionally a server concern:
+### Frontend/runtime
 
-- persistent server mode may start the configured self/domain metrics listeners and OTLP exporters
-- ephemeral embedded CLI servers do not start telemetry by default
-- OTel and Prometheus dependencies are confined to `internal/adapter/secondary/otel`
-- the intended production model is periodic cache refresh plus Prometheus scraping, not scrape-time remote fan-out
+- keep local-build preparation reusable through shared frontend/runtime layers instead of Cobra-specific code
+- preserve the backend-neutral prepared build contract and avoid reintroducing Launchpad-specific request leakage into user-facing APIs
+- continue treating CLI, TUI, and future MCP as consumers of the same frontend/runtime seams
 
-## Runtime model
+### TUI
 
-Watchtower is now explicitly moving toward a **server-first runtime model**:
+- add workflow views for `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects`
+- expose cache mutation and richer config inspection where the frontend/API contracts are ready
+- add direct retry/cancel workflows for builds where the server/API model is settled
+- continue improving dense keyboard UX, list/detail layouts, and responsive rendering
 
-- a dedicated Watchtower server is the long-term durable coordination boundary
-- future TUI and MCP surfaces are expected to reuse the same server/API
-- the CLI remains a first-class tool, not just a thin HTTP wrapper
-- some workflows are intentionally split between local preparation and remote execution
-- the CLI may still spawn a local embedded server for convenience, but that is a runtime mode, not the primary architecture
+### API and test contracts
 
-Watchtower workflows therefore fall into three categories:
+- keep the Huma optional-field guard in place and add regression tests when request shapes change
+- continue removing host-environment assumptions from tests
+- keep changed-package coverage enforcement healthy by raising tests with feature work instead of bypassing the guard
 
-1. **Remote-only workflows**
-   - pure API queries
-   - server-managed syncs
-   - auth state
-   - durable async operations
-2. **Local-only workflows**
-   - inspecting a local checkout
-   - reading local workspace state
-   - deriving artifact metadata from a local tree
-3. **Split workflows**
-   - local preparation happens on the client side
-   - prepared references are then sent to the server for durable remote execution
-   - example: `build --source local --local-path ...`, where the local side prepares Launchpad git/repo/ref state and the server then creates recipes, requests builds, and tracks execution
+### Auth and forge expansion
 
-For split workflows, the server must never require raw local filesystem access. Local paths stay local; the shared contract is the prepared forge/build reference produced by local preparation.
+- generalize the current durable auth-flow model beyond Launchpad when authenticated GitHub/Gerrit workflows become necessary
 
-Two runtime modes are expected to coexist:
+## Validation Baseline
 
-1. **Persistent server mode**
-   - used by the dedicated daemon/server process
-   - supports resumable auth flows, durable async operations, and multi-client workflows
-   - is the target mode for MCP, TUI, and advanced CLI usage
-2. **Ephemeral embedded mode**
-   - used when the CLI starts a short-lived local server for one command
-   - suitable for stateless or single-command work
-   - must not pretend to offer durable auth-flow or async-operation semantics across invocations
-
-This distinction is important: stateful features must be designed around persistent-server semantics first, then degraded or disabled explicitly in ephemeral mode. At the same time, local preparation must remain reusable outside the CLI adapter so future frontends such as the TUI can perform the same split-workflow preparation without duplicating command code.
-
-## Recent refactor outcomes
-
-- added a first `watchtower-tui` primary adapter and separate binary, with an MVP Bubble Tea shell for `Dashboard`, `Builds`, and `Releases`, plus bottom-bar META surfaces for auth, operations, cache, server/about, and help
-- refined the TUI interaction model with vim-style `gg`/`G` jumps, a dedicated meta/shortcuts pane, and autocomplete-backed release filter fields so keyboard navigation is closer to a real daily-driver terminal UI
-- extracted shared frontend bootstrap/runtime concerns into `internal/adapter/primary/runtime`, so the CLI and TUI now share env-default resolution, logger setup, embedded-server startup, local-daemon management, and frontend session wiring instead of duplicating that logic
-- implemented the TUI runtime policy agreed for the MVP: `watchtower-tui` starts embedded by default, prompts before switching to the local persistent daemon for auth and async actions, and then stays on the daemon for the rest of the session once upgraded
-- migrated the old `internal/api`, `internal/cli`, `internal/service`, and `internal/port` layout into the new `internal/adapter/*` and `internal/core/*` split
-- moved reusable client and contract packages to root `pkg/`
-- introduced public config DTOs under `pkg/dto/v1`, so `pkg/client` no longer leaks `internal/config`
-- removed the remaining core-service boundary leak by making bug sync consume `port.CommitSource` instead of commit-service types
-- preserved existing command and API behavior while tightening architecture linting
-- moved Launchpad auth behind core ports and an `internal/core/service/auth` application service
-- added Launchpad auth API/client flows with server-side pending auth state, opaque flow IDs, and no token secrets in API DTOs
-- made CLI `auth login|status|logout` a thin adapter over the application/API auth surface instead of directly owning OAuth + credential persistence
-- added direct adapter tests for Launchpad credential persistence, pending auth flow storage, and the Launchpad auth adapter so the new auth boundary has focused secondary-adapter coverage
-- added HTTP tests for the Launchpad auth API endpoints so begin/finalize/logout/status flows now have primary-adapter coverage too
-- added focused Launchpad repo/project manager tests covering current-user lookup, default-repo fallback, project/repo create-or-reuse flows, git-ref resolution, project series handling, and development-focus updates
-- added focused Launchpad snap/charm/rock builder tests covering recipe creation/listing, build requests, build listing, artifact URL lookup, and retry/cancel/delete actions
-- added primary-adapter tests for build/cache/project endpoints covering build-list success, invalid timeout validation, invalid excuses tracker validation, cache-status wiring, and project-sync auth-required handling
-- added CLI execution tests for `auth login|status|logout` plus a build-list rendering path backed by a stubbed HTTP API
-- moved split-workflow build triggering onto a first-class `prepared` contract so local preparation no longer leaks raw Launchpad repo/ref/path fields at the top level of the trigger API
-- synced `README.md` and `CONTRIBUTING.md` with the current runtime model, split-workflow terminology, and shared frontend preparation layer
-- added an initial local persistent-server lifecycle in the CLI: `server start|status|stop`, Unix-socket local daemon discovery, explicit server/daemon/embedded resolution order, and automatic daemon startup for persistent workflows such as auth and async operations
-- hardened the local daemon lifecycle with metadata persistence, stale socket/pid detection, and cleanup semantics so repeated CLI/agent invocations can reason about local server state more safely
-- moved build command orchestration behind a reusable frontend build workflow so local preparation plus remote trigger/list/download flows are no longer encoded directly in Cobra handlers
-- decomposed `internal/app` bootstrap logic into focused build/project/review/package wiring files, with targeted tests on config-to-service resolution paths, so future refactors do not need to edit one monolithic composition file
-- defined initial restart semantics for persisted operations: queued/running jobs are now reconciled to an explicit `interrupted` terminal state on service startup, with deterministic recovery events, instead of remaining misleadingly in-flight forever
-- added dedicated frontend auth and operation workflows so API/frontends stop reaching into `internal/app` for those concerns service-by-service, and the existing async build/project frontend wrapper now layers on top of the operation workflow instead of duplicating that access pattern
-- added real daemon integration coverage for the CLI by re-entering the command surface through a helper subprocess, so `server start/status/stop`, auth persistence, and async operation persistence are verified across separate CLI invocations against an actual background server process
-- added a machine-enforced changed-package coverage guard (`tools/coverageguard` + `.coverage-policy.yaml`) and wired it into `pre-commit`, so package-level coverage floors become part of the merge contract instead of an informal expectation
-- ratcheted `.coverage-policy.yaml` with explicit per-package floors for core packages (`internal/config`, `internal/core/service/auth`, build/operation services, CLI, and durable stores) and raised auth-service test coverage so the policy follows measured quality instead of a single loose default
-- added GitHub Actions CI enforcement for the same contract: repo-wide quality checks run with the coverage hook skipped, then the changed-package coverage hook is applied only to the PR/push Go diff so server-side merges see the same policy as local commits
-- added reusable client-side auth and operation workflows in `internal/adapter/primary/frontend`, and routed the CLI auth/operation commands through them, so future TUI/MCP frontends can reuse the same begin/finalize/logout/list/show/events/cancel/poll logic instead of speaking raw `pkg/client` calls directly
-- added a reusable client-side project workflow in `internal/adapter/primary/frontend` and routed `project sync` through it, so project sync/async/wait behavior is no longer encoded directly in Cobra handlers and can be reused by TUI/MCP frontends too
-- added reusable client-side cache and packages workflows in `internal/adapter/primary/frontend`, and routed the CLI cache/packages/packages-excuses commands through them, so cache sync/clear/status plus package diff/show/detail/list/dsc/rdepends/excuses behavior is no longer spread across Cobra handlers or raw `pkg/client` calls
-- added reusable client-side bug, review, and commit workflows in `internal/adapter/primary/frontend`, and routed the CLI bug/review/commit commands through them, so `since` parsing, warning handling, and query shaping are now shared frontend behavior instead of command-local HTTP glue
-- extended the shared frontend client layer to cover `config show` and build cleanup as well, so the remaining CLI command handlers no longer need to issue raw config/build-management client calls directly
-- replaced the build workflow request surface with frontend-native request DTOs, so CLI build commands no longer depend on `pkg/client` transport option structs for trigger/list/download/cleanup orchestration
-- added a stable client-side frontend facade that wires auth, operations, project, build, packages, cache, bug, review, commit, and config workflows behind a single constructor, so future TUI/MCP consumers can depend on one entrypoint instead of reproducing workflow assembly logic
-- added a CLI architecture guard test that fails if non-bootstrap command files import `pkg/client` directly or call methods on `opts.Client`, so the frontend-workflow boundary is now mechanically enforced instead of relying on review discipline
-- rewired the CLI command layer to consume the shared client facade through `Options.Frontend()`, so command handlers now depend on one stable frontend entrypoint rather than constructing individual workflows ad hoc
-- tightened the CLI architecture guard so non-bootstrap command files also fail if they instantiate frontend workflows directly; command handlers are now expected to go through `Options.Frontend()` for workflow access
-- replaced the cache workflow public surface with frontend-owned request/response DTOs, so cache sync/clear/status flows no longer leak `pkg/client` result or option types to frontend consumers
-- finished the remaining frontend transport-contract cleanup for split build preparation and cache status: local build preparation now uses frontend-owned prepared request DTOs instead of `pkg/client` option structs, and cache status now exposes frontend-owned entry DTOs instead of transport result shapes
-- added a frontend architecture guard that allows `pkg/client` only in wiring constructors while failing if exported frontend workflow signatures or exported request/response/prepared DTOs expose transport-layer `pkg/client` types directly
-- replaced the frontend workflow constructors and stored client fields with narrow internal transport interfaces, so the frontend layer now depends on per-workflow transport ports instead of the concrete `*pkg/client.Client` type while preserving the existing CLI/TUI-facing workflow API
-- tightened the frontend architecture guard so only `internal/adapter/primary/frontend/transport.go` may mention the concrete `pkg/client.Client` type; workflow/facade code must now consume the transport wrapper instead of reaching for the raw HTTP client directly
-- consolidated the stateful and forge-query HTTP handlers (`auth`, `operations`, `builds`, `projects`, `bugs`, `reviews`, `commits`, `config`) behind a shared server-side frontend facade, and added an API architecture guard so those handler files stop reaching into `app` or constructing workflows directly
-- added API smoke tests for handler error mapping and query validation, and set an explicit `internal/adapter/primary/api: 35` changed-package coverage floor in `.coverage-policy.yaml` so the guard tracks the current breadth of the package without weakening the global default threshold
-- introduced a backend-neutral prepared build contract (`backend`, `target_project`, `repository`, `recipes`) and rewired the build API/client/frontend/service flow around that single contract
-- removed the temporary legacy Launchpad alias fields from the prepared build contract and build transport surfaces, so new code only uses the backend-neutral request shape instead of carrying parallel field names
-- ratcheted the changed-package coverage policy to match the current breadth of the refactored transport/DTO packages (`pkg/client: 19`, `pkg/dto/v1: 34`) after removing the compatibility-only code paths, and added focused client transport tests instead of backfilling low-value compatibility coverage
-- added focused build transport tests in `pkg/client` and set an explicit `pkg/client: 21` changed-package coverage floor so transport-shaping changes remain guarded without pretending the entire multi-endpoint client package is already at the default package-wide maturity level
-- extracted the duplicated adapter AST helpers into `tools/archtest` and rewired the CLI, frontend, and API architecture tests to use the shared loader/import/signature walker primitives, so future boundary rules evolve from one implementation instead of three diverging copies
-- extracted cache/excuses bootstrap wiring and runtime/auth-operation store wiring out of `internal/app/app.go` into focused bootstrap modules, with direct tests around the new cache/runtime seams, so `App` is closer to a thin composition root instead of carrying every lazy factory itself
-- reconciled `README.md`, `CONTRIBUTING.md`, and the runtime roadmap with the implemented CLI behavior: explicit server resolution order, local daemon lifecycle, and the current set of persistent workflows are now documented consistently
-- completed a targeted Huma request-contract audit on API input structs and added a mechanical API test that fails if any optional slice/map/bool request field is introduced without an explicit `required:` tag, so the contract hardening no longer relies on manual review alone
-- added a new cache-first `releases` domain for published snaps and charms: repo-discovered artifact metadata (`snapcraft.yaml` / `charmcraft.yaml`), public Snap Store and Charmhub secondary adapters, a dedicated release cache, and a core release service now power `watchtower releases list|show` plus `/api/v1/releases`
-- extended the cache surface to manage published release snapshots as a first-class cache type, so `cache sync releases`, `cache clear releases`, and `cache status` follow the same frontend/API patterns as the other read-heavy domains
-- refined release tracking so project `series` map to store tracks by default, `project.release.track_map` / `project.release.tracks` provide light overrides, and `project.release.branches` explicitly tracks maintained `track/risk/branch` channels for both snaps and charms
-- aligned release tracking with project sync defaults so `launchpad.series` is now the effective fallback when a project does not declare its own `series`, and release override validation uses that effective series set instead of only project-local values
-- exposed those lightweight release overrides through the public config DTO, while keeping artifact names and charm resources repo-discovered instead of duplicating them in config
-- improved the release cache sync UX so `cache sync releases` now reports discovered/synced/skipped counts and surfaces skip reasons, instead of returning a bare `ok` when no projects qualified for release tracking
-- added `project.release.skip_artifacts` so mono repos can explicitly exclude discovered snap/charm artifacts that are not published upstream, preventing known no-op artifacts from turning release-cache syncs into hard failures
-- corrected the releases list timestamp semantics so flat release rows now expose per-channel `released_at` data from the store, while artifact-level snapshot timestamps remain cache-sync metadata instead of being mislabeled as publication times
-- documented a concrete `project.release` example in `README.md`, including `track_map` and cross-artifact branch tracking, so the repo-driven release model is described with an actual user-facing config snippet instead of only code-level types and tests
-- added a dedicated `otel` configuration surface plus a confined telemetry adapter, so persistent servers can expose separate self/domain Prometheus listeners, emit OTLP traces/logs, and export bounded domain metrics without leaking observability dependencies into primary adapters or core services
-- added server-side request telemetry and bounded domain collectors for auth, operations, projects, builds, releases, reviews, commits, bugs, packages, excuses, and cache freshness, with mechanical tests that keep OTel and Prometheus imports confined to the telemetry adapter package
-- switched domain telemetry to a cache-first operating model: cache/internal collectors stay default-on, while live upstream collectors (`reviews`, `builds`, `bugs`, `commits`) now require explicit allow-listing via `otel.metrics.domain.live_systems`
-- added a traced outbound HTTP transport seam and wired it through Launchpad, GitHub, Gerrit, Snap Store, Charmhub, package feeds, and excuses feeds so server traces now cover both inbound requests and upstream HTTP fan-out without leaking OTel imports outside `internal/adapter/secondary/otel`
-- documented a concrete cache-first `otel` server configuration in `README.md`, including separate self/domain listeners, explicit `live_systems`, OTLP traces/logs, and the intended periodic cache-refresh operating model
-- codified telemetry maintenance rules in `AGENTS.md`, so domain changes are now expected to keep cache-vs-live collector policy, bounded labels, outbound tracing coverage, telemetry tests, and `PLAN.md` in sync
-- grouped the root CLI help surface into `Workflows` and `Meta Commands`, so operational commands such as `auth`, `cache`, `serve`, `server`, and `version` are visually separated from the day-to-day workflow commands in Cobra help output
-- added a shared CLI output styler with theme-aware terminal colorization for human-readable output: dense tables now use restrained column tinting, key/value detail views color their labels, warnings/errors are styled consistently, JSON/YAML remain plain, and new renderer tests guard against ANSI leaking into machine-readable formats or disappearing from color-enabled text output
-
-## Next small step
-
-- add an optional `--risk` filter to `watchtower releases show` so focused channel inspection does not require mentally scanning the full track matrix when only one risk matters
-
-## Validation
-
-The intended validation baseline for the refactor is:
+The expected validation baseline remains:
 
 - `go test ./...`
 - `golangci-lint run ./...`
@@ -307,329 +113,19 @@ The intended validation baseline for the refactor is:
 - `go run ./tools/coverageguard --config .coverage-policy.yaml $(git diff --cached --name-only -- '*.go')`
 - `pre-commit run --all-files`
 
-Architecture boundaries are currently validated by `arch-go` with 100% compliance and coverage.
+Notes:
 
-Some local test runs may still depend on host/runtime conditions (for example loopback listener availability or inherited git signing configuration). Those cases should be treated as test-environment hardening work, not as architecture-boundary failures.
+- architecture boundaries are mechanically enforced and should be updated intentionally, not worked around
+- changed-package coverage is part of the merge contract
+- host-specific failures should be treated as test-environment hardening work, not as a reason to weaken the boundary or quality guards
 
-The Huma request-contract hardening pass has started: optional query/body slice and bool fields are now being normalized with explicit `required:"false"` tags, with regression tests added for omitted-parameter behavior so frontend/API contracts do not drift again.
+## Deferred Testing Note
 
-The split-workflow build refactor has also started: local Launchpad/git preparation is moving out of Cobra handlers into a reusable frontend-side preparation layer so CLI and future TUI work can share the same local-preparation logic without pushing filesystem concerns into the server.
+Broad go-vcr adoption is still intentionally deferred.
 
-Durable server-side state work has started too: pending auth flows and long-running operations are now moving behind bbolt-backed secondary adapters so a persistent Watchtower server can keep coordination state across process lifetimes instead of relying only on in-memory stores.
+If cassette-backed contract tests are added later:
 
-Runtime mode selection is now being made explicit as well: persistent server mode is the place where durable coordination state lives, while explicitly ephemeral frontend mode continues to use memory-backed state for short-lived embedded workflows.
-
-The runtime resolution model has now started to move from documentation into code as well: the CLI first honors `--server` / `WATCHTOWER_SERVER`, then reuses a discovered local daemon on the default Unix socket, then auto-starts that local daemon for persistent workflows, and only falls back to an embedded one-command server for explicitly ephemeral work.
-
-The client-side frontend layer is now broad enough to be a real reuse surface: auth, operations, project sync, build orchestration, cache management, and packages/excuses flows can now be consumed by future TUI/MCP frontends without re-encoding Cobra-specific HTTP request logic.
-
-## Deferred contract-test plan
-
-We are **not** adopting broad go-vcr coverage now.
-
-If we later add cassette-backed contract tests, keep them deliberately small and easy to refresh:
-
-- scope them to a handful of high-value `pkg/launchpad/v1` or `pkg/forge/v1` client methods whose real payloads are hard to model with `httptest`
-- prefer read-only or safely repeatable endpoints first; avoid OAuth handshakes and destructive write flows
+- keep them small and focused on endpoints whose real payloads are hard to model with `httptest`
+- prefer replay-by-default and explicit rerecording
 - store cassettes under package-local `testdata/vcr/`
-- default tests to replay mode in normal `go test` / CI runs
-- enable re-recording only behind an explicit env var such as `WATCHTOWER_RECORD=1`
-- when implemented, add a single helper script (for example `hack/rerecord-contract-tests.sh`) so cassette refresh is one command rather than a manual sequence
-- redact or normalize auth headers, OAuth parameters, cookies, timestamps, and request IDs before saving cassettes so diffs stay reviewable
-
-## Contributor readiness
-
-- `README.md` — up-to-date with current architecture and commands
-- `CONTRIBUTING.md` — synced with hexagonal layout, dependency rules, and architecture guidelines
-- `AGENTS.md` — Launchpad API quirks for AI agent consumers
-- `arch-go.yml` + `.golangci.yml` — machine-enforced boundaries (zero manual review burden)
-
-## CLI cache types
-
-The CLI `cache sync|clear|status` subcommands support the following cache types:
-
-- `git` — local git repo mirrors
-- `packages-index` — APT package sources
-- `upstream-repos` — upstream OpenStack repos
-- `bugs` — bug/task caches from forges (Launchpad, etc.)
-- `excuses` — normalized migration excuses from Ubuntu/Debian tracker feeds
-
-All five types are wired through `internal/adapter/primary/cli/cache.go` and rendered
-via `internal/adapter/primary/cli/output.go`.
-
-## Excuses integration
-
-Watchtower now includes a first packaging-focused integration for migration excuses:
-
-- **CLI**:
-  - `packages excuses list`
-  - `packages excuses show <package>`
-  - `cache sync excuses`
-  - `cache clear excuses`
-- **API**:
-  - `GET /api/v1/packages/excuses`
-  - `GET /api/v1/packages/excuses/{name}`
-  - `POST /api/v1/cache/sync/excuses`
-- **Providers**:
-  - `ubuntu` → `update_excuses.yaml.xz` + `update_excuses_by_team.yaml`
-  - `debian` → `excuses.yaml`
-
-The implementation keeps excuses in a dedicated cache domain (`ExcusesCache`) rather
-than overloading `DistroCache`. Raw tracker files are stored on disk and normalized
-records are indexed in bbolt for fast list/show queries. For Ubuntu, cache sync also
-fetches the companion `update_excuses_by_team.yaml` feed so `packages excuses list
---team ...` and `packages excuses show ...` can surface ownership information.
-
-Excuses sources are now intended to live under each distro config (`packages.distros.*.excuses`),
-with `provider`, `url`, and optional `team_url`. Compression is auto-detected from the
-downloaded payload instead of being configured explicitly.
-
-## Bug cache architecture
-
-The bug cache uses a **decorator pattern**: `CachedBugTracker` wraps the live `BugTracker`
-port and a `BugCache` port. On miss, the decorator falls through to the live tracker and
-back-fills the cache; on hit, it serves directly from the local bbolt store.
-
-- **Port**: `internal/core/port/bugcache.go` — defines the `BugCache` interface
-- **Adapter**: `internal/adapter/secondary/bugcache/` — bbolt-backed implementation
-- **Decorator**: `internal/adapter/secondary/bugcache/tracker.go` — `CachedBugTracker`
-
-## Test coverage
-
-### Bug cache (`internal/adapter/secondary/bugcache/`)
-
-- `cache_test.go` — tests for the bbolt storage layer (`Cache`): store/get bugs, store/list tasks, filtering, last-sync round-trip, remove, remove-all, status, and cache-dir.
-- `tracker_test.go` — tests for the `CachedBugTracker` decorator: cache-miss fallback, post-sync cache hits, write-through status updates, type delegation, and pass-through for GetProjectSeries/GetProject.
-
-## ProjectBuilder series support
-
-`ProjectBuilder` (`internal/core/service/build/project_builder.go`) now carries
-series-aware fields alongside the original code-project metadata:
-
-| Field                 | Purpose                                                       |
-|-----------------------|---------------------------------------------------------------|
-| `LPProject`           | LP project for recipe operations (may differ from `Project`) |
-| `Series`              | Series this project builds for (e.g. `["2024.1", "2025.1"]`) |
-| `DevFocus`            | Development-focus series (e.g. `"2025.1"`)                   |
-| `OfficialCodehosting` | Whether the project uses LP's official code mirror           |
-
-`RecipeProject()` helper returns `LPProject` when set, falling back to `Project`.
-
-All callers in `Trigger()`, `assessRecipe()`, `executeAction()`, `List()`,
-`Download()`, and `Cleanup()` use `pb.RecipeProject()`.
-
-## RepoManager port
-
-The `port.RepoManager` interface (`internal/core/port/build.go`) abstracts the
-temporary git repo / branch lifecycle on Launchpad:
-
-1. `GetCurrentUser(ctx)` — returns the authenticated LP username via `client.Me`.
-2. `GetDefaultRepo(ctx, projectName)` — returns the default git repo self-link and default branch for a project.
-3. `GetOrCreateProject(ctx, owner)` — ensures a `-sunbeam-remote-build` project exists.
-4. `GetOrCreateRepo(ctx, owner, project, repoName)` — ensures a git repo exists.
-5. `GetGitRef(ctx, repoSelfLink, refPath)` — fetches a git ref.
-6. `WaitForGitRef(ctx, repoSelfLink, refPath, timeout)` — polls until a ref appears.
-
-The sole implementation lives in `internal/adapter/secondary/launchpad/repo_manager.go`.
-
-## ArtifactStrategy series-aware naming
-
-`ArtifactStrategy` (`internal/core/service/build/strategy.go`) now exposes two
-series-aware helpers used by callers that create or look up recipes:
-
-| Method              | Signature                                              | Behaviour                                                                 |
-|---------------------|--------------------------------------------------------|---------------------------------------------------------------------------|
-| `OfficialRecipeName`| `(artifactName, series, devFocus string) string`       | Returns `artifactName` for the dev-focus series; `artifactName-series` otherwise |
-| `BranchForSeries`   | `(series, devFocus, defaultBranch string) string`      | Returns `defaultBranch` for the dev-focus series; `stable/<series>` otherwise    |
-
-All three concrete strategies (`RockStrategy`, `CharmStrategy`, `SnapStrategy`)
-share the same implementation today. Individual strategies can override the
-behaviour independently in the future.
-
-## Config: build settings
-
-Per-project build configuration is described in the
-[Build system design → Configuration](#configuration) section above.
-
-## Terminology: projects, artifacts, and recipes
-
-The build system uses three distinct concepts:
-
-| Term         | Scope        | Description                                                                     |
-|--------------|--------------|---------------------------------------------------------------------------------|
-| **Project**  | User-facing  | Top-level entity configured in `watchtower.yaml` (e.g. `ubuntu-openstack-rocks`)|
-| **Artifact** | User-facing  | A buildable unit within a project (e.g. `keystone`, `nova-consolidated`)        |
-| **Recipe**   | LP internal  | A Launchpad object created to build an artifact; includes prefix/SHA/series info|
-
-**User-facing surfaces** (CLI positional args, config YAML, API input fields, client options)
-use "artifact" terminology. **Internal implementation** (RecipeBuilder port, LP API calls,
-recipe prefix/name filtering, output table `RECIPE` column) uses "recipe" because it refers
-to the LP object directly.
-
-CLI examples:
-- `build trigger <project> [artifacts...]` — request builds for specific artifacts
-- `build list [projects...]` — list builds (output shows recipe names in RECIPE column)
-- `build download <project> [artifacts...]` — download build results
-- `build cleanup [projects...]` — delete LP recipe objects (explicitly about recipes)
-
-## Build system design
-
-The build system supports two distinct modes: **local** (development/testing) and
-**remote** (official builds).
-
-### Local mode (`--source local`)
-- **All git + LP setup runs in the CLI adapter** (`internal/adapter/primary/cli/build.go`),
-  before any API call. The service and API never see filesystem paths.
-- The CLI resolves the LP owner from the authenticated user via `repoManager.GetCurrentUser()`.
-- Pushes local git HEAD to a temporary LP repo/branch (both `main` and `tmp-<sha>`).
-- Computes temp recipe names, build paths, and git ref links locally.
-- Calls the API with a prepared backend contract:
-  `backend`, `target_project`, `repository`, `recipes`, `owner`.
-- The service receives these and creates recipes / requests builds — no git operations.
-- The `port.GitClient` dependency has been removed from the build service.
-
-### Remote mode (`--source remote`)
-- Uses the project's official LP git repo (code mirror) discovered via
-  `repoManager.GetDefaultRepo(ctx, projectName)`.
-- Creates official recipes on a per-series basis:
-  - **Dev-focus series**: recipe named `<artifact>`, built from the default branch.
-  - **Other series**: recipe named `<artifact>-<series>`, built from `stable/<series>`.
-- `ArtifactStrategy.OfficialRecipeName(artifactName, series, devFocus)` and
-  `ArtifactStrategy.BranchForSeries(series, devFocus, defaultBranch)` encapsulate
-  the naming and branch logic.
-- If no series are configured, all recipes use the default branch.
-- Build paths use the artifact name (without series suffix).
-- When `OfficialCodehosting` is false (legacy): expects recipes to already exist;
-  no git repo resolution or recipe creation is performed.
-
-### Owner resolution
-1. `opts.Owner` (CLI flag `--owner`) takes precedence.
-2. Falls back to `pb.Owner` from config.
-3. **Local mode only (CLI)**: if still empty, resolves via `repoManager.GetCurrentUser()`.
-4. Returns an error if owner is still empty.
-
-### Configuration
-
-Per-project build settings live in `ProjectBuildConfig`:
-
-| Field                 | YAML key                | Purpose                                                          |
-|-----------------------|-------------------------|------------------------------------------------------------------|
-| `Owner`               | `owner`                 | LP owner for recipe operations (optional for local-only builds)  |
-| `Artifacts`           | `artifacts`             | Explicit artifact names to build                                 |
-| `PrepareCommand`      | `prepare_command`       | Shell command run before each build                              |
-| `OfficialCodehosting` | `official_codehosting`  | When true, use LP's default git repo for remote builds           |
-| `LPProject`           | `lp_project`            | Configured LP project used internally for recipe ops             |
-
-`build.owner` is only required when `official_codehosting` is true.
-For local-only builds the owner is resolved at runtime via the LP `Me()` API.
-
-### `executeAction` details
-- Accepts per-recipe `gitRefLink` and `buildPath` parameters.
-- Recipe creation is gated on having valid git ref info (not just source mode).
-- Uses `pb.RecipeProject()` for all LP project references.
-
-### Build service test coverage
-
-- `strategy_test.go` — tests for all three strategies (`RockStrategy`, `CharmStrategy`,
-  `SnapStrategy`): `ArtifactType`, `MetadataFileName`, `BuildPath`, `ParsePlatforms`,
-  `TempRecipeName`, `OfficialRecipeName`, and `BranchForSeries`.
-- `service_test.go` — tests for `Trigger()`:
-  - Remote mode: request-builds, all-succeeded, retry-failed, monitor-active, create-recipe,
-    official-repo series expansion, failure without `OfficialCodehosting`, multiple recipes.
-  - Pre-resolved mode: full pipeline with pre-resolved LP resources, owner override.
-  - `ProjectBuilder.RecipeProject()` fallback logic.
-  - `List()`: active-only, all-builds, project filter, graceful degradation, sorting.
-
-### Build listing and download modes
-
-Both `build list` and `build download` share the same discovery parameters:
-
-| Flag            | Purpose                                               |
-|-----------------|-------------------------------------------------------|
-| `--source`      | `remote` (default) or `local`                         |
-| `--sha`         | Narrow prefix to a specific commit (`<prefix><sha>-`) |
-| `--prefix`      | Recipe name prefix (default `tmp-build-`)             |
-| `--owner`       | Override LP owner                                     |
-| `--project`     | Filter by project name (also positional args)         |
-| `--artifacts-dir` | (download only) Output directory                    |
-
-**Listing modes:**
-
-1. **Remote** (`--source remote`, default): Lists builds for configured project recipes.
-2. **Local with SHA** (`--source local --sha <commit>`): Discovers recipes matching
-   `<prefix><sha>-` via `findByOwner`, narrowing to an exact commit.
-3. **Local with prefix** (`--source local` without `--sha`): Discovers all recipes matching
-   `--prefix` (default `tmp-build-`) via `findByOwner`.
-
-**Download** uses the same discovery logic: in local mode it resolves the LP owner and
-project automatically, discovers recipes by prefix, and downloads artifacts from all
-succeeded builds.
-
-The prefix-based discovery is implemented via:
-- `RecipeBuilder.ListRecipesByOwner(ctx, owner)` port method
-- LP's `findByOwner` web-service operation on `+rock-recipes`, `+charm-recipes`, `+snaps`
-- Client-side filtering by prefix and LP project in `Service.List()` / `Service.Download()`
-
-### Remaining follow-ups
-
-These are still the main gaps before broader TUI and MCP work:
-
-- Launchpad auth now has an application/API surface, but it is still Launchpad-only; future work should extend the same model to GitHub/Gerrit when authenticated workflows are needed
-- the initial TUI now consumes the shared frontend facade and runtime layer, but only `Dashboard`, `Builds`, and `Releases` are implemented; `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects` still need first-class workflow views
-- the TUI does not yet expose cache mutation, config browsing beyond server/about context, or direct build retry/cancel flows; those still need dedicated frontend/API decisions where required
-- `internal/app` still has bootstrap logic that should continue moving into focused modules so the composition root remains easy to evolve in parallel
-- environment-sensitive test assumptions still need targeted cleanup, especially around loopback-bound API tests and any host-dependent git/runtime behavior
-
-## Remediation roadmap
-
-The next architecture work should be delivered in the following order.
-
-## Current delivery todo
-
-- [x] consolidate the stateful and forge-query HTTP handlers behind a shared server-side frontend facade, and enforce that boundary mechanically in `internal/adapter/primary/api`
-- [x] reduce build/backend coupling by introducing a backend-neutral prepared build contract and removing the temporary Launchpad-specific compatibility aliases from the public request surface
-- [x] replace duplicated adapter AST guards with shared tooling so CLI, frontend, and API boundary checks evolve from one implementation
-
-### Phase 1: keep runtime/docs in sync
-
-- keep `README.md`, `CONTRIBUTING.md`, and this `PLAN.md` aligned with the implemented runtime resolution order (`--server`, `WATCHTOWER_SERVER`, local daemon, auto-started daemon, embedded server)
-- document which commands/features are persistent-server workflows versus ephemeral-safe workflows
-- keep local daemon lifecycle commands (`server start|status|stop`) documented as the supported local persistent mode
-- avoid reintroducing ambiguity about whether stateful flows are durable across invocations
-
-### Phase 2: keep the build API boundary clean
-
-- move local-build preparation logic behind a shared application/frontend preparation layer reusable by CLI and TUI
-- keep raw local paths and local filesystem concerns out of the server
-- have local preparation produce stable prepared forge/build references that the server can execute durably
-- keep the main user-facing build API on the backend-neutral prepared-input contract instead of drifting back toward Launchpad-specific request fields
-- keep any low-level Launchpad-oriented controls separate from the normal user-facing build trigger contract
-
-### Phase 3: shrink `internal/app`
-
-- keep `internal/app` as the composition root
-- extract config-to-policy logic into focused builders/factories for forge wiring, build wiring, package-source resolution, and project-sync configuration
-- reduce `App`'s role as a service locator and move behavior into narrower units with explicit responsibilities
-
-### Phase 4: harden API and test contracts
-
-- keep the mechanical Huma request-contract guard in place so every optional slice/map/bool field continues to declare `required:"false"`
-- add regression tests for omitted optional query/body fields
-- remove host-environment assumptions from tests, especially loopback listener defaults and inherited git signing settings
-- revalidate the documented baseline commands in a clean local environment
-
-## Acceptance criteria for the remediation
-
-- `watchtower auth login` can survive multiple CLI invocations when using a persistent server
-- `watchtower build trigger --async` can be followed by `watchtower operation show <id>` across separate commands
-- stateless commands still work without a pre-running server
-- split workflows such as `build --source local --local-path ...` still perform local preparation on the client side and never require server-side filesystem access
-- local preparation logic is reusable outside Cobra command code so the TUI can adopt the same behavior
-- the public build API no longer requires Launchpad-specific resource identifiers for normal usage, while prepared-input execution remains available for split workflows
-- `PLAN.md`, `README.md`, `CONTRIBUTING.md`, and the implemented runtime behavior describe the same architecture
-- long-running operations now have an initial reusable in-memory async/progress/event foundation via `internal/core/service/operation` plus `internal/adapter/secondary/operationstore`
-- `internal/app` should remain the composition root (wiring config, caches, clients, and services), not become the runtime API for every frontend
-- API/CLI now adopt that foundation through `internal/adapter/primary/frontend`, with async build trigger + project sync wrappers and `/api/v1/operations` inspection/cancel endpoints; MCP/TUI still need to adopt the same model
-- TUI/MCP will likely want the new dedicated frontend facade layer on top of the core services to become their main entrypoint, exposing frontend-friendly workflows rather than raw service-by-service access
-- that facade would be the right place for cross-cutting concerns that frontends need but core services should not own directly: auth/session state, progress/events, async orchestration, cancellation, and view-oriented aggregation
-- looks like snap branch tracking is not working
+- normalize secrets and unstable metadata before saving cassettes
