@@ -34,6 +34,15 @@ const (
 	TargetKindRemote   TargetKind = "remote"
 )
 
+// TargetPolicy controls how a frontend session resolves its API target.
+type TargetPolicy string
+
+const (
+	TargetPolicyPreferEmbedded       TargetPolicy = "prefer_embedded"
+	TargetPolicyPreferExistingDaemon TargetPolicy = "prefer_existing_daemon"
+	TargetPolicyRequirePersistent    TargetPolicy = "require_persistent"
+)
+
 // Options controls runtime/session construction for frontends.
 type Options struct {
 	ConfigPath     string
@@ -42,6 +51,7 @@ type Options struct {
 	Logger         *slog.Logger
 	LogWriter      io.Writer
 	ExecutablePath string
+	TargetPolicy   TargetPolicy
 }
 
 // ApplyEnvDefaults applies WATCHTOWER_* environment variables as defaults.
@@ -473,31 +483,47 @@ func NewSession(ctx context.Context, opts Options) (*Session, error) {
 	}
 
 	if opts.ServerAddr != "" {
-		session.Client = client.NewClient(opts.ServerAddr)
-		session.target = TargetInfo{
-			Kind:        TargetKindRemote,
-			Address:     opts.ServerAddr,
-			Remote:      true,
-			Description: "remote server",
-		}
-		session.Frontend = frontend.NewClientFacade(frontend.NewClientTransport(session.Client), session.App)
+		session.useRemoteTarget(opts.ServerAddr)
 		return session, nil
 	}
 
-	srv := NewConfiguredServer(logger, application, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
-	if err := srv.Start(); err != nil {
+	status, err := manager.Status(ctx)
+	if err != nil {
 		_ = application.Close()
 		return nil, err
 	}
-	session.embeddedSrv = srv
-	session.Client = client.NewClient("http://" + srv.Addr())
-	session.target = TargetInfo{
-		Kind:        TargetKindEmbedded,
-		Address:     "http://" + srv.Addr(),
-		CanUpgrade:  true,
-		Description: "embedded session server",
+
+	switch opts.TargetPolicy {
+	case TargetPolicyPreferEmbedded:
+		if err := session.startEmbeddedTarget(); err != nil {
+			_ = application.Close()
+			return nil, err
+		}
+	case TargetPolicyPreferExistingDaemon:
+		if status.Running {
+			session.useDaemonTarget(status)
+			return session, nil
+		}
+		if err := session.startEmbeddedTarget(); err != nil {
+			_ = application.Close()
+			return nil, err
+		}
+	case TargetPolicyRequirePersistent:
+		if status.Running {
+			session.useDaemonTarget(status)
+			return session, nil
+		}
+		status, _, err = manager.EnsureRunning(ctx)
+		if err != nil {
+			_ = application.Close()
+			return nil, err
+		}
+		session.useDaemonTarget(status)
+	default:
+		_ = application.Close()
+		return nil, fmt.Errorf("runtime session requires a target policy")
 	}
-	session.Frontend = frontend.NewClientFacade(frontend.NewClientTransport(session.Client), session.App)
+
 	return session, nil
 }
 
@@ -538,18 +564,7 @@ func (s *Session) UpgradeToPersistent(ctx context.Context) error {
 		}
 		s.embeddedSrv = nil
 	}
-	s.Client = client.NewClient(status.Address)
-	s.Frontend = frontend.NewClientFacade(frontend.NewClientTransport(s.Client), s.App)
-	s.target = TargetInfo{
-		Kind:        TargetKindDaemon,
-		Address:     status.Address,
-		LogFile:     status.LogFile,
-		ConfigPath:  status.ConfigPath,
-		StartedAt:   status.StartedAt,
-		PID:         status.PID,
-		CanUpgrade:  false,
-		Description: "local persistent daemon",
-	}
+	s.useDaemonTarget(status)
 	return nil
 }
 
@@ -566,4 +581,47 @@ func (s *Session) Close() error {
 		err = errors.Join(err, s.App.Close())
 	}
 	return err
+}
+
+func (s *Session) startEmbeddedTarget() error {
+	srv := NewConfiguredServer(s.Logger, s.App, api.ServerOptions{ListenAddr: "127.0.0.1:0"})
+	if err := srv.Start(); err != nil {
+		return err
+	}
+	s.embeddedSrv = srv
+	s.Client = client.NewClient("http://" + srv.Addr())
+	s.target = TargetInfo{
+		Kind:        TargetKindEmbedded,
+		Address:     "http://" + srv.Addr(),
+		CanUpgrade:  true,
+		Description: "embedded session server",
+	}
+	s.Frontend = frontend.NewClientFacade(frontend.NewClientTransport(s.Client), s.App)
+	return nil
+}
+
+func (s *Session) useRemoteTarget(addr string) {
+	s.Client = client.NewClient(addr)
+	s.target = TargetInfo{
+		Kind:        TargetKindRemote,
+		Address:     addr,
+		Remote:      true,
+		Description: "remote server",
+	}
+	s.Frontend = frontend.NewClientFacade(frontend.NewClientTransport(s.Client), s.App)
+}
+
+func (s *Session) useDaemonTarget(status LocalServerStatus) {
+	s.Client = client.NewClient(status.Address)
+	s.target = TargetInfo{
+		Kind:        TargetKindDaemon,
+		Address:     status.Address,
+		LogFile:     status.LogFile,
+		ConfigPath:  status.ConfigPath,
+		StartedAt:   status.StartedAt,
+		PID:         status.PID,
+		CanUpgrade:  false,
+		Description: "local persistent daemon",
+	}
+	s.Frontend = frontend.NewClientFacade(frontend.NewClientTransport(s.Client), s.App)
 }
