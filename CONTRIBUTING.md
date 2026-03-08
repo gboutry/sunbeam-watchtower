@@ -92,6 +92,12 @@ Workflow design should also distinguish:
 
 For split workflows, do not push raw filesystem concepts into the server. The frontend should produce a stable prepared contract and send that over the API.
 
+The canonical prepared-build payload uses:
+
+- `target_ref`
+- `repository_ref`
+- `recipes`
+
 ### CLI runtime resolution
 
 When a command needs an API target, the CLI resolves it in this order:
@@ -108,6 +114,12 @@ Persistent workflows currently include:
 - `operation *`
 - `build trigger --async`
 - `project sync --async`
+
+The shared runtime policies are:
+
+- CLI durable workflows use `require_persistent`
+- CLI ordinary API commands use `prefer_existing_daemon`
+- TUI startup uses `prefer_embedded` and upgrades interactively before durable actions
 
 Contributors should preserve this behavior: stateful workflows must prefer persistent-server semantics, while ephemeral mode remains available for stateless work and local convenience.
 

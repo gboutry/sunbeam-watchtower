@@ -100,6 +100,12 @@ watchtower build trigger demo --source local --local-path .
 
 For split workflows, the server never reads raw local paths. Frontends prepare a stable `prepared` build source payload and send that to the server.
 
+The canonical prepared-build payload uses:
+
+- `target_ref`
+- `repository_ref`
+- `recipes`
+
 ### Runtime resolution order
 
 When a command needs the API, the CLI resolves the target in this order:
@@ -116,6 +122,12 @@ Persistent workflows currently include:
 - `operation *`
 - `build trigger --async`
 - `project sync --async`
+
+The shared runtime policies are:
+
+- CLI durable workflows use `require_persistent`
+- CLI ordinary API commands use `prefer_existing_daemon`
+- TUI startup uses `prefer_embedded` and upgrades interactively before durable actions
 
 Stateless queries and one-shot commands can still run against the embedded server when no persistent target is configured.
 

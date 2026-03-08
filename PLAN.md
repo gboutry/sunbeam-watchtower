@@ -78,14 +78,10 @@ These are the main known gaps that still matter:
 
 ### Near term
 
-- continue shrinking `internal/app` so it stays a composition root instead of absorbing feature logic
-- keep runtime and user documentation aligned with the implemented daemon/embedded behavior
-- preserve the centralized durable-first runtime session policy as new frontends and workflows are added
+- continue shrinking the remaining forge/package bootstrap paths in `internal/app` so it stays a composition root instead of absorbing feature logic
 
 ### Frontend/runtime
 
-- keep local-build preparation reusable through shared frontend/runtime layers instead of Cobra-specific code
-- preserve the neutral prepared-build contract and avoid reintroducing backend-specific request leakage into user-facing APIs
 - keep future frontends such as MCP on the same frontend/runtime seams now shared by CLI and TUI
 
 ### TUI
@@ -120,6 +116,15 @@ Notes:
 - architecture boundaries are mechanically enforced and should be updated intentionally, not worked around
 - changed-package coverage is part of the merge contract
 - host-specific failures should be treated as test-environment hardening work, not as a reason to weaken the boundary or quality guards
+
+## Roadmap Delivery
+
+When implementing roadmap work, each chunk must end with:
+
+- a `PLAN.md` sync in the same chunk
+- the chunk's validation commands
+- one clean commit
+- only then the next chunk
 
 ## Deferred Testing Note
 

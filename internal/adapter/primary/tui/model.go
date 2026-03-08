@@ -105,7 +105,6 @@ type releasesModel struct {
 	artifacts []releaseArtifactSummary
 	index     int
 	detail    *dto.ReleaseShowResult
-	detailKey string
 	loaded    bool
 	err       string
 }
@@ -150,8 +149,6 @@ type formModalModel struct {
 	title    string
 	fields   []textinput.Model
 	active   int
-	submit   string
-	cancel   string
 	errorMsg string
 }
 
@@ -448,7 +445,9 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, clearToastLater()
 		}
 		m.overlay = overlayNone
-		cmd := m.resumeDeferredAction()
+		action := m.deferred
+		m.deferred = deferredAction{}
+		cmd := m.resumeDeferredAction(action)
 		m.setToast("Switched to local daemon", "success")
 		return m, tea.Batch(clearToastLater(), cmd, loadDashboardCmd(m.session))
 	case browserOpenedMsg:
@@ -821,9 +820,7 @@ func (m *rootModel) openUpgradePrompt(action deferredAction) {
 	m.overlayScroll = 0
 }
 
-func (m rootModel) resumeDeferredAction() tea.Cmd {
-	action := m.deferred
-	m.deferred = deferredAction{}
+func (m rootModel) resumeDeferredAction(action deferredAction) tea.Cmd {
 	switch action.kind {
 	case deferredAuthLogin:
 		return beginAuthCmd(m.session)
@@ -886,7 +883,7 @@ func (m rootModel) renderHeader() string {
 	if m.toast.message != "" {
 		right += "  " + renderToast(m.theme, m.toast)
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, spacer(max(1, m.width-lipgloss.Width(left)-lipgloss.Width(right))), right)
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, spacer(maxInt(1, m.width-lipgloss.Width(left)-lipgloss.Width(right))), right)
 }
 
 func (m rootModel) renderTabs() string {
@@ -930,7 +927,7 @@ func (m rootModel) renderStatusBar() string {
 	return m.theme.statusBar.Width(m.width).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top,
 			m.theme.statusLeft.Render(left),
-			spacer(max(1, m.width-lipgloss.Width(left)-lipgloss.Width(right)-2)),
+			spacer(maxInt(1, m.width-lipgloss.Width(left)-lipgloss.Width(right)-2)),
 			m.theme.statusRight.Render(right),
 		),
 	)
@@ -983,8 +980,8 @@ func (m rootModel) renderDashboardOperations() string {
 	if len(m.dashboard.ops) == 0 {
 		return m.theme.subtle.Render("No operations yet.")
 	}
-	lines := make([]string, 0, min(5, len(m.dashboard.ops)))
-	for _, job := range m.dashboard.ops[:min(5, len(m.dashboard.ops))] {
+	lines := make([]string, 0, minInt(5, len(m.dashboard.ops)))
+	for _, job := range m.dashboard.ops[:minInt(5, len(m.dashboard.ops))] {
 		lines = append(lines, fmt.Sprintf("%s  %s", m.theme.semantic(string(job.State)), job.Kind))
 	}
 	return strings.Join(lines, "\n")
@@ -994,8 +991,8 @@ func (m rootModel) renderDashboardBuilds() string {
 	if len(m.dashboard.builds) == 0 {
 		return m.theme.subtle.Render("No builds loaded.")
 	}
-	lines := make([]string, 0, min(5, len(m.dashboard.builds)))
-	for _, build := range m.dashboard.builds[:min(5, len(m.dashboard.builds))] {
+	lines := make([]string, 0, minInt(5, len(m.dashboard.builds)))
+	for _, build := range m.dashboard.builds[:minInt(5, len(m.dashboard.builds))] {
 		lines = append(lines, fmt.Sprintf("%s  %s  %s", build.State.String(), build.Project, build.Title))
 	}
 	return strings.Join(lines, "\n")
@@ -1009,8 +1006,8 @@ func (m rootModel) renderDashboardReleases() string {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].LastUpdated.After(entries[j].LastUpdated)
 	})
-	lines := make([]string, 0, min(5, len(entries)))
-	for _, entry := range entries[:min(5, len(entries))] {
+	lines := make([]string, 0, minInt(5, len(entries)))
+	for _, entry := range entries[:minInt(5, len(entries))] {
 		lines = append(lines, fmt.Sprintf("%s  %s  %s", entry.Project, entry.Name, entry.LastUpdated.Format("2006-01-02 15:04")))
 	}
 	return strings.Join(lines, "\n")
@@ -1091,7 +1088,7 @@ func (m rootModel) renderOverlay(base string) string {
 	if fullscreen {
 		return renderViewport(content, m.height-1, m.overlayScroll)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, base, renderViewport(content, max(8, m.height/3), m.overlayScroll))
+	return lipgloss.JoinVertical(lipgloss.Left, base, renderViewport(content, maxInt(8, m.height/3), m.overlayScroll))
 }
 
 func (m rootModel) renderHelp() string {
@@ -1139,7 +1136,7 @@ func (m rootModel) renderAuthModal() string {
 		lines = append(lines, "", "Authorize URL:", m.auth.begin.AuthorizeURL, "", "[o] open browser  [Enter] finalize")
 	}
 	lines = append(lines, "", "[l] login  [x] logout  [Esc] close")
-	return m.theme.panel.Width(max(50, m.width-4)).Render(strings.Join(lines, "\n"))
+	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
 }
 
 func (m rootModel) renderOperationsDrawer(fullscreen bool) string {
@@ -1170,7 +1167,7 @@ func (m rootModel) renderCacheModal() string {
 		)
 	}
 	lines = append(lines, "", "[Esc] close")
-	return m.theme.panel.Width(max(50, m.width-4)).Render(strings.Join(lines, "\n"))
+	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
 }
 
 func (m rootModel) renderServerModal() string {
@@ -1192,7 +1189,7 @@ func (m rootModel) renderServerModal() string {
 		lines = append(lines, "", "[Enter] switch to local daemon")
 	}
 	lines = append(lines, "[Esc] close")
-	return m.theme.panel.Width(max(50, m.width-4)).Render(strings.Join(lines, "\n"))
+	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
 }
 
 func (m rootModel) renderPrompt() string {
@@ -1204,7 +1201,7 @@ func (m rootModel) renderPrompt() string {
 		"[Enter] " + m.prompt.accept,
 		"[Esc] " + m.prompt.reject,
 	}
-	return m.theme.panel.Width(max(50, m.width-4)).Render(strings.Join(lines, "\n"))
+	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
 }
 
 func (m rootModel) refreshActiveView() tea.Cmd {
@@ -1802,8 +1799,8 @@ func renderOperationEvents(t theme, events []dto.OperationEvent) string {
 	if len(events) == 0 {
 		return t.subtle.Render("No events.")
 	}
-	lines := make([]string, 0, min(8, len(events)))
-	for _, event := range events[max(0, len(events)-8):] {
+	lines := make([]string, 0, minInt(8, len(events)))
+	for _, event := range events[maxInt(0, len(events)-8):] {
 		lines = append(lines, fmt.Sprintf("%s  %s", event.Time.Format("15:04:05"), defaultString(event.Message, event.Type)))
 	}
 	return strings.Join(lines, "\n")
@@ -1920,12 +1917,12 @@ func dashboardSectionWidth(totalWidth int, twoColumns bool) int {
 		return totalWidth
 	}
 	const gap = 1
-	return max(20, (totalWidth-gap)/2)
+	return maxInt(20, (totalWidth-gap)/2)
 }
 
 func splitColumns(totalWidth, gap int) (int, int) {
-	left := max(20, (totalWidth-gap)/2)
-	right := max(20, totalWidth-gap-left)
+	left := maxInt(20, (totalWidth-gap)/2)
+	right := maxInt(20, totalWidth-gap-left)
 	return left, right
 }
 
@@ -2243,14 +2240,14 @@ func spacer(width int) string {
 	return strings.Repeat(" ", width)
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-func max(a, b int) int {
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}
