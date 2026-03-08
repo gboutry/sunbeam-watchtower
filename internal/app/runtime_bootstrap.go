@@ -4,10 +4,8 @@
 package app
 
 import (
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/authflowstore"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/credentials"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/launchpad"
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/operationstore"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	authsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/auth"
 	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
@@ -29,25 +27,7 @@ func (a *App) LaunchpadCredentialStore() port.LaunchpadCredentialStore {
 // LaunchpadPendingAuthFlowStore returns the shared pending Launchpad auth flow store.
 func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore {
 	a.lpFlowOnce.Do(func() {
-		if a.runtimeMode == RuntimeModeEphemeral {
-			a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
-			return
-		}
-
-		stateDir, err := a.stateDir()
-		if err != nil {
-			a.Logger.Warn("failed to resolve cache dir for auth flow store, falling back to memory", "error", err)
-			a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
-			return
-		}
-
-		store, err := authflowstore.NewBoltLaunchpadFlowStore(stateDir)
-		if err != nil {
-			a.Logger.Warn("failed to initialize auth flow store, falling back to memory", "error", err)
-			a.lpFlowStore = authflowstore.NewMemoryLaunchpadFlowStore()
-			return
-		}
-		a.lpFlowStore = store
+		a.lpFlowStore = newLaunchpadPendingAuthFlowStore(a.Logger, a.runtimeMode, a.stateDir)
 	})
 	return a.lpFlowStore
 }
@@ -55,25 +35,7 @@ func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore
 // OperationStore returns the shared long-running operation store.
 func (a *App) OperationStore() port.OperationStore {
 	a.operationStoreOnce.Do(func() {
-		if a.runtimeMode == RuntimeModeEphemeral {
-			a.operationStore = operationstore.NewMemoryStore()
-			return
-		}
-
-		stateDir, err := a.stateDir()
-		if err != nil {
-			a.Logger.Warn("failed to resolve cache dir for operation store, falling back to memory", "error", err)
-			a.operationStore = operationstore.NewMemoryStore()
-			return
-		}
-
-		store, err := operationstore.NewBoltStore(stateDir)
-		if err != nil {
-			a.Logger.Warn("failed to initialize operation store, falling back to memory", "error", err)
-			a.operationStore = operationstore.NewMemoryStore()
-			return
-		}
-		a.operationStore = store
+		a.operationStore = newOperationStore(a.Logger, a.runtimeMode, a.stateDir)
 	})
 	return a.operationStore
 }
