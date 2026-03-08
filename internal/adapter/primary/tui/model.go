@@ -102,11 +102,21 @@ type releasesFilters struct {
 type releasesModel struct {
 	filters   releasesFilters
 	rows      []dto.ReleaseListEntry
+	artifacts []releaseArtifactSummary
 	index     int
 	detail    *dto.ReleaseShowResult
 	detailKey string
 	loaded    bool
 	err       string
+}
+
+type releaseArtifactSummary struct {
+	Project       string
+	Name          string
+	ArtifactType  dto.ArtifactType
+	ReleasedAt    time.Time
+	ChannelCount  int
+	ResourceCount int
 }
 
 type operationsDrawerModel struct {
@@ -328,12 +338,13 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.releases.err = errString(msg.err)
 		if msg.err == nil {
 			m.releases.rows = msg.rows
-			if m.releases.index >= len(m.releases.rows) && len(m.releases.rows) > 0 {
-				m.releases.index = len(m.releases.rows) - 1
+			m.releases.artifacts = summarizeReleaseArtifacts(msg.rows)
+			if m.releases.index >= len(m.releases.artifacts) && len(m.releases.artifacts) > 0 {
+				m.releases.index = len(m.releases.artifacts) - 1
 			}
 			m.lastRefresh = time.Now()
-			if row := m.selectedRelease(); row != nil {
-				return m, loadReleaseDetailCmd(m.session, *row)
+			if artifact := m.selectedReleaseArtifact(); artifact != nil {
+				return m, loadReleaseDetailCmd(m.session, *artifact)
 			}
 		}
 	case releaseDetailLoadedMsg:
@@ -532,8 +543,8 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case viewReleases:
 			if m.releases.index > 0 {
 				m.releases.index--
-				if row := m.selectedRelease(); row != nil {
-					return m, loadReleaseDetailCmd(m.session, *row)
+				if artifact := m.selectedReleaseArtifact(); artifact != nil {
+					return m, loadReleaseDetailCmd(m.session, *artifact)
 				}
 			}
 		}
@@ -548,10 +559,10 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.builds.index++
 			}
 		case viewReleases:
-			if m.releases.index < len(m.releases.rows)-1 {
+			if m.releases.index < len(m.releases.artifacts)-1 {
 				m.releases.index++
-				if row := m.selectedRelease(); row != nil {
-					return m, loadReleaseDetailCmd(m.session, *row)
+				if artifact := m.selectedReleaseArtifact(); artifact != nil {
+					return m, loadReleaseDetailCmd(m.session, *artifact)
 				}
 			}
 		}
@@ -573,8 +584,8 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.activeView = viewReleases
 			}
 		case viewReleases:
-			if row := m.selectedRelease(); row != nil {
-				return m, loadReleaseDetailCmd(m.session, *row)
+			if artifact := m.selectedReleaseArtifact(); artifact != nil {
+				return m, loadReleaseDetailCmd(m.session, *artifact)
 			}
 		}
 	case "t":
@@ -959,10 +970,10 @@ func (m rootModel) renderReleases() string {
 			emptyAsAny(m.releases.filters.track),
 			emptyAsAny(m.releases.filters.branch),
 		)
-	list := renderReleaseRows(m.theme, m.releases.rows, m.releases.index, innerPanelWidth(m.theme.panel, listWidth))
-	detail := renderReleaseDetail(m.theme, m.releases.detail, m.selectedRelease(), innerPanelWidth(m.theme.panel, detailWidth))
+	list := renderReleaseArtifacts(m.theme, m.releases.artifacts, m.releases.index, innerPanelWidth(m.theme.panel, listWidth))
+	detail := renderReleaseDetail(m.theme, m.releases.detail, m.selectedReleaseArtifact(), innerPanelWidth(m.theme.panel, detailWidth))
 	if m.width >= 120 {
-		left := renderPanel(m.theme.panel, listWidth, "", header+"\n\n"+list)
+		left := renderPanel(m.theme.panel, listWidth, m.theme.panelTitle.Render("Artifacts"), header+"\n\n"+list)
 		right := renderPanel(m.theme.panel, detailWidth, m.theme.panelTitle.Render("Detail"), detail)
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, spacer(gap), right)
 	}
@@ -1115,27 +1126,27 @@ func (m rootModel) refreshActiveView() tea.Cmd {
 	case viewReleases:
 		return tea.Batch(
 			loadReleasesCmd(m.session, m.releases.filters),
-			loadReleaseDetailCmdIfSelected(m.session, m.selectedRelease()),
+			loadReleaseDetailCmdIfSelected(m.session, m.selectedReleaseArtifact()),
 		)
 	default:
 		return nil
 	}
 }
 
-func (m rootModel) selectedRelease() *dto.ReleaseListEntry {
-	if m.releases.index < 0 || m.releases.index >= len(m.releases.rows) {
+func (m rootModel) selectedReleaseArtifact() *releaseArtifactSummary {
+	if m.releases.index < 0 || m.releases.index >= len(m.releases.artifacts) {
 		return nil
 	}
-	row := m.releases.rows[m.releases.index]
-	return &row
+	artifact := m.releases.artifacts[m.releases.index]
+	return &artifact
 }
 
 func (m rootModel) releaseDetailKey() string {
-	row := m.selectedRelease()
-	if row == nil {
+	artifact := m.selectedReleaseArtifact()
+	if artifact == nil {
 		return ""
 	}
-	return fmt.Sprintf("%s|%s|%s|%s|%s", row.Project, row.Name, row.Channel, row.Track, row.Branch)
+	return fmt.Sprintf("%s|%s|%s", artifact.Project, artifact.Name, artifact.ArtifactType.String())
 }
 
 func (m rootModel) updateBuildFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1253,21 +1264,19 @@ func loadReleasesCmd(session *runtimeadapter.Session, filters releasesFilters) t
 	}
 }
 
-func loadReleaseDetailCmdIfSelected(session *runtimeadapter.Session, row *dto.ReleaseListEntry) tea.Cmd {
-	if row == nil {
+func loadReleaseDetailCmdIfSelected(session *runtimeadapter.Session, artifact *releaseArtifactSummary) tea.Cmd {
+	if artifact == nil {
 		return nil
 	}
-	return loadReleaseDetailCmd(session, *row)
+	return loadReleaseDetailCmd(session, *artifact)
 }
 
-func loadReleaseDetailCmd(session *runtimeadapter.Session, row dto.ReleaseListEntry) tea.Cmd {
-	key := fmt.Sprintf("%s|%s|%s|%s|%s", row.Project, row.Name, row.Channel, row.Track, row.Branch)
+func loadReleaseDetailCmd(session *runtimeadapter.Session, artifact releaseArtifactSummary) tea.Cmd {
+	key := fmt.Sprintf("%s|%s|%s", artifact.Project, artifact.Name, artifact.ArtifactType.String())
 	return func() tea.Msg {
 		detail, err := session.Frontend.Releases().Show(context.Background(), frontend.ReleasesShowRequest{
-			Name:         row.Name,
-			ArtifactType: row.ArtifactType.String(),
-			Track:        row.Track,
-			Branch:       row.Branch,
+			Name:         artifact.Name,
+			ArtifactType: artifact.ArtifactType.String(),
 		})
 		return releaseDetailLoadedMsg{key: key, detail: detail, err: err}
 	}
@@ -1506,13 +1515,14 @@ func renderBuildDetail(t theme, build *dto.Build, width int) string {
 	}, "\n"), width)
 }
 
-func renderReleaseRows(t theme, rows []dto.ReleaseListEntry, selected int, width int) string {
-	if len(rows) == 0 {
-		return t.subtle.Render("No releases.")
+func renderReleaseArtifacts(t theme, artifacts []releaseArtifactSummary, selected int, width int) string {
+	if len(artifacts) == 0 {
+		return t.subtle.Render("No artifacts.")
 	}
-	lines := make([]string, 0, len(rows))
-	for i, row := range rows {
-		line := fitLine(fmt.Sprintf("%-12s  %-20s  %-18s", row.Project, row.Name, row.Channel), width)
+	lines := make([]string, 0, len(artifacts))
+	for i, artifact := range artifacts {
+		released := emptyTime(artifact.ReleasedAt)
+		line := fitLine(fmt.Sprintf("%-24s  %-8s  %s", artifact.Name, artifact.ArtifactType.String(), released), width)
 		if i == selected {
 			line = t.selectedRow.Render(line)
 		}
@@ -1521,24 +1531,30 @@ func renderReleaseRows(t theme, rows []dto.ReleaseListEntry, selected int, width
 	return strings.Join(lines, "\n")
 }
 
-func renderReleaseDetail(t theme, detail *dto.ReleaseShowResult, selected *dto.ReleaseListEntry, width int) string {
+func renderReleaseDetail(t theme, detail *dto.ReleaseShowResult, selected *releaseArtifactSummary, width int) string {
 	if detail == nil || selected == nil {
-		return t.subtle.Render("Select a release row to load details.")
+		return t.subtle.Render("Select an artifact to load its full release matrix.")
 	}
+	releasedAt := latestReleaseTime(detail)
 	lines := []string{
 		"Project: " + detail.Project,
 		"Name: " + detail.Name,
 		"Type: " + detail.ArtifactType.String(),
-		"Updated: " + emptyTime(detail.UpdatedAt),
+		"Released: " + emptyTime(releasedAt),
+		"",
+		"Tracks: " + emptyAsDash(strings.Join(detail.Tracks, ", ")),
 		"",
 		"Channels:",
 	}
 	for _, channel := range detail.Channels {
-		prefix := "  "
-		if channel.Channel == selected.Channel {
-			prefix = "* "
-		}
-		lines = append(lines, fmt.Sprintf("%s%s (%d targets)", prefix, channel.Channel, len(channel.Targets)))
+		channelReleased := latestChannelReleaseTime(channel)
+		lines = append(lines,
+			fmt.Sprintf("- %s", channel.Channel),
+			fmt.Sprintf("  track=%s  risk=%s  branch=%s  released=%s", channel.Track, channel.Risk, emptyAsDash(channel.Branch), emptyTime(channelReleased)),
+			fmt.Sprintf("  targets: %s", formatReleaseTargets(channel.Targets)),
+			fmt.Sprintf("  resources: %s", formatReleaseResources(channel.Resources)),
+			"",
+		)
 	}
 	return fitBlock(strings.Join(lines, "\n"), width)
 }
@@ -1567,6 +1583,112 @@ func renderOperationEvents(t theme, events []dto.OperationEvent) string {
 		lines = append(lines, fmt.Sprintf("%s  %s", event.Time.Format("15:04:05"), defaultString(event.Message, event.Type)))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func summarizeReleaseArtifacts(rows []dto.ReleaseListEntry) []releaseArtifactSummary {
+	type key struct {
+		project string
+		name    string
+		kind    dto.ArtifactType
+	}
+	grouped := make(map[key]releaseArtifactSummary, len(rows))
+	for _, row := range rows {
+		k := key{project: row.Project, name: row.Name, kind: row.ArtifactType}
+		summary := grouped[k]
+		summary.Project = row.Project
+		summary.Name = row.Name
+		summary.ArtifactType = row.ArtifactType
+		summary.ChannelCount++
+		summary.ResourceCount += len(row.Resources)
+		if row.ReleasedAt.After(summary.ReleasedAt) {
+			summary.ReleasedAt = row.ReleasedAt
+		}
+		grouped[k] = summary
+	}
+	artifacts := make([]releaseArtifactSummary, 0, len(grouped))
+	for _, summary := range grouped {
+		artifacts = append(artifacts, summary)
+	}
+	sort.Slice(artifacts, func(i, j int) bool {
+		if artifacts[i].ReleasedAt.Equal(artifacts[j].ReleasedAt) {
+			if artifacts[i].Project == artifacts[j].Project {
+				return artifacts[i].Name < artifacts[j].Name
+			}
+			return artifacts[i].Project < artifacts[j].Project
+		}
+		return artifacts[i].ReleasedAt.After(artifacts[j].ReleasedAt)
+	})
+	return artifacts
+}
+
+func latestReleaseTime(detail *dto.ReleaseShowResult) time.Time {
+	if detail == nil {
+		return time.Time{}
+	}
+	var latest time.Time
+	for _, channel := range detail.Channels {
+		if ts := latestChannelReleaseTime(channel); ts.After(latest) {
+			latest = ts
+		}
+	}
+	return latest
+}
+
+func latestChannelReleaseTime(channel dto.ReleaseChannelSnapshot) time.Time {
+	var latest time.Time
+	for _, target := range channel.Targets {
+		if target.ReleasedAt.After(latest) {
+			latest = target.ReleasedAt
+		}
+	}
+	return latest
+}
+
+func formatReleaseTargets(targets []dto.ReleaseTargetSnapshot) string {
+	if len(targets) == 0 {
+		return "-"
+	}
+	parts := make([]string, 0, len(targets))
+	for _, target := range targets {
+		label := target.Architecture
+		if label == "" {
+			label = target.Base.Architecture
+		}
+		if label == "" {
+			label = "default"
+		}
+		revision := ""
+		if target.Revision > 0 {
+			revision = fmt.Sprintf("r%d", target.Revision)
+		}
+		version := target.Version
+		switch {
+		case version != "" && revision != "":
+			parts = append(parts, fmt.Sprintf("%s:%s/%s", label, revision, version))
+		case revision != "":
+			parts = append(parts, fmt.Sprintf("%s:%s", label, revision))
+		case version != "":
+			parts = append(parts, fmt.Sprintf("%s:%s", label, version))
+		default:
+			parts = append(parts, label)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatReleaseResources(resources []dto.ReleaseResourceSnapshot) string {
+	if len(resources) == 0 {
+		return "-"
+	}
+	parts := make([]string, 0, len(resources))
+	for _, resource := range resources {
+		if resource.Revision > 0 {
+			parts = append(parts, fmt.Sprintf("%s:r%d", resource.Name, resource.Revision))
+		} else {
+			parts = append(parts, resource.Name)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func dashboardSectionWidth(totalWidth int, twoColumns bool) int {
