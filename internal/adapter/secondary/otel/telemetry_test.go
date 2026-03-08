@@ -40,11 +40,33 @@ func TestMiddlewareRecordsTemplatedRouteAndStatus(t *testing.T) {
 }
 
 func TestCollectorRuntimeConfigDefaults(t *testing.T) {
-	enabled, interval := collectorRuntimeConfig(config.OTelCollectorConfig{}, 2*time.Minute, true)
+	enabled, interval := collectorRuntimeConfig(collectorSpec{
+		name:        "releases",
+		cfg:         config.OTelCollectorConfig{},
+		fallback:    2 * time.Minute,
+		cacheBacked: true,
+	}, nil)
 	if !enabled {
 		t.Fatal("default-on collector should be enabled")
 	}
 	if interval != 2*time.Minute {
 		t.Fatalf("interval = %v, want %v", interval, 2*time.Minute)
+	}
+}
+
+func TestCollectorRuntimeConfigLiveCollectorsRequireAllowList(t *testing.T) {
+	spec := collectorSpec{
+		name:     "reviews",
+		cfg:      config.OTelCollectorConfig{},
+		fallback: time.Minute,
+	}
+	enabled, _ := collectorRuntimeConfig(spec, nil)
+	if enabled {
+		t.Fatal("live collector should be disabled by default")
+	}
+
+	enabled, _ = collectorRuntimeConfig(spec, []string{"reviews"})
+	if !enabled {
+		t.Fatal("live collector should be enabled when allow-listed")
 	}
 }

@@ -13,11 +13,11 @@ import (
 )
 
 type collectorSpec struct {
-	name      string
-	cfg       config.OTelCollectorConfig
-	fallback  time.Duration
-	defaultOn bool
-	refresh   func(context.Context) error
+	name        string
+	cfg         config.OTelCollectorConfig
+	fallback    time.Duration
+	cacheBacked bool
+	refresh     func(context.Context) error
 }
 
 func (t *Telemetry) startCollectors(parent context.Context) {
@@ -27,7 +27,7 @@ func (t *Telemetry) startCollectors(parent context.Context) {
 	ctx, cancel := context.WithCancel(parent)
 	t.cancel = cancel
 	for _, spec := range t.collectorSpecs() {
-		enabled, interval := collectorRuntimeConfig(spec.cfg, spec.fallback, spec.defaultOn)
+		enabled, interval := collectorRuntimeConfig(spec, t.cfg.Metrics.Domain.LiveSystems)
 		if !enabled {
 			continue
 		}
@@ -41,35 +41,48 @@ func (t *Telemetry) startCollectors(parent context.Context) {
 
 func (t *Telemetry) collectorSpecs() []collectorSpec {
 	return []collectorSpec{
-		{name: "auth", cfg: t.cfg.Metrics.Collectors.Auth, fallback: time.Minute, defaultOn: true, refresh: t.refreshAuth},
-		{name: "operations", cfg: t.cfg.Metrics.Collectors.Operations, fallback: 30 * time.Second, defaultOn: true, refresh: t.refreshOperations},
-		{name: "projects", cfg: t.cfg.Metrics.Collectors.Projects, fallback: 10 * time.Minute, defaultOn: true, refresh: t.refreshProjects},
-		{name: "builds", cfg: t.cfg.Metrics.Collectors.Builds, fallback: 5 * time.Minute, defaultOn: false, refresh: t.refreshBuilds},
-		{name: "releases", cfg: t.cfg.Metrics.Collectors.Releases, fallback: 2 * time.Minute, defaultOn: true, refresh: t.refreshReleases},
-		{name: "reviews", cfg: t.cfg.Metrics.Collectors.Reviews, fallback: 5 * time.Minute, defaultOn: true, refresh: t.refreshReviews},
-		{name: "commits", cfg: t.cfg.Metrics.Collectors.Commits, fallback: 10 * time.Minute, defaultOn: false, refresh: t.refreshCommits},
-		{name: "bugs", cfg: t.cfg.Metrics.Collectors.Bugs, fallback: 5 * time.Minute, defaultOn: false, refresh: t.refreshBugs},
-		{name: "packages", cfg: t.cfg.Metrics.Collectors.Packages, fallback: 10 * time.Minute, defaultOn: true, refresh: t.refreshPackages},
-		{name: "excuses", cfg: t.cfg.Metrics.Collectors.Excuses, fallback: 10 * time.Minute, defaultOn: true, refresh: t.refreshExcuses},
-		{name: "cache", cfg: t.cfg.Metrics.Collectors.Cache, fallback: time.Minute, defaultOn: true, refresh: t.refreshCaches},
+		{name: "auth", cfg: t.cfg.Metrics.Collectors.Auth, fallback: time.Minute, cacheBacked: true, refresh: t.refreshAuth},
+		{name: "operations", cfg: t.cfg.Metrics.Collectors.Operations, fallback: 30 * time.Second, cacheBacked: true, refresh: t.refreshOperations},
+		{name: "projects", cfg: t.cfg.Metrics.Collectors.Projects, fallback: 10 * time.Minute, cacheBacked: true, refresh: t.refreshProjects},
+		{name: "builds", cfg: t.cfg.Metrics.Collectors.Builds, fallback: 5 * time.Minute, refresh: t.refreshBuilds},
+		{name: "releases", cfg: t.cfg.Metrics.Collectors.Releases, fallback: 2 * time.Minute, cacheBacked: true, refresh: t.refreshReleases},
+		{name: "reviews", cfg: t.cfg.Metrics.Collectors.Reviews, fallback: 5 * time.Minute, refresh: t.refreshReviews},
+		{name: "commits", cfg: t.cfg.Metrics.Collectors.Commits, fallback: 10 * time.Minute, refresh: t.refreshCommits},
+		{name: "bugs", cfg: t.cfg.Metrics.Collectors.Bugs, fallback: 5 * time.Minute, refresh: t.refreshBugs},
+		{name: "packages", cfg: t.cfg.Metrics.Collectors.Packages, fallback: 10 * time.Minute, cacheBacked: true, refresh: t.refreshPackages},
+		{name: "excuses", cfg: t.cfg.Metrics.Collectors.Excuses, fallback: 10 * time.Minute, cacheBacked: true, refresh: t.refreshExcuses},
+		{name: "cache", cfg: t.cfg.Metrics.Collectors.Cache, fallback: time.Minute, cacheBacked: true, refresh: t.refreshCaches},
 	}
 }
 
-func collectorRuntimeConfig(cfg config.OTelCollectorConfig, fallback time.Duration, defaultOn bool) (bool, time.Duration) {
-	interval := fallback
+func collectorRuntimeConfig(spec collectorSpec, liveSystems []string) (bool, time.Duration) {
+	interval := spec.fallback
+	cfg := spec.cfg
 	if cfg.RefreshInterval != "" {
 		if parsed, err := time.ParseDuration(cfg.RefreshInterval); err == nil && parsed > 0 {
 			interval = parsed
 		}
 	}
-	enabled := defaultOn
+	enabled := spec.cacheBacked
+	if !spec.cacheBacked {
+		enabled = collectorAllowedLive(spec.name, liveSystems)
+	}
 	if cfg.Enabled {
 		enabled = true
 	}
-	if !cfg.Enabled && cfg.RefreshInterval != "" && !defaultOn {
+	if !cfg.Enabled && cfg.RefreshInterval != "" && spec.cacheBacked {
 		enabled = true
 	}
 	return enabled, interval
+}
+
+func collectorAllowedLive(name string, liveSystems []string) bool {
+	for _, system := range liveSystems {
+		if system == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *Telemetry) runCollector(ctx context.Context, spec collectorSpec, interval time.Duration) {
@@ -98,6 +111,9 @@ func (t *Telemetry) runCollector(ctx context.Context, spec collectorSpec, interv
 }
 
 func (t *Telemetry) refreshAuth(ctx context.Context) error {
+	if t.source == nil || t.source.AuthSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.AuthSnapshot(ctx)
 	if err != nil {
 		return err
@@ -114,6 +130,9 @@ func (t *Telemetry) refreshAuth(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshOperations(ctx context.Context) error {
+	if t.source == nil || t.source.OperationSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.OperationSnapshot(ctx)
 	if err != nil {
 		return err
@@ -128,6 +147,9 @@ func (t *Telemetry) refreshOperations(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshProjects(ctx context.Context) error {
+	if t.source == nil || t.source.ProjectSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.ProjectSnapshot(ctx)
 	if err != nil {
 		return err
@@ -146,6 +168,9 @@ func (t *Telemetry) refreshProjects(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshBuilds(ctx context.Context) error {
+	if t.source == nil || t.source.BuildSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.BuildSnapshot(ctx)
 	if err != nil {
 		return err
@@ -160,6 +185,9 @@ func (t *Telemetry) refreshBuilds(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshReleases(ctx context.Context) error {
+	if t.source == nil || t.source.ReleaseSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.ReleaseSnapshot(ctx)
 	if err != nil {
 		return err
@@ -187,6 +215,9 @@ func (t *Telemetry) refreshReleases(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshReviews(ctx context.Context) error {
+	if t.source == nil || t.source.ReviewSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.ReviewSnapshot(ctx)
 	if err != nil {
 		return err
@@ -201,6 +232,9 @@ func (t *Telemetry) refreshReviews(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshCommits(ctx context.Context) error {
+	if t.source == nil || t.source.CommitSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.CommitSnapshot(ctx)
 	if err != nil {
 		return err
@@ -213,6 +247,9 @@ func (t *Telemetry) refreshCommits(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshBugs(ctx context.Context) error {
+	if t.source == nil || t.source.BugSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.BugSnapshot(ctx)
 	if err != nil {
 		return err
@@ -225,6 +262,9 @@ func (t *Telemetry) refreshBugs(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshPackages(ctx context.Context) error {
+	if t.source == nil || t.source.PackageSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.PackageSnapshot(ctx)
 	if err != nil {
 		return err
@@ -237,6 +277,9 @@ func (t *Telemetry) refreshPackages(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshExcuses(ctx context.Context) error {
+	if t.source == nil || t.source.ExcusesSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.ExcusesSnapshot(ctx)
 	if err != nil {
 		return err
@@ -249,6 +292,9 @@ func (t *Telemetry) refreshExcuses(ctx context.Context) error {
 }
 
 func (t *Telemetry) refreshCaches(ctx context.Context) error {
+	if t.source == nil || t.source.CacheSnapshot == nil {
+		return nil
+	}
 	snapshot, err := t.source.CacheSnapshot(ctx)
 	if err != nil {
 		return err
