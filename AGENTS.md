@@ -73,3 +73,38 @@ The main Ubuntu excuses feed (`update_excuses.yaml.xz`) does **not** carry team 
 ### `update_excuses_by_team.yaml` is not normal YAML
 
 Ubuntu's team feed contains Python-specific YAML tags/aliases (for example `!!python/object/apply:collections.defaultdict`, anchors, and aliases) that `gopkg.in/yaml.v3` does not cleanly unmarshal at scale. Parse it defensively for the fields you need instead of assuming a normal schema-safe YAML decode.
+
+## OpenTelemetry
+
+### Cache-backed domain telemetry is the default
+
+Domain metrics should expose cached or internal state by default because it is cheaper and more stable to scrape. If a domain collector needs live upstream fan-out, it must be explicitly opt-in through `otel.metrics.domain.live_systems`.
+
+### Domain changes must evaluate telemetry impact
+
+If a domain adds or changes operationally relevant state, counts, or snapshots, update the telemetry collector and tests in the same change, or document clearly why telemetry is intentionally deferred. New domains must be classified as one of:
+
+- cache/internal collector
+- live collector
+- intentionally no telemetry yet
+
+### Live collectors need explicit review
+
+If a change adds a live collector or broadens its upstream fan-out, update all of:
+
+- `otel.metrics.domain.live_systems` documentation
+- refresh interval defaults/expectations
+- telemetry tests
+- `PLAN.md`
+
+### Keep metric labels bounded
+
+Never add unbounded telemetry labels. In particular, do not use raw IDs, usernames, SHAs, URLs, or other free-form values as metric labels. Prefer stable gauges/counters and put changing string metadata in traces/logs instead of metrics.
+
+### Preserve outbound tracing coverage
+
+If an HTTP-backed upstream client changes or a new one is introduced, ensure outbound tracing still wraps the client construction path. Do not scatter OTel calls across business logic.
+
+### Keep observability dependencies confined
+
+OpenTelemetry and Prometheus imports stay confined to `internal/adapter/secondary/otel`. A new direct import outside that package is a bug unless the architecture rules are intentionally updated with matching tests.
