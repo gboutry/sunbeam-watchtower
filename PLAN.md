@@ -75,7 +75,6 @@ These are the main known gaps that still matter:
 
 ### Near term
 
-- add an optional `--risk` filter to `watchtower releases show`
 - continue shrinking `internal/app` so it stays a composition root instead of absorbing feature logic
 - keep runtime and user documentation aligned with the implemented daemon/embedded behavior
 - keep stateful workflows explicitly durable-first and avoid backsliding into implicit in-memory assumptions
