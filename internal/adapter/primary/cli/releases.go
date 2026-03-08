@@ -37,7 +37,7 @@ func newReleasesListCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderReleaseList(opts.Out, opts.Output, results)
+			return renderReleaseList(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), results)
 		},
 	}
 
@@ -68,7 +68,7 @@ func newReleasesShowCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderReleaseShow(opts.Out, opts.Output, result)
+			return renderReleaseShow(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
 	}
 

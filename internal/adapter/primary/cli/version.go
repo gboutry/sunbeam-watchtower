@@ -14,7 +14,8 @@ func newVersionCmd(opts *Options) *cobra.Command {
 		Use:   "version",
 		Short: "Print the version",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(opts.Out, "watchtower %s\n", Version)
+			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
+			fmt.Fprintf(opts.Out, "%s %s\n", styler.Section("watchtower"), Version)
 			return nil
 		},
 	}

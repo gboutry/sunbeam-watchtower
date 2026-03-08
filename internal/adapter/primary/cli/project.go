@@ -4,8 +4,6 @@
 package cli
 
 import (
-	"fmt"
-
 	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	"github.com/spf13/cobra"
@@ -34,6 +32,8 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Logger.Debug("project sync command started", "dry_run", dryRun)
 			workflow := opts.Frontend().Projects()
+			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
+			errStyler := newOutputStylerForOptions(opts, opts.ErrOut, opts.Output)
 			request := frontend.ProjectSyncRequest{
 				Projects: projects,
 				DryRun:   dryRun,
@@ -44,7 +44,7 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return renderOperationJob(opts.Out, opts.Output, job)
+				return renderOperationJob(opts.Out, opts.Output, styler, job)
 			}
 
 			result, err := workflow.Sync(cmd.Context(), request)
@@ -53,13 +53,15 @@ func newProjectSyncCmd(opts *Options) *cobra.Command {
 			}
 
 			for _, e := range result.Errors {
-				fmt.Fprintf(opts.ErrOut, "error: %s\n", e)
+				if err := writeErrorLine(opts.ErrOut, errStyler, e); err != nil {
+					return err
+				}
 			}
 
 			syncResult := &dto.ProjectSyncResult{
 				Actions: result.Actions,
 			}
-			return renderProjectSyncResult(opts.Out, opts.Output, syncResult, dryRun)
+			return renderProjectSyncResult(opts.Out, opts.Output, styler, syncResult, dryRun)
 		},
 	}
 

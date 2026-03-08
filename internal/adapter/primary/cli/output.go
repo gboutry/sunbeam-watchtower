@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -14,14 +13,14 @@ import (
 )
 
 // renderMergeRequests writes merge requests in the requested format.
-func renderMergeRequests(w io.Writer, format string, mrs []forge.MergeRequest) error {
+func renderMergeRequests(w io.Writer, format string, styler *outputStyler, mrs []forge.MergeRequest) error {
 	switch format {
 	case "json":
 		return renderJSON(w, mrs)
 	case "yaml":
 		return renderYAML(w, mrs)
 	default:
-		return renderTable(w, mrs)
+		return renderTable(w, styler, mrs)
 	}
 }
 
@@ -41,85 +40,131 @@ func renderYAML(w io.Writer, v any) error {
 }
 
 // renderMergeRequestDetail writes a single merge request in the requested format.
-func renderMergeRequestDetail(w io.Writer, format string, mr *forge.MergeRequest) error {
+func renderMergeRequestDetail(w io.Writer, format string, styler *outputStyler, mr *forge.MergeRequest) error {
 	switch format {
 	case "json":
 		return renderJSON(w, mr)
 	case "yaml":
 		return renderYAML(w, mr)
 	default:
-		return renderMergeRequestDetailTable(w, mr)
+		return renderMergeRequestDetailTable(w, styler, mr)
 	}
 }
 
-func renderMergeRequestDetailTable(w io.Writer, mr *forge.MergeRequest) error {
-	fmt.Fprintf(w, "Project:       %s\n", mr.Repo)
-	fmt.Fprintf(w, "Forge:         %s\n", mr.Forge)
-	fmt.Fprintf(w, "ID:            %s\n", mr.ID)
-	fmt.Fprintf(w, "Title:         %s\n", mr.Title)
-	fmt.Fprintf(w, "Author:        %s\n", mr.Author)
-	fmt.Fprintf(w, "State:         %s\n", mr.State)
-	fmt.Fprintf(w, "Review:        %s\n", mr.ReviewState)
-	fmt.Fprintf(w, "Source:        %s\n", mr.SourceBranch)
-	fmt.Fprintf(w, "Target:        %s\n", mr.TargetBranch)
-	fmt.Fprintf(w, "URL:           %s\n", mr.URL)
+func renderMergeRequestDetailTable(w io.Writer, styler *outputStyler, mr *forge.MergeRequest) error {
+	if err := writeKeyValue(w, styler, "Project", mr.Repo); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Forge", mr.Forge.String()); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "ID", mr.ID); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Title", mr.Title); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Author", mr.Author); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "State", mr.State.String()); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Review", mr.ReviewState.String()); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Source", mr.SourceBranch); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Target", mr.TargetBranch); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "URL", mr.URL); err != nil {
+		return err
+	}
 	if !mr.CreatedAt.IsZero() {
-		fmt.Fprintf(w, "Created:       %s\n", mr.CreatedAt.Format("2006-01-02 15:04"))
+		if err := writeKeyValue(w, styler, "Created", mr.CreatedAt.Format("2006-01-02 15:04")); err != nil {
+			return err
+		}
 	}
 	if !mr.UpdatedAt.IsZero() {
-		fmt.Fprintf(w, "Updated:       %s\n", mr.UpdatedAt.Format("2006-01-02 15:04"))
+		if err := writeKeyValue(w, styler, "Updated", mr.UpdatedAt.Format("2006-01-02 15:04")); err != nil {
+			return err
+		}
 	}
 	if len(mr.Checks) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Checks:")
+		if err := writeSectionTitle(w, styler, "Checks:"); err != nil {
+			return err
+		}
 		for _, c := range mr.Checks {
-			fmt.Fprintf(w, "  %s  %s  %s\n", c.State, c.Name, c.URL)
+			fmt.Fprintf(w, "  %s  %s  %s\n", styler.semantic(c.State.String()), c.Name, styler.DetailValue("URL", c.URL))
 		}
 	}
 	if mr.Description != "" {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Description:")
+		if err := writeSectionTitle(w, styler, "Description:"); err != nil {
+			return err
+		}
 		fmt.Fprintln(w, mr.Description)
 	}
 	return nil
 }
 
 // renderBugDetail writes a single bug in the requested format.
-func renderBugDetail(w io.Writer, format string, b *forge.Bug) error {
+func renderBugDetail(w io.Writer, format string, styler *outputStyler, b *forge.Bug) error {
 	switch format {
 	case "json":
 		return renderJSON(w, b)
 	case "yaml":
 		return renderYAML(w, b)
 	default:
-		return renderBugDetailTable(w, b)
+		return renderBugDetailTable(w, styler, b)
 	}
 }
 
-func renderBugDetailTable(w io.Writer, b *forge.Bug) error {
-	fmt.Fprintf(w, "Bug:           #%s\n", b.ID)
-	fmt.Fprintf(w, "Title:         %s\n", b.Title)
-	fmt.Fprintf(w, "Owner:         %s\n", b.Owner)
-	fmt.Fprintf(w, "URL:           %s\n", b.URL)
+func renderBugDetailTable(w io.Writer, styler *outputStyler, b *forge.Bug) error {
+	if err := writeKeyValue(w, styler, "Bug", "#"+b.ID); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Title", b.Title); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Owner", b.Owner); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "URL", b.URL); err != nil {
+		return err
+	}
 	if len(b.Tags) > 0 {
-		fmt.Fprintf(w, "Tags:          %s\n", strings.Join(b.Tags, ", "))
+		if err := writeKeyValue(w, styler, "Tags", strings.Join(b.Tags, ", ")); err != nil {
+			return err
+		}
 	}
 	if !b.CreatedAt.IsZero() {
-		fmt.Fprintf(w, "Created:       %s\n", b.CreatedAt.Format("2006-01-02 15:04"))
+		if err := writeKeyValue(w, styler, "Created", b.CreatedAt.Format("2006-01-02 15:04")); err != nil {
+			return err
+		}
 	}
 	if !b.UpdatedAt.IsZero() {
-		fmt.Fprintf(w, "Updated:       %s\n", b.UpdatedAt.Format("2006-01-02 15:04"))
+		if err := writeKeyValue(w, styler, "Updated", b.UpdatedAt.Format("2006-01-02 15:04")); err != nil {
+			return err
+		}
 	}
 	if b.Description != "" {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Description:")
+		if err := writeSectionTitle(w, styler, "Description:"); err != nil {
+			return err
+		}
 		fmt.Fprintln(w, b.Description)
 	}
 	if len(b.Tasks) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Tasks:")
-		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "  TARGET\tSTATUS\tIMPORTANCE\tASSIGNEE\tURL")
+		if err := writeSectionTitle(w, styler, "Tasks:"); err != nil {
+			return err
+		}
+		headers := []string{"TARGET", "STATUS", "IMPORTANCE", "ASSIGNEE", "URL"}
+		rows := make([][]string, 0, len(b.Tasks))
 		for _, t := range b.Tasks {
 			target := t.Title
 			// LP bug task titles are like "Bug #12345 in projectname: title"
@@ -127,39 +172,33 @@ func renderBugDetailTable(w io.Writer, b *forge.Bug) error {
 			if len(target) > 50 {
 				target = target[:47] + "..."
 			}
-			fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n",
-				target,
-				t.Status,
-				t.Importance,
-				t.Assignee,
-				t.URL,
-			)
+			rows = append(rows, []string{target, t.Status, t.Importance, t.Assignee, t.URL})
 		}
-		return tw.Flush()
+		return renderStyledTable(w, styler, headers, rows)
 	}
 	return nil
 }
 
 // renderBugTasks writes bug tasks in the requested format.
-func renderBugTasks(w io.Writer, format string, tasks []forge.BugTask) error {
+func renderBugTasks(w io.Writer, format string, styler *outputStyler, tasks []forge.BugTask) error {
 	switch format {
 	case "json":
 		return renderJSON(w, tasks)
 	case "yaml":
 		return renderYAML(w, tasks)
 	default:
-		return renderBugTable(w, tasks)
+		return renderBugTable(w, styler, tasks)
 	}
 }
 
-func renderBugTable(w io.Writer, tasks []forge.BugTask) error {
+func renderBugTable(w io.Writer, styler *outputStyler, tasks []forge.BugTask) error {
 	if len(tasks) == 0 {
 		fmt.Fprintln(w, "No bug tasks found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PROJECT\tID\tSTATUS\tIMPORTANCE\tASSIGNEE\tTITLE\tURL")
+	headers := []string{"PROJECT", "ID", "STATUS", "IMPORTANCE", "ASSIGNEE", "TITLE", "URL"}
+	rows := make([][]string, 0, len(tasks))
 	for _, t := range tasks {
 		title := t.Title
 		if len(title) > 60 {
@@ -167,27 +206,19 @@ func renderBugTable(w io.Writer, tasks []forge.BugTask) error {
 		}
 		title = strings.ReplaceAll(title, "\t", " ")
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			t.Project,
-			t.BugID,
-			t.Status,
-			t.Importance,
-			t.Assignee,
-			title,
-			t.URL,
-		)
+		rows = append(rows, []string{t.Project, t.BugID, t.Status, t.Importance, t.Assignee, title, t.URL})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
-func renderTable(w io.Writer, mrs []forge.MergeRequest) error {
+func renderTable(w io.Writer, styler *outputStyler, mrs []forge.MergeRequest) error {
 	if len(mrs) == 0 {
 		fmt.Fprintln(w, "No merge requests found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PROJECT\tFORGE\tID\tSTATE\tAUTHOR\tTITLE\tURL")
+	headers := []string{"PROJECT", "FORGE", "ID", "STATE", "AUTHOR", "TITLE", "URL"}
+	rows := make([][]string, 0, len(mrs))
 	for _, mr := range mrs {
 		title := mr.Title
 		if len(title) > 60 {
@@ -195,217 +226,214 @@ func renderTable(w io.Writer, mrs []forge.MergeRequest) error {
 		}
 		title = strings.ReplaceAll(title, "\t", " ")
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			mr.Repo,
-			mr.Forge,
-			mr.ID,
-			mr.State,
-			mr.Author,
-			title,
-			mr.URL,
-		)
+		rows = append(rows, []string{mr.Repo, mr.Forge.String(), mr.ID, mr.State.String(), mr.Author, title, mr.URL})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // renderBuilds writes builds in the requested format.
-func renderBuilds(w io.Writer, format string, builds []dto.Build) error {
+func renderBuilds(w io.Writer, format string, styler *outputStyler, builds []dto.Build) error {
 	switch format {
 	case "json":
 		return renderJSON(w, builds)
 	case "yaml":
 		return renderYAML(w, builds)
 	default:
-		return renderBuildsTable(w, builds)
+		return renderBuildsTable(w, styler, builds)
 	}
 }
 
-func renderBuildsTable(w io.Writer, builds []dto.Build) error {
+func renderBuildsTable(w io.Writer, styler *outputStyler, builds []dto.Build) error {
 	if len(builds) == 0 {
 		fmt.Fprintln(w, "No builds found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PROJECT\tRECIPE\tARCH\tSTATE\tCREATED\tURL")
+	headers := []string{"PROJECT", "RECIPE", "ARCH", "STATE", "CREATED", "URL"}
+	rows := make([][]string, 0, len(builds))
 	for _, b := range builds {
 		created := ""
 		if !b.CreatedAt.IsZero() {
 			created = b.CreatedAt.Format("2006-01-02 15:04")
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			b.Project,
-			b.Recipe,
-			b.Arch,
-			b.State,
-			created,
-			b.WebLink,
-		)
+		rows = append(rows, []string{b.Project, b.Recipe, b.Arch, b.State.String(), created, b.WebLink})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // renderBuildRequests writes build request results in the requested format.
-func renderBuildRequests(w io.Writer, format string, results []dto.BuildRequest) error {
+func renderBuildRequests(w io.Writer, format string, styler *outputStyler, results []dto.BuildRequest) error {
 	switch format {
 	case "json":
 		return renderJSON(w, results)
 	case "yaml":
 		return renderYAML(w, results)
 	default:
-		return renderBuildRequestsTable(w, results)
+		return renderBuildRequestsTable(w, styler, results)
 	}
 }
 
-func renderBuildRequestsTable(w io.Writer, results []dto.BuildRequest) error {
+func renderBuildRequestsTable(w io.Writer, styler *outputStyler, results []dto.BuildRequest) error {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No build requests found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "STATUS\tERROR\tURL")
+	headers := []string{"STATUS", "ERROR", "URL"}
+	rows := make([][]string, 0, len(results))
 	for _, r := range results {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n",
-			r.Status,
-			r.ErrorMessage,
-			r.WebLink,
-		)
+		rows = append(rows, []string{r.Status, r.ErrorMessage, r.WebLink})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // renderOperationJobs writes operations in the requested format.
-func renderOperationJobs(w io.Writer, format string, jobs []dto.OperationJob) error {
+func renderOperationJobs(w io.Writer, format string, styler *outputStyler, jobs []dto.OperationJob) error {
 	switch format {
 	case "json":
 		return renderJSON(w, jobs)
 	case "yaml":
 		return renderYAML(w, jobs)
 	default:
-		return renderOperationJobsTable(w, jobs)
+		return renderOperationJobsTable(w, styler, jobs)
 	}
 }
 
-func renderOperationJobsTable(w io.Writer, jobs []dto.OperationJob) error {
+func renderOperationJobsTable(w io.Writer, styler *outputStyler, jobs []dto.OperationJob) error {
 	if len(jobs) == 0 {
 		fmt.Fprintln(w, "No operations found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tKIND\tSTATE\tCREATED\tSUMMARY")
+	headers := []string{"ID", "KIND", "STATE", "CREATED", "SUMMARY"}
+	rows := make([][]string, 0, len(jobs))
 	for _, job := range jobs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			job.ID,
-			job.Kind,
-			job.State,
-			formatTimestamp(job.CreatedAt),
-			job.Summary,
-		)
+		rows = append(rows, []string{job.ID, string(job.Kind), string(job.State), formatTimestamp(job.CreatedAt), job.Summary})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // renderOperationJob writes a single operation in the requested format.
-func renderOperationJob(w io.Writer, format string, job *dto.OperationJob) error {
+func renderOperationJob(w io.Writer, format string, styler *outputStyler, job *dto.OperationJob) error {
 	switch format {
 	case "json":
 		return renderJSON(w, job)
 	case "yaml":
 		return renderYAML(w, job)
 	default:
-		return renderOperationJobTable(w, job)
+		return renderOperationJobTable(w, styler, job)
 	}
 }
 
-func renderOperationJobTable(w io.Writer, job *dto.OperationJob) error {
+func renderOperationJobTable(w io.Writer, styler *outputStyler, job *dto.OperationJob) error {
 	if job == nil {
 		fmt.Fprintln(w, "No operation found.")
 		return nil
 	}
 
-	fmt.Fprintf(w, "ID:            %s\n", job.ID)
-	fmt.Fprintf(w, "Kind:          %s\n", job.Kind)
-	fmt.Fprintf(w, "State:         %s\n", job.State)
-	fmt.Fprintf(w, "Created:       %s\n", formatTimestamp(job.CreatedAt))
+	if err := writeKeyValue(w, styler, "ID", job.ID); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Kind", string(job.Kind)); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "State", string(job.State)); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Created", formatTimestamp(job.CreatedAt)); err != nil {
+		return err
+	}
 	if !job.StartedAt.IsZero() {
-		fmt.Fprintf(w, "Started:       %s\n", formatTimestamp(job.StartedAt))
+		if err := writeKeyValue(w, styler, "Started", formatTimestamp(job.StartedAt)); err != nil {
+			return err
+		}
 	}
 	if !job.FinishedAt.IsZero() {
-		fmt.Fprintf(w, "Finished:      %s\n", formatTimestamp(job.FinishedAt))
+		if err := writeKeyValue(w, styler, "Finished", formatTimestamp(job.FinishedAt)); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(w, "Cancellable:   %t\n", job.Cancellable)
+	if err := writeKeyValue(w, styler, "Cancellable", fmt.Sprintf("%t", job.Cancellable)); err != nil {
+		return err
+	}
 	if job.Summary != "" {
-		fmt.Fprintf(w, "Summary:       %s\n", job.Summary)
+		if err := writeKeyValue(w, styler, "Summary", job.Summary); err != nil {
+			return err
+		}
 	}
 	if job.Error != "" {
-		fmt.Fprintf(w, "Error:         %s\n", job.Error)
+		if err := writeKeyValue(w, styler, "Error", job.Error); err != nil {
+			return err
+		}
 	}
 	if job.Progress != nil {
-		fmt.Fprintf(w, "Progress:      %s\n", formatOperationProgress(job.Progress))
+		if err := writeKeyValue(w, styler, "Progress", formatOperationProgress(job.Progress)); err != nil {
+			return err
+		}
 	}
 	if len(job.Attributes) > 0 {
-		fmt.Fprintln(w, "Attributes:")
+		if err := writeSectionTitle(w, styler, "Attributes:"); err != nil {
+			return err
+		}
 		for key, value := range job.Attributes {
-			fmt.Fprintf(w, "  %s=%s\n", key, value)
+			fmt.Fprintf(w, "  %s=%s\n", styler.Key(key), value)
 		}
 	}
 	return nil
 }
 
 // renderOperationEvents writes operation events in the requested format.
-func renderOperationEvents(w io.Writer, format string, events []dto.OperationEvent) error {
+func renderOperationEvents(w io.Writer, format string, styler *outputStyler, events []dto.OperationEvent) error {
 	switch format {
 	case "json":
 		return renderJSON(w, events)
 	case "yaml":
 		return renderYAML(w, events)
 	default:
-		return renderOperationEventsTable(w, events)
+		return renderOperationEventsTable(w, styler, events)
 	}
 }
 
-func renderOperationEventsTable(w io.Writer, events []dto.OperationEvent) error {
+func renderOperationEventsTable(w io.Writer, styler *outputStyler, events []dto.OperationEvent) error {
 	if len(events) == 0 {
 		fmt.Fprintln(w, "No operation events found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "TIME\tTYPE\tMESSAGE\tERROR\tPROGRESS")
+	headers := []string{"TIME", "TYPE", "MESSAGE", "ERROR", "PROGRESS"}
+	rows := make([][]string, 0, len(events))
 	for _, event := range events {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+		rows = append(rows, []string{
 			formatTimestamp(event.Time),
 			event.Type,
 			event.Message,
 			event.Error,
 			formatOperationProgress(event.Progress),
-		)
+		})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // renderCommits writes commits in the requested format.
-func renderCommits(w io.Writer, format string, commits []forge.Commit) error {
+func renderCommits(w io.Writer, format string, styler *outputStyler, commits []forge.Commit) error {
 	switch format {
 	case "json":
 		return renderJSON(w, commits)
 	case "yaml":
 		return renderYAML(w, commits)
 	default:
-		return renderCommitTable(w, commits)
+		return renderCommitTable(w, styler, commits)
 	}
 }
 
-func renderCommitTable(w io.Writer, commits []forge.Commit) error {
+func renderCommitTable(w io.Writer, styler *outputStyler, commits []forge.Commit) error {
 	if len(commits) == 0 {
 		fmt.Fprintln(w, "No commits found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PROJECT\tFORGE\tSHA\tAUTHOR\tDATE\tSTATUS\tLINK\tMESSAGE")
+	headers := []string{"PROJECT", "FORGE", "SHA", "AUTHOR", "DATE", "STATUS", "LINK", "MESSAGE"}
+	rows := make([][]string, 0, len(commits))
 	for _, c := range commits {
 		msg := c.Message
 		if idx := strings.Index(msg, "\n"); idx != -1 {
@@ -432,90 +460,81 @@ func renderCommitTable(w io.Writer, commits []forge.Commit) error {
 			link = c.MergeRequest.URL
 		}
 
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			c.Repo,
-			c.Forge,
-			sha,
-			c.Author,
-			date,
-			status,
-			link,
-			msg,
-		)
+		rows = append(rows, []string{c.Repo, c.Forge.String(), sha, c.Author, date, status, link, msg})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // renderBugSyncResult writes bug sync results in the requested format.
-func renderBugSyncResult(w io.Writer, format string, result *dto.BugSyncResult, dryRun bool) error {
+func renderBugSyncResult(w io.Writer, format string, styler *outputStyler, result *dto.BugSyncResult, dryRun bool) error {
 	switch format {
 	case "json":
 		return renderJSON(w, result)
 	case "yaml":
 		return renderYAML(w, result)
 	default:
-		return renderBugSyncTable(w, result, dryRun)
+		return renderBugSyncTable(w, styler, result, dryRun)
 	}
 }
 
-func renderBugSyncTable(w io.Writer, result *dto.BugSyncResult, dryRun bool) error {
+func renderBugSyncTable(w io.Writer, styler *outputStyler, result *dto.BugSyncResult, dryRun bool) error {
 	if len(result.Actions) == 0 {
 		fmt.Fprintln(w, "No bugs to sync.")
 		return nil
 	}
 	prefix := ""
 	if dryRun {
-		prefix = "would "
+		prefix = styler.Dim("would") + " "
 	}
 	for _, a := range result.Actions {
 		switch a.ActionType {
 		case dto.BugSyncActionStatusUpdate:
-			fmt.Fprintf(w, "%supdate: Bug #%s task %q %s → %s\n", prefix, a.BugID, a.TaskTitle, a.OldStatus, a.NewStatus)
+			fmt.Fprintf(w, "%s%s Bug #%s task %q %s -> %s\n", prefix, styler.Action("update:"), a.BugID, a.TaskTitle, styler.semantic(a.OldStatus), styler.semantic(a.NewStatus))
 		case dto.BugSyncActionSeriesAssignment:
-			fmt.Fprintf(w, "%sassign: Bug #%s to series %q on project %q\n", prefix, a.BugID, a.Series, a.Project)
+			fmt.Fprintf(w, "%s%s Bug #%s to series %q on project %q\n", prefix, styler.Action("assign:"), a.BugID, a.Series, a.Project)
 		case dto.BugSyncActionAddProjectTask:
-			fmt.Fprintf(w, "%sadd: Bug #%s task on project %q\n", prefix, a.BugID, a.Project)
+			fmt.Fprintf(w, "%s%s Bug #%s task on project %q\n", prefix, styler.Action("add:"), a.BugID, a.Project)
 		}
 	}
 	return nil
 }
 
 // renderProjectSyncResult writes project sync results in the requested format.
-func renderProjectSyncResult(w io.Writer, format string, result *dto.ProjectSyncResult, dryRun bool) error {
+func renderProjectSyncResult(w io.Writer, format string, styler *outputStyler, result *dto.ProjectSyncResult, dryRun bool) error {
 	switch format {
 	case "json":
 		return renderJSON(w, result)
 	case "yaml":
 		return renderYAML(w, result)
 	default:
-		return renderProjectSyncTable(w, result, dryRun)
+		return renderProjectSyncTable(w, styler, result, dryRun)
 	}
 }
 
-func renderProjectSyncTable(w io.Writer, result *dto.ProjectSyncResult, dryRun bool) error {
+func renderProjectSyncTable(w io.Writer, styler *outputStyler, result *dto.ProjectSyncResult, dryRun bool) error {
 	if len(result.Actions) == 0 {
 		fmt.Fprintln(w, "No changes needed.")
 		return nil
 	}
 	prefix := ""
 	if dryRun {
-		prefix = "would "
+		prefix = styler.Dim("would") + " "
 	}
 	for _, a := range result.Actions {
 		switch a.ActionType {
 		case dto.ProjectSyncActionCreateSeries:
-			fmt.Fprintf(w, "%screate: series %q on project %q\n", prefix, a.Series, a.Project)
+			fmt.Fprintf(w, "%s%s series %q on project %q\n", prefix, styler.Action("create:"), a.Series, a.Project)
 		case dto.ProjectSyncActionSetDevFocus:
-			fmt.Fprintf(w, "%sset: development focus to %q on project %q\n", prefix, a.Series, a.Project)
+			fmt.Fprintf(w, "%s%s development focus to %q on project %q\n", prefix, styler.Action("set:"), a.Series, a.Project)
 		case dto.ProjectSyncActionDevFocusUnchanged:
-			fmt.Fprintf(w, "unchanged: development focus already %q on project %q\n", a.Series, a.Project)
+			fmt.Fprintf(w, "%s development focus already %q on project %q\n", styler.Action("unchanged:"), a.Series, a.Project)
 		}
 	}
 	return nil
 }
 
 // renderStringList writes a list of strings in the requested format.
-func renderStringList(w io.Writer, format string, items []string) error {
+func renderStringList(w io.Writer, format string, styler *outputStyler, items []string) error {
 	switch format {
 	case "json":
 		return renderJSON(w, items)
@@ -523,14 +542,14 @@ func renderStringList(w io.Writer, format string, items []string) error {
 		return renderYAML(w, items)
 	default:
 		for _, item := range items {
-			fmt.Fprintln(w, item)
+			fmt.Fprintln(w, styler.Value("NAME", item))
 		}
 		return nil
 	}
 }
 
 // renderReleaseList writes release list rows in the requested format.
-func renderReleaseList(w io.Writer, format string, releases []dto.ReleaseListEntry) error {
+func renderReleaseList(w io.Writer, format string, styler *outputStyler, releases []dto.ReleaseListEntry) error {
 	switch format {
 	case "json":
 		return renderJSON(w, releases)
@@ -541,53 +560,63 @@ func renderReleaseList(w io.Writer, format string, releases []dto.ReleaseListEnt
 			fmt.Fprintln(w, "No releases found.")
 			return nil
 		}
-		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "PROJECT\tTYPE\tNAME\tTRACK\tRISK\tBRANCH\tTARGETS\tRESOURCES\tRELEASED")
+		headers := []string{"PROJECT", "TYPE", "NAME", "TRACK", "RISK", "BRANCH", "TARGETS", "RESOURCES", "RELEASED"}
+		rows := make([][]string, 0, len(releases))
 		for _, release := range releases {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			rows = append(rows, []string{
 				release.Project,
 				release.ArtifactType.String(),
 				release.Name,
 				release.Track,
-				release.Risk,
+				string(release.Risk),
 				emptyDash(release.Branch),
 				formatReleaseTargets(release.Targets),
 				formatReleaseResources(release.Resources),
 				formatTimestamp(release.ReleasedAt),
-			)
+			})
 		}
-		return tw.Flush()
+		return renderStyledTable(w, styler, headers, rows)
 	}
 }
 
 // renderReleaseShow writes one release matrix in the requested format.
-func renderReleaseShow(w io.Writer, format string, release *dto.ReleaseShowResult) error {
+func renderReleaseShow(w io.Writer, format string, styler *outputStyler, release *dto.ReleaseShowResult) error {
 	switch format {
 	case "json":
 		return renderJSON(w, release)
 	case "yaml":
 		return renderYAML(w, release)
 	default:
-		fmt.Fprintf(w, "Project:       %s\n", release.Project)
-		fmt.Fprintf(w, "Type:          %s\n", release.ArtifactType.String())
-		fmt.Fprintf(w, "Name:          %s\n", release.Name)
-		fmt.Fprintf(w, "Updated:       %s\n", formatTimestamp(release.UpdatedAt))
+		if err := writeKeyValue(w, styler, "Project", release.Project); err != nil {
+			return err
+		}
+		if err := writeKeyValue(w, styler, "Type", release.ArtifactType.String()); err != nil {
+			return err
+		}
+		if err := writeKeyValue(w, styler, "Name", release.Name); err != nil {
+			return err
+		}
+		if err := writeKeyValue(w, styler, "Updated", formatTimestamp(release.UpdatedAt)); err != nil {
+			return err
+		}
 		if len(release.Tracks) > 0 {
-			fmt.Fprintf(w, "Tracks:        %s\n", strings.Join(release.Tracks, ", "))
+			if err := writeKeyValue(w, styler, "Tracks", strings.Join(release.Tracks, ", ")); err != nil {
+				return err
+			}
 		}
 		fmt.Fprintln(w)
-		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "TRACK\tRISK\tBRANCH\tTARGETS\tRESOURCES")
+		headers := []string{"TRACK", "RISK", "BRANCH", "TARGETS", "RESOURCES"}
+		rows := make([][]string, 0, len(release.Channels))
 		for _, channel := range release.Channels {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+			rows = append(rows, []string{
 				channel.Track,
-				channel.Risk,
+				string(channel.Risk),
 				emptyDash(channel.Branch),
 				formatReleaseTargets(channel.Targets),
 				formatReleaseResources(channel.Resources),
-			)
+			})
 		}
-		return tw.Flush()
+		return renderStyledTable(w, styler, headers, rows)
 	}
 }
 
@@ -680,57 +709,76 @@ type cacheFullStatus struct {
 	} `json:"releases" yaml:"releases"`
 }
 
-func renderCacheFullStatus(w io.Writer, format string, status *cacheFullStatus) error {
+func renderCacheFullStatus(w io.Writer, format string, styler *outputStyler, status *cacheFullStatus) error {
 	switch format {
 	case "json":
 		return renderJSON(w, status)
 	case "yaml":
 		return renderYAML(w, status)
 	default:
-		return renderCacheFullStatusTable(w, status)
+		return renderCacheFullStatusTable(w, styler, status)
 	}
 }
 
-func renderCacheFullStatusTable(w io.Writer, status *cacheFullStatus) error {
-	fmt.Fprintln(w, "=== Git Repos ===")
+func renderCacheFullStatusTable(w io.Writer, styler *outputStyler, status *cacheFullStatus) error {
+	if err := writeSectionTitle(w, styler, "=== Git Repos ==="); err != nil {
+		return err
+	}
 	if len(status.Git.Repos) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, " ", styler.Placeholder("(none)"))
 	} else {
-		fmt.Fprintf(w, "directory: %s\n", status.Git.Directory)
+		if err := writeKeyValue(w, styler, "directory", status.Git.Directory); err != nil {
+			return err
+		}
 		for _, r := range status.Git.Repos {
-			fmt.Fprintf(w, "  %s  (%s)\n", r.Name, r.Size)
+			fmt.Fprintf(w, "  %s  (%s)\n", styler.Value("NAME", r.Name), styler.Dim(r.Size))
 		}
 	}
 
-	fmt.Fprintln(w, "\n=== Packages Index ===")
+	fmt.Fprintln(w)
+	if err := writeSectionTitle(w, styler, "=== Packages Index ==="); err != nil {
+		return err
+	}
 	if status.Packages.Error != "" {
-		fmt.Fprintf(w, "  (unavailable: %s)\n", status.Packages.Error)
+		fmt.Fprintf(w, "  %s\n", styler.Error("(unavailable: "+status.Packages.Error+")"))
 	} else if len(status.Packages.Sources) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, " ", styler.Placeholder("(none)"))
 	} else {
-		fmt.Fprintf(w, "directory: %s\n", status.Packages.Directory)
-		if err := renderCacheStatusTable(w, status.Packages.Sources); err != nil {
+		if err := writeKeyValue(w, styler, "directory", status.Packages.Directory); err != nil {
+			return err
+		}
+		if err := renderCacheStatusTable(w, styler, status.Packages.Sources); err != nil {
 			return err
 		}
 	}
 
-	fmt.Fprintln(w, "\n=== Upstream Repos ===")
+	fmt.Fprintln(w)
+	if err := writeSectionTitle(w, styler, "=== Upstream Repos ==="); err != nil {
+		return err
+	}
 	if len(status.Upstream.Repos) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, " ", styler.Placeholder("(none)"))
 	} else {
-		fmt.Fprintf(w, "directory: %s\n", status.Upstream.Directory)
+		if err := writeKeyValue(w, styler, "directory", status.Upstream.Directory); err != nil {
+			return err
+		}
 		for _, r := range status.Upstream.Repos {
-			fmt.Fprintf(w, "  %s  (%s)\n", r.Name, r.Size)
+			fmt.Fprintf(w, "  %s  (%s)\n", styler.Value("NAME", r.Name), styler.Dim(r.Size))
 		}
 	}
 
-	fmt.Fprintln(w, "\n=== Bugs ===")
+	fmt.Fprintln(w)
+	if err := writeSectionTitle(w, styler, "=== Bugs ==="); err != nil {
+		return err
+	}
 	if status.Bugs.Error != "" {
-		fmt.Fprintf(w, "  (unavailable: %s)\n", status.Bugs.Error)
+		fmt.Fprintf(w, "  %s\n", styler.Error("(unavailable: "+status.Bugs.Error+")"))
 	} else if len(status.Bugs.Entries) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, " ", styler.Placeholder("(none)"))
 	} else {
-		fmt.Fprintf(w, "directory: %s\n", status.Bugs.Directory)
+		if err := writeKeyValue(w, styler, "directory", status.Bugs.Directory); err != nil {
+			return err
+		}
 		for _, e := range status.Bugs.Entries {
 			syncStr := "never"
 			if !e.LastSync.IsZero() {
@@ -740,51 +788,61 @@ func renderCacheFullStatusTable(w io.Writer, status *cacheFullStatus) error {
 		}
 	}
 
-	fmt.Fprintln(w, "\n=== Excuses ===")
+	fmt.Fprintln(w)
+	if err := writeSectionTitle(w, styler, "=== Excuses ==="); err != nil {
+		return err
+	}
 	if status.Excuses.Error != "" {
-		fmt.Fprintf(w, "  (unavailable: %s)\n", status.Excuses.Error)
+		fmt.Fprintf(w, "  %s\n", styler.Error("(unavailable: "+status.Excuses.Error+")"))
 	} else if len(status.Excuses.Entries) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, " ", styler.Placeholder("(none)"))
 	} else {
-		fmt.Fprintf(w, "directory: %s\n", status.Excuses.Directory)
-		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "  TRACKER\tENTRIES\tLAST UPDATED\tSIZE")
+		if err := writeKeyValue(w, styler, "directory", status.Excuses.Directory); err != nil {
+			return err
+		}
+		headers := []string{"TRACKER", "ENTRIES", "LAST UPDATED", "SIZE"}
+		rows := make([][]string, 0, len(status.Excuses.Entries))
 		for _, entry := range status.Excuses.Entries {
 			lastUpdated := "never"
 			if !entry.LastUpdated.IsZero() {
 				lastUpdated = entry.LastUpdated.Format("2006-01-02 15:04:05")
 			}
-			fmt.Fprintf(tw, "  %s\t%d\t%s\t%s\n", entry.Tracker, entry.EntryCount, lastUpdated, formatSize(entry.DiskSize))
+			rows = append(rows, []string{entry.Tracker, fmt.Sprintf("%d", entry.EntryCount), lastUpdated, formatSize(entry.DiskSize)})
 		}
-		if err := tw.Flush(); err != nil {
+		if err := renderStyledTable(w, styler, headers, rows); err != nil {
 			return err
 		}
 	}
 
-	fmt.Fprintln(w, "\n=== Releases ===")
+	fmt.Fprintln(w)
+	if err := writeSectionTitle(w, styler, "=== Releases ==="); err != nil {
+		return err
+	}
 	if status.Releases.Error != "" {
-		fmt.Fprintf(w, "  (unavailable: %s)\n", status.Releases.Error)
+		fmt.Fprintf(w, "  %s\n", styler.Error("(unavailable: "+status.Releases.Error+")"))
 	} else if len(status.Releases.Entries) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		fmt.Fprintln(w, " ", styler.Placeholder("(none)"))
 	} else {
-		fmt.Fprintf(w, "directory: %s\n", status.Releases.Directory)
-		tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "  PROJECT\tTYPE\tNAME\tTRACKS\tCHANNELS\tLAST UPDATED")
+		if err := writeKeyValue(w, styler, "directory", status.Releases.Directory); err != nil {
+			return err
+		}
+		headers := []string{"PROJECT", "TYPE", "NAME", "TRACKS", "CHANNELS", "LAST UPDATED"}
+		rows := make([][]string, 0, len(status.Releases.Entries))
 		for _, entry := range status.Releases.Entries {
 			lastUpdated := "never"
 			if !entry.LastUpdated.IsZero() {
 				lastUpdated = entry.LastUpdated.Format("2006-01-02 15:04:05")
 			}
-			fmt.Fprintf(tw, "  %s\t%s\t%s\t%d\t%d\t%s\n",
+			rows = append(rows, []string{
 				entry.Project,
 				entry.ArtifactType.String(),
 				entry.Name,
-				entry.TrackCount,
-				entry.ChannelCount,
+				fmt.Sprintf("%d", entry.TrackCount),
+				fmt.Sprintf("%d", entry.ChannelCount),
 				lastUpdated,
-			)
+			})
 		}
-		if err := tw.Flush(); err != nil {
+		if err := renderStyledTable(w, styler, headers, rows); err != nil {
 			return err
 		}
 	}

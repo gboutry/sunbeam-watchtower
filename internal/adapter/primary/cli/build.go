@@ -35,6 +35,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectName := args[0]
 			artifactNames := args[1:]
+			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
 
 			// --download implies --wait.
 			if download {
@@ -69,16 +70,16 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			}
 
 			if async {
-				return renderOperationJob(opts.Out, opts.Output, response.Job)
+				return renderOperationJob(opts.Out, opts.Output, styler, response.Job)
 			}
 
 			if len(response.Requests) > 0 {
-				if err := renderBuildRequests(opts.Out, opts.Output, response.Requests); err != nil {
+				if err := renderBuildRequests(opts.Out, opts.Output, styler, response.Requests); err != nil {
 					return err
 				}
 			}
 			if len(response.Builds) > 0 {
-				if err := renderBuilds(opts.Out, opts.Output, response.Builds); err != nil {
+				if err := renderBuilds(opts.Out, opts.Output, styler, response.Builds); err != nil {
 					return err
 				}
 			}
@@ -132,7 +133,7 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			return renderBuilds(opts.Out, opts.Output, builds)
+			return renderBuilds(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), builds)
 		},
 	}
 
@@ -203,7 +204,7 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			return renderStringList(opts.Out, opts.Output, deleted)
+			return renderStringList(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), deleted)
 		},
 	}
 

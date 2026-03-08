@@ -27,7 +27,7 @@ func newOperationListCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderOperationJobs(opts.Out, opts.Output, jobs)
+			return renderOperationJobs(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), jobs)
 		},
 	}
 }
@@ -43,7 +43,7 @@ func newOperationShowCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderOperationJob(opts.Out, opts.Output, job)
+			return renderOperationJob(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), job)
 		},
 	}
 }
@@ -59,7 +59,7 @@ func newOperationEventsCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderOperationEvents(opts.Out, opts.Output, events)
+			return renderOperationEvents(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), events)
 		},
 	}
 }
@@ -75,7 +75,7 @@ func newOperationCancelCmd(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderOperationJob(opts.Out, opts.Output, job)
+			return renderOperationJob(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), job)
 		},
 	}
 }

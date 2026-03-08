@@ -8,7 +8,6 @@ import (
 	"io"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	distro "github.com/gboutry/sunbeam-watchtower/pkg/distro/v1"
@@ -67,7 +66,7 @@ func newPackagesDiffCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			return renderDiffResults(opts.Out, opts.Output, response.Results, response.Sources, response.Merge, response.HasUpstream)
+			return renderDiffResults(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), response.Results, response.Sources, response.Merge, response.HasUpstream)
 		},
 	}
 
@@ -111,7 +110,7 @@ func newPackagesShowCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			return renderDiffResults(opts.Out, opts.Output, []dto.PackageDiffResult{response.Result}, response.Sources, response.Merge, response.HasUpstream)
+			return renderDiffResults(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), []dto.PackageDiffResult{response.Result}, response.Sources, response.Merge, response.HasUpstream)
 		},
 	}
 
@@ -156,7 +155,7 @@ match. Otherwise, returns the highest version found across the configured
 				return err
 			}
 
-			return renderPackageInfo(opts.Out, opts.Output, result)
+			return renderPackageInfo(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
 	}
 
@@ -190,7 +189,7 @@ func newPackagesListCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			return renderSourcePackages(opts.Out, opts.Output, result)
+			return renderSourcePackages(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), result)
 		},
 	}
 
@@ -204,7 +203,7 @@ func newPackagesListCmd(opts *Options) *cobra.Command {
 }
 
 // renderDiffResults writes diff results in the requested format.
-func renderDiffResults(w io.Writer, format string, results []dto.PackageDiffResult, sources []dto.PackageSource, merge bool, hasUpstream bool) error {
+func renderDiffResults(w io.Writer, format string, styler *outputStyler, results []dto.PackageDiffResult, sources []dto.PackageSource, merge bool, hasUpstream bool) error {
 	switch format {
 	case "json":
 		return renderJSON(w, results)
@@ -212,14 +211,14 @@ func renderDiffResults(w io.Writer, format string, results []dto.PackageDiffResu
 		return renderYAML(w, results)
 	default:
 		if merge {
-			return renderMergedDiffTable(w, results, sources, hasUpstream)
+			return renderMergedDiffTable(w, styler, results, sources, hasUpstream)
 		}
-		return renderDiffTable(w, results, sources, hasUpstream)
+		return renderDiffTable(w, styler, results, sources, hasUpstream)
 	}
 }
 
 // renderDiffTable renders a table with dynamic columns based on queried sources.
-func renderDiffTable(w io.Writer, results []dto.PackageDiffResult, sources []dto.PackageSource, hasUpstream bool) error {
+func renderDiffTable(w io.Writer, styler *outputStyler, results []dto.PackageDiffResult, sources []dto.PackageSource, hasUpstream bool) error {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No results found.")
 		return nil
@@ -256,18 +255,17 @@ func renderDiffTable(w io.Writer, results []dto.PackageDiffResult, sources []dto
 		}
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	header := "PACKAGE"
+	headers := []string{"PACKAGE"}
 	for _, col := range columns {
-		header += "\t" + col.header
+		headers = append(headers, col.header)
 	}
 	if hasUpstream {
-		header += "\t" + "UPSTREAM"
+		headers = append(headers, "UPSTREAM")
 	}
-	fmt.Fprintln(tw, header)
+	rows := make([][]string, 0, len(results))
 
 	for _, r := range results {
-		row := r.Package
+		row := []string{r.Package}
 		for _, col := range columns {
 			version := "-"
 			for _, p := range r.Versions[col.source] {
@@ -276,19 +274,19 @@ func renderDiffTable(w io.Writer, results []dto.PackageDiffResult, sources []dto
 					break
 				}
 			}
-			row += "\t" + version
+			row = append(row, version)
 		}
 		if hasUpstream {
 			up := r.Upstream
 			if up == "" {
 				up = "—"
 			}
-			row += "\t" + up
+			row = append(row, up)
 		}
-		fmt.Fprintln(tw, row)
+		rows = append(rows, row)
 	}
 
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // suiteMarker returns a short origin marker for a suite name.
@@ -314,28 +312,27 @@ func suiteMarker(suite string) string {
 
 // renderMergedDiffTable renders a table with one column per source, showing the
 // highest version with origin markers indicating which suites carry it.
-func renderMergedDiffTable(w io.Writer, results []dto.PackageDiffResult, sources []dto.PackageSource, hasUpstream bool) error {
+func renderMergedDiffTable(w io.Writer, styler *outputStyler, results []dto.PackageDiffResult, sources []dto.PackageSource, hasUpstream bool) error {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No results found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	header := "PACKAGE"
+	headers := []string{"PACKAGE"}
 	for _, src := range sources {
-		header += "\t" + strings.ToUpper(src.Name)
+		headers = append(headers, strings.ToUpper(src.Name))
 	}
 	if hasUpstream {
-		header += "\t" + "UPSTREAM"
+		headers = append(headers, "UPSTREAM")
 	}
-	fmt.Fprintln(tw, header)
+	rows := make([][]string, 0, len(results))
 
 	for _, r := range results {
-		row := r.Package
+		row := []string{r.Package}
 		for _, src := range sources {
 			versions := r.Versions[src.Name]
 			if len(versions) == 0 {
-				row += "\t" + "—"
+				row = append(row, "—")
 				continue
 			}
 
@@ -354,68 +351,63 @@ func renderMergedDiffTable(w io.Writer, results []dto.PackageDiffResult, sources
 					deduped = append(deduped, m)
 				}
 			}
-			row += "\t" + highest.Version + " (" + strings.Join(deduped, ",") + ")"
+			row = append(row, highest.Version+" ("+strings.Join(deduped, ",")+")")
 		}
 		if hasUpstream {
 			up := r.Upstream
 			if up == "" {
 				up = "—"
 			}
-			row += "\t" + up
+			row = append(row, up)
 		}
-		fmt.Fprintln(tw, row)
+		rows = append(rows, row)
 	}
 
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // renderSourcePackages writes source packages in the requested format.
-func renderSourcePackages(w io.Writer, format string, pkgs []distro.SourcePackage) error {
+func renderSourcePackages(w io.Writer, format string, styler *outputStyler, pkgs []distro.SourcePackage) error {
 	switch format {
 	case "json":
 		return renderJSON(w, pkgs)
 	case "yaml":
 		return renderYAML(w, pkgs)
 	default:
-		return renderSourcePackagesTable(w, pkgs)
+		return renderSourcePackagesTable(w, styler, pkgs)
 	}
 }
 
-func renderSourcePackagesTable(w io.Writer, pkgs []distro.SourcePackage) error {
+func renderSourcePackagesTable(w io.Writer, styler *outputStyler, pkgs []distro.SourcePackage) error {
 	if len(pkgs) == 0 {
 		fmt.Fprintln(w, "No packages found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PACKAGE\tVERSION\tSUITE\tCOMPONENT")
+	headers := []string{"PACKAGE", "VERSION", "SUITE", "COMPONENT"}
+	rows := make([][]string, 0, len(pkgs))
 	for _, p := range pkgs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.Package, p.Version, p.Suite, p.Component)
+		rows = append(rows, []string{p.Package, p.Version, p.Suite, p.Component})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
-func renderCacheStatusTable(w io.Writer, statuses []dto.CacheStatus) error {
+func renderCacheStatusTable(w io.Writer, styler *outputStyler, statuses []dto.CacheStatus) error {
 	if len(statuses) == 0 {
 		fmt.Fprintln(w, "No cached sources found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "SOURCE\tPACKAGES\tLAST UPDATED\tSIZE")
+	headers := []string{"SOURCE", "PACKAGES", "LAST UPDATED", "SIZE"}
+	rows := make([][]string, 0, len(statuses))
 	for _, s := range statuses {
 		updated := "-"
 		if !s.LastUpdated.IsZero() {
 			updated = s.LastUpdated.Format("2006-01-02 15:04")
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\n",
-			s.Name,
-			s.EntryCount,
-			updated,
-			formatBytes(s.DiskSize),
-		)
+		rows = append(rows, []string{s.Name, fmt.Sprintf("%d", s.EntryCount), updated, formatBytes(s.DiskSize)})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 // formatBytes formats a byte count into a human-readable string.
@@ -463,7 +455,7 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			return renderDscResults(opts.Out, opts.Output, results)
+			return renderDscResults(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), results)
 		},
 	}
 
@@ -475,39 +467,39 @@ func newPackagesDscCmd(opts *Options) *cobra.Command {
 }
 
 // renderDscResults writes dsc lookup results in the requested format.
-func renderDscResults(w io.Writer, format string, results []dto.PackageDscResult) error {
+func renderDscResults(w io.Writer, format string, styler *outputStyler, results []dto.PackageDscResult) error {
 	switch format {
 	case "json":
 		return renderJSON(w, results)
 	case "yaml":
 		return renderYAML(w, results)
 	default:
-		return renderDscTable(w, results)
+		return renderDscTable(w, styler, results)
 	}
 }
 
-func renderDscTable(w io.Writer, results []dto.PackageDscResult) error {
+func renderDscTable(w io.Writer, styler *outputStyler, results []dto.PackageDscResult) error {
 	if len(results) == 0 {
 		fmt.Fprintln(w, "No results.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PACKAGE\tVERSION\tDSC URL")
+	headers := []string{"PACKAGE", "VERSION", "DSC URL"}
+	rows := make([][]string, 0)
 	for _, r := range results {
 		if len(r.URLs) == 0 {
-			fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Package, r.Version, "(not found)")
+			rows = append(rows, []string{r.Package, r.Version, "(not found)"})
 			continue
 		}
 		for i, u := range r.URLs {
 			if i == 0 {
-				fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Package, r.Version, u)
+				rows = append(rows, []string{r.Package, r.Version, u})
 			} else {
-				fmt.Fprintf(tw, "\t\t%s\n", u)
+				rows = append(rows, []string{"", "", u})
 			}
 		}
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
 func newPackagesRdependsCmd(opts *Options) *cobra.Command {
@@ -535,11 +527,12 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 			}
 
 			if len(results) == 0 {
-				fmt.Fprintf(opts.Out, "Warning: %q was not found as a source package; it may be a binary package name.\n", pkgName)
-				fmt.Fprintln(opts.Out, "Hint: rdepends searches Build-Depends which reference source package names.")
+				styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
+				fmt.Fprintf(opts.Out, "%s %q was not found as a source package; it may be a binary package name.\n", styler.Warning("Warning:"), pkgName)
+				fmt.Fprintf(opts.Out, "%s rdepends searches Build-Depends which reference source package names.\n", styler.Dim("Hint:"))
 			}
 
-			return renderSourcePackageDetails(opts.Out, opts.Output, results)
+			return renderSourcePackageDetails(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), results)
 		},
 	}
 
@@ -552,49 +545,56 @@ func newPackagesRdependsCmd(opts *Options) *cobra.Command {
 }
 
 // renderSourcePackageDetails writes SourcePackageDetail entries in the requested format.
-func renderSourcePackageDetails(w io.Writer, format string, pkgs []distro.SourcePackageDetail) error {
+func renderSourcePackageDetails(w io.Writer, format string, styler *outputStyler, pkgs []distro.SourcePackageDetail) error {
 	switch format {
 	case "json":
 		return renderJSON(w, pkgs)
 	case "yaml":
 		return renderYAML(w, pkgs)
 	default:
-		return renderSourcePackageDetailsTable(w, pkgs)
+		return renderSourcePackageDetailsTable(w, styler, pkgs)
 	}
 }
 
-func renderSourcePackageDetailsTable(w io.Writer, pkgs []distro.SourcePackageDetail) error {
+func renderSourcePackageDetailsTable(w io.Writer, styler *outputStyler, pkgs []distro.SourcePackageDetail) error {
 	if len(pkgs) == 0 {
 		fmt.Fprintln(w, "No reverse dependencies found.")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PACKAGE\tVERSION\tSUITE\tCOMPONENT")
+	headers := []string{"PACKAGE", "VERSION", "SUITE", "COMPONENT"}
+	rows := make([][]string, 0, len(pkgs))
 	for _, p := range pkgs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.Package, p.Version, p.Suite, p.Component)
+		rows = append(rows, []string{p.Package, p.Version, p.Suite, p.Component})
 	}
-	return tw.Flush()
+	return renderStyledTable(w, styler, headers, rows)
 }
 
-func renderPackageInfo(w io.Writer, format string, info *distro.SourcePackageInfo) error {
+func renderPackageInfo(w io.Writer, format string, styler *outputStyler, info *distro.SourcePackageInfo) error {
 	switch format {
 	case "json":
 		return renderJSON(w, info)
 	case "yaml":
 		return renderYAML(w, info)
 	default:
-		return renderPackageInfoTable(w, info)
+		return renderPackageInfoTable(w, styler, info)
 	}
 }
 
-func renderPackageInfoTable(w io.Writer, info *distro.SourcePackageInfo) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintf(tw, "Source:\t%s\n", info.Package)
-	fmt.Fprintf(tw, "Version:\t%s\n", info.Version)
-	fmt.Fprintf(tw, "Suite:\t%s\n", info.Suite)
-	fmt.Fprintf(tw, "Component:\t%s\n", info.Component)
-	fmt.Fprintln(tw, "---\t")
+func renderPackageInfoTable(w io.Writer, styler *outputStyler, info *distro.SourcePackageInfo) error {
+	if err := writeKeyValue(w, styler, "Source", info.Package); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Version", info.Version); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Suite", info.Suite); err != nil {
+		return err
+	}
+	if err := writeKeyValue(w, styler, "Component", info.Component); err != nil {
+		return err
+	}
+	fmt.Fprintln(w, styler.Dim("---"))
 	for _, f := range info.Fields {
 		if f.Key == "Package" || f.Key == "Version" {
 			continue
@@ -602,13 +602,17 @@ func renderPackageInfoTable(w io.Writer, info *distro.SourcePackageInfo) error {
 		value := f.Value
 		if strings.Contains(value, "\n") {
 			lines := strings.Split(value, "\n")
-			fmt.Fprintf(tw, "%s:\t%s\n", f.Key, lines[0])
+			if err := writeKeyValue(w, styler, f.Key, lines[0]); err != nil {
+				return err
+			}
 			for _, line := range lines[1:] {
-				fmt.Fprintf(tw, "\t%s\n", line)
+				fmt.Fprintf(w, "%s %s\n", strings.Repeat(" ", detailLabelWidth+1), line)
 			}
 		} else {
-			fmt.Fprintf(tw, "%s:\t%s\n", f.Key, value)
+			if err := writeKeyValue(w, styler, f.Key, value); err != nil {
+				return err
+			}
 		}
 	}
-	return tw.Flush()
+	return nil
 }
