@@ -133,6 +133,65 @@ The config file lives at `~/.config/sunbeam-watchtower/config.yaml` by default. 
 | `projects`  | List of tracked projects |
 | `build`     | Build pipeline settings (`default_prefix`, `timeout_minutes`, `artifacts_dir`) |
 | `packages`  | Package source, set, and upstream configuration |
+| `otel`      | Server-side OpenTelemetry exporters and metrics listeners |
+
+### OpenTelemetry
+
+Telemetry is a persistent-server feature. It is designed to stay cheap by default:
+
+- `otel.metrics.self` exposes request/runtime/collector-health metrics for the running server
+- `otel.metrics.domain` exposes Watchtower domain metrics
+- domain metrics default to cached/internal state
+- live upstream fan-out is disabled unless you explicitly allow it with `otel.metrics.domain.live_systems`
+- the intended production pattern is periodic cache refresh, for example from cron, plus Prometheus scraping the server
+
+Example:
+
+```yaml
+otel:
+  service_name: watchtower
+  service_namespace: sunbeam
+  metrics:
+    self:
+      enabled: true
+      listen_addr: 127.0.0.1:9464
+      path: /metrics
+    domain:
+      enabled: true
+      listen_addr: 127.0.0.1:9465
+      path: /metrics
+      live_systems: [reviews]
+    collectors:
+      reviews:
+        refresh_interval: 15m
+  traces:
+    enabled: true
+    endpoint: http://127.0.0.1:4318
+    protocol: http
+  logs:
+    enabled: true
+    endpoint: http://127.0.0.1:4318
+    protocol: http
+    mirror_stderr: true
+```
+
+Operational model:
+
+```bash
+# Persistent server with telemetry
+watchtower server start
+
+# Periodic cache refresh keeps domain telemetry cheap
+watchtower cache sync
+watchtower cache sync releases
+watchtower cache sync excuses
+```
+
+Label policy:
+
+- use bounded labels only
+- do not expect IDs, SHAs, usernames, or raw URLs as metric labels
+- release metrics use stable labels such as `project`, `artifact_type`, `artifact`, `track`, `risk`, `branch`, `architecture`, and `resource`
 
 ### Project configuration
 
