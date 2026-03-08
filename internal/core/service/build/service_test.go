@@ -365,8 +365,8 @@ func TestTrigger_PreResolvedRefs_FullPipeline(t *testing.T) {
 		Owner: "test-user",
 		Prepared: &dto.PreparedBuildSource{
 			Backend:       dto.PreparedBuildBackendLaunchpad,
-			TargetProject: "test-project",
-			Repository:    "/repo/sunbeam",
+			TargetRef:     "test-project",
+			RepositoryRef: "/repo/sunbeam",
 			Recipes: map[string]dto.PreparedBuildRecipe{
 				tempName: {SourceRef: "/ref/abc12345", BuildPath: "rocks/keystone"},
 			},
@@ -642,8 +642,8 @@ func TestTrigger_PreResolved_OwnerOverride(t *testing.T) {
 		Owner: "test-user",
 		Prepared: &dto.PreparedBuildSource{
 			Backend:       dto.PreparedBuildBackendLaunchpad,
-			TargetProject: "test-project",
-			Repository:    "/repo/sunbeam",
+			TargetRef:     "test-project",
+			RepositoryRef: "/repo/sunbeam",
 			Recipes: map[string]dto.PreparedBuildRecipe{
 				tempName: {SourceRef: "/ref/abc12345", BuildPath: "rocks/keystone"},
 			},

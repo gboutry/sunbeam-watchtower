@@ -12,14 +12,14 @@ import (
 
 // BuildsTriggerOptions holds the request body for triggering builds.
 type BuildsTriggerOptions struct {
-	Project       string                   `json:"project"`
-	Artifacts     []string                 `json:"artifacts,omitempty"`
-	Wait          bool                     `json:"wait,omitempty"`
-	Timeout       string                   `json:"timeout,omitempty"`
-	Owner         string                   `json:"owner,omitempty"`
-	Prefix        string                   `json:"prefix,omitempty"`
-	TargetProject string                   `json:"target_project,omitempty"`
-	Prepared      *dto.PreparedBuildSource `json:"prepared,omitempty"`
+	Project   string                   `json:"project"`
+	Artifacts []string                 `json:"artifacts,omitempty"`
+	Wait      bool                     `json:"wait,omitempty"`
+	Timeout   string                   `json:"timeout,omitempty"`
+	Owner     string                   `json:"owner,omitempty"`
+	Prefix    string                   `json:"prefix,omitempty"`
+	TargetRef string                   `json:"target_ref,omitempty"`
+	Prepared  *dto.PreparedBuildSource `json:"prepared,omitempty"`
 }
 
 // BuildsTrigger triggers builds for a project.
@@ -38,13 +38,13 @@ func (c *Client) BuildsTriggerAsync(ctx context.Context, opts BuildsTriggerOptio
 
 // BuildsListOptions holds query parameters for listing builds.
 type BuildsListOptions struct {
-	Projects      []string
-	All           bool
-	State         string
-	Owner         string
-	TargetProject string
-	RecipeNames   []string
-	RecipePrefix  string
+	Projects     []string
+	All          bool
+	State        string
+	Owner        string
+	TargetRef    string
+	RecipeNames  []string
+	RecipePrefix string
 }
 
 // BuildsListResult is the response returned by BuildsList.
@@ -67,8 +67,8 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 	if opts.Owner != "" {
 		q.Set("owner", opts.Owner)
 	}
-	if opts.TargetProject != "" {
-		q.Set("target_project", opts.TargetProject)
+	if opts.TargetRef != "" {
+		q.Set("target_ref", opts.TargetRef)
 	}
 	for _, v := range opts.RecipeNames {
 		q.Add("recipe", v)
@@ -84,12 +84,12 @@ func (c *Client) BuildsList(ctx context.Context, opts BuildsListOptions) ([]dto.
 
 // BuildsDownloadOptions holds the request body for downloading build artifacts.
 type BuildsDownloadOptions struct {
-	Project       string   `json:"project"`
-	Artifacts     []string `json:"artifacts,omitempty"`
-	RecipePrefix  string   `json:"recipe_prefix,omitempty"`
-	Owner         string   `json:"owner,omitempty"`
-	TargetProject string   `json:"target_project,omitempty"`
-	ArtifactsDir  string   `json:"artifacts_dir,omitempty"`
+	Project      string   `json:"project"`
+	Artifacts    []string `json:"artifacts,omitempty"`
+	RecipePrefix string   `json:"recipe_prefix,omitempty"`
+	Owner        string   `json:"owner,omitempty"`
+	TargetRef    string   `json:"target_ref,omitempty"`
+	ArtifactsDir string   `json:"artifacts_dir,omitempty"`
 }
 
 // BuildsDownload downloads build artifacts.

@@ -58,12 +58,12 @@ func (f *Facade) StartBuildTrigger(ctx context.Context, opts BuildTriggerOptions
 	if opts.Trigger.Owner != "" {
 		attributes["owner"] = opts.Trigger.Owner
 	}
-	targetProject := opts.Trigger.TargetProject
-	if prepared := opts.Trigger.Prepared.Normalize(); prepared != nil && prepared.TargetProject != "" {
-		targetProject = prepared.TargetProject
+	targetRef := opts.Trigger.TargetRef
+	if prepared := opts.Trigger.Prepared.Normalize(); prepared != nil && prepared.TargetRef != "" {
+		targetRef = prepared.TargetRef
 	}
-	if targetProject != "" {
-		attributes["target_project"] = targetProject
+	if targetRef != "" {
+		attributes["target_ref"] = targetRef
 	}
 	if prepared := opts.Trigger.Prepared.Normalize(); prepared != nil && prepared.Backend != "" {
 		attributes["backend"] = string(prepared.Backend)

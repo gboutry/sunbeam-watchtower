@@ -54,6 +54,7 @@ The following are implemented and should be treated as the current baseline:
 - shared frontend facade for auth, operations, project, build, cache, package, bug, review, commit, release, and config workflows
 - shared runtime/bootstrap layer for env defaults, logger setup, config loading, embedded server startup, local daemon management, and target resolution
 - shared runtime session target policies for CLI and TUI, covering embedded, discovered-daemon, and persistent-daemon resolution
+- backend-neutral prepared-build contract using canonical `target_ref`, `repository_ref`, and `recipes` fields
 - local daemon lifecycle commands and explicit runtime resolution order
 - Launchpad auth flows with durable server-side coordination
 - durable operations surface for async workflows
@@ -83,7 +84,7 @@ These are the main known gaps that still matter:
 ### Frontend/runtime
 
 - keep local-build preparation reusable through shared frontend/runtime layers instead of Cobra-specific code
-- preserve the backend-neutral prepared build contract and avoid reintroducing Launchpad-specific request leakage into user-facing APIs
+- preserve the neutral prepared-build contract and avoid reintroducing backend-specific request leakage into user-facing APIs
 - keep future frontends such as MCP on the same frontend/runtime seams now shared by CLI and TUI
 
 ### TUI

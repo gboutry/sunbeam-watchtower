@@ -14,11 +14,11 @@ func TestBuildTriggerOptionsFromInput_PreparedSource(t *testing.T) {
 	input.Body.Timeout = "45m"
 	input.Body.Owner = "lp-user"
 	input.Body.Prefix = "tmp-build"
-	input.Body.TargetProject = "remote-project"
+	input.Body.TargetRef = "remote-ref"
 	input.Body.Prepared = &dto.PreparedBuildSource{
 		Backend:       dto.PreparedBuildBackendLaunchpad,
-		TargetProject: "prepared-project",
-		Repository:    "/repo/demo",
+		TargetRef:     "prepared-ref",
+		RepositoryRef: "/repo/demo",
 		Recipes: map[string]dto.PreparedBuildRecipe{
 			"tmp-build-01234567-keystone": {SourceRef: "/ref/tmp", BuildPath: "rocks/keystone"},
 		},
@@ -35,14 +35,14 @@ func TestBuildTriggerOptionsFromInput_PreparedSource(t *testing.T) {
 	if got.Timeout != 45*time.Minute {
 		t.Fatalf("Timeout = %s, want 45m", got.Timeout)
 	}
-	if got.Owner != "lp-user" || got.Prefix != "tmp-build" || got.TargetProject != "remote-project" {
+	if got.Owner != "lp-user" || got.Prefix != "tmp-build" || got.TargetRef != "remote-ref" {
 		t.Fatalf("unexpected trigger options: %+v", got)
 	}
 	if got.Prepared == nil {
 		t.Fatal("Prepared = nil, want value")
 	}
 	normalized := got.Prepared.Normalize()
-	if normalized.TargetProject != "prepared-project" || normalized.Repository != "/repo/demo" {
+	if normalized.TargetRef != "prepared-ref" || normalized.RepositoryRef != "/repo/demo" {
 		t.Fatalf("unexpected prepared source: %+v", got.Prepared)
 	}
 	if normalized.Recipes["tmp-build-01234567-keystone"].BuildPath != "rocks/keystone" {

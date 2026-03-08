@@ -93,7 +93,7 @@ func TestLocalBuildPreparerPrepareTrigger(t *testing.T) {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
 
-	if got.Owner != "lp-user" || got.Prepared == nil || got.Prepared.TargetProject != "lp-project" || got.Prepared.Repository == "" {
+	if got.Owner != "lp-user" || got.Prepared == nil || got.Prepared.TargetRef != "lp-project" || got.Prepared.RepositoryRef == "" {
 		t.Fatalf("unexpected prepared trigger: %+v", got)
 	}
 	if len(got.Artifacts) != 1 || got.Artifacts[0] != "tmp-build-01234567-keystone" {
@@ -130,7 +130,7 @@ func TestLocalBuildPreparerPrepareListByPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrepareListByPrefix() error = %v", err)
 	}
-	if got.Owner != "lp-user" || got.TargetProject != "lp-project" || got.RecipePrefix != "tmp-build-01234567-" {
+	if got.Owner != "lp-user" || got.TargetRef != "lp-project" || got.RecipePrefix != "tmp-build-01234567-" {
 		t.Fatalf("unexpected list opts: %+v", got)
 	}
 }

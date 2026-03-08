@@ -28,22 +28,22 @@ type PreparedBuildTriggerRequest struct {
 
 // PreparedBuildListRequest holds build list fields after frontend-side preparation.
 type PreparedBuildListRequest struct {
-	Projects      []string
-	All           bool
-	State         string
-	Owner         string
-	TargetProject string
-	RecipePrefix  string
+	Projects     []string
+	All          bool
+	State        string
+	Owner        string
+	TargetRef    string
+	RecipePrefix string
 }
 
 // PreparedBuildDownloadRequest holds build download fields after frontend-side preparation.
 type PreparedBuildDownloadRequest struct {
-	Project       string
-	Artifacts     []string
-	ArtifactsDir  string
-	Owner         string
-	TargetProject string
-	RecipePrefix  string
+	Project      string
+	Artifacts    []string
+	ArtifactsDir string
+	Owner        string
+	TargetRef    string
+	RecipePrefix string
 }
 
 // LocalBuildPreparer handles frontend-side local preparation for split build workflows.
@@ -139,8 +139,8 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	}
 	req.Prepared = &dto.PreparedBuildSource{
 		Backend:       dto.PreparedBuildBackendLaunchpad,
-		TargetProject: lpProject,
-		Repository:    repoSelfLink,
+		TargetRef:     lpProject,
+		RepositoryRef: repoSelfLink,
 		Recipes:       make(map[string]dto.PreparedBuildRecipe, len(tempNames)),
 	}
 	for _, name := range tempNames {
@@ -177,7 +177,7 @@ func (p *LocalBuildPreparer) PrepareListByPrefix(
 	if err != nil {
 		return req, fmt.Errorf("get LP project: %w", err)
 	}
-	req.TargetProject = lpProject
+	req.TargetRef = lpProject
 	req.RecipePrefix = prefix
 
 	return req, nil
@@ -207,7 +207,7 @@ func (p *LocalBuildPreparer) PrepareDownloadByPrefix(
 	if err != nil {
 		return req, fmt.Errorf("get LP project: %w", err)
 	}
-	req.TargetProject = lpProject
+	req.TargetRef = lpProject
 	req.RecipePrefix = prefix
 
 	return req, nil
