@@ -22,12 +22,13 @@ func TestViewRendersAcrossWidths(t *testing.T) {
 	model.dashboard.ops = []dto.OperationJob{{ID: "op-1", Kind: dto.OperationKindBuildTrigger, State: dto.OperationStateRunning}}
 	model.dashboard.builds = []dto.Build{{Project: "demo", Title: "demo-build", State: dto.BuildBuilding}}
 	model.builds.rows = []dto.Build{{Project: "demo", Title: "demo-build", State: dto.BuildBuilding}}
-	model.releases.rows = []dto.ReleaseListEntry{{Project: "demo", Name: "demo-artifact", Channel: "latest/edge", ArtifactType: dto.ArtifactSnap}}
+	model.releases.rows = []dto.ReleaseListEntry{{Project: "demo", Name: "demo-artifact", Channel: "latest/edge", ArtifactType: dto.ArtifactSnap, ReleasedAt: time.Now()}}
+	model.releases.artifacts = summarizeReleaseArtifacts(model.releases.rows)
 	model.releases.detail = &dto.ReleaseShowResult{
 		Project:      "demo",
 		Name:         "demo-artifact",
 		ArtifactType: dto.ArtifactSnap,
-		Channels:     []dto.ReleaseChannelSnapshot{{Channel: "latest/edge"}},
+		Channels:     []dto.ReleaseChannelSnapshot{{Channel: "latest/edge", Track: "latest", Risk: dto.ReleaseRiskEdge}},
 		UpdatedAt:    time.Now(),
 	}
 
@@ -53,6 +54,57 @@ func TestBuildTriggerRequestFromValuesAlwaysAsync(t *testing.T) {
 	}
 	if got := len(req.Artifacts); got != 2 {
 		t.Fatalf("len(req.Artifacts) = %d, want 2", got)
+	}
+}
+
+func TestSummarizeReleaseArtifactsDeduplicatesByArtifact(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	artifacts := summarizeReleaseArtifacts([]dto.ReleaseListEntry{
+		{Project: "demo", Name: "artifact-a", ArtifactType: dto.ArtifactSnap, Channel: "latest/edge", ReleasedAt: now.Add(-time.Hour)},
+		{Project: "demo", Name: "artifact-a", ArtifactType: dto.ArtifactSnap, Channel: "latest/stable", ReleasedAt: now},
+		{Project: "demo", Name: "artifact-b", ArtifactType: dto.ArtifactCharm, Channel: "2024.1/stable", ReleasedAt: now.Add(-2 * time.Hour)},
+	})
+	if got := len(artifacts); got != 2 {
+		t.Fatalf("len(artifacts) = %d, want 2", got)
+	}
+	if artifacts[0].Name != "artifact-a" {
+		t.Fatalf("artifacts[0].Name = %q, want artifact-a", artifacts[0].Name)
+	}
+	if !artifacts[0].ReleasedAt.Equal(now) {
+		t.Fatalf("artifacts[0].ReleasedAt = %s, want %s", artifacts[0].ReleasedAt, now)
+	}
+}
+
+func TestRenderReleaseDetailUsesLatestReleaseTime(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	detail := &dto.ReleaseShowResult{
+		Project:      "demo",
+		Name:         "artifact-a",
+		ArtifactType: dto.ArtifactCharm,
+		Tracks:       []string{"latest", "2024.1"},
+		UpdatedAt:    now.Add(3 * time.Hour),
+		Channels: []dto.ReleaseChannelSnapshot{
+			{
+				Channel: "latest/stable",
+				Track:   "latest",
+				Risk:    dto.ReleaseRiskStable,
+				Targets: []dto.ReleaseTargetSnapshot{{ReleasedAt: now}},
+				Resources: []dto.ReleaseResourceSnapshot{
+					{Name: "postgresql-image", Revision: 12},
+				},
+			},
+		},
+	}
+	selected := &releaseArtifactSummary{Name: "artifact-a", ArtifactType: dto.ArtifactCharm}
+	rendered := renderReleaseDetail(newTheme(), detail, selected, 120)
+	if !strings.Contains(rendered, "Released: 2026-03-08T12:00:00Z") {
+		t.Fatalf("detail missing released timestamp:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "Updated: 2026-03-08T15:00:00Z") {
+		t.Fatalf("detail should not use cache updated time:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "resources: postgresql-image:r12") {
+		t.Fatalf("detail missing resources:\n%s", rendered)
 	}
 }
 
