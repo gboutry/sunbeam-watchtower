@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -88,7 +89,7 @@ func RegisterReleasesAPI(api huma.API, application *app.App) {
 			case errors.Is(err, releasesvc.ErrNotFound):
 				return nil, huma.Error404NotFound(fmt.Sprintf("release %q not found", input.Name))
 			case errors.Is(err, releasesvc.ErrAmbiguous):
-				return nil, huma.Error409Conflict(fmt.Sprintf("release %q is ambiguous; pass --type", input.Name))
+				return nil, huma.Error409Conflict(releaseAmbiguousMessage(input.Name, err))
 			default:
 				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to show release: %v", err))
 			}
@@ -134,4 +135,16 @@ func parseOptionalArtifactType(raw string) (*dto.ArtifactType, error) {
 		return nil, fmt.Errorf("release tracking supports only snap and charm artifacts")
 	}
 	return &parsed, nil
+}
+
+func releaseAmbiguousMessage(name string, err error) string {
+	var ambiguousErr *releasesvc.AmbiguousReleaseError
+	if !errors.As(err, &ambiguousErr) || len(ambiguousErr.ArtifactTypes) == 0 {
+		return fmt.Sprintf("release %q matched multiple artifact types; use the type filter", name)
+	}
+	types := make([]string, 0, len(ambiguousErr.ArtifactTypes))
+	for _, artifactType := range ambiguousErr.ArtifactTypes {
+		types = append(types, artifactType.String())
+	}
+	return fmt.Sprintf("release %q matched multiple artifact types (%s); use the type filter", name, strings.Join(types, ", "))
 }

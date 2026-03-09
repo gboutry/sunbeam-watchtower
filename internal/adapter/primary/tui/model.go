@@ -1019,7 +1019,7 @@ func (m rootModel) renderDashboardReleases() string {
 	})
 	lines := make([]string, 0, minInt(5, len(entries)))
 	for _, entry := range entries[:minInt(5, len(entries))] {
-		lines = append(lines, fmt.Sprintf("%s  %s  %s", entry.Project, entry.Name, entry.LastUpdated.Format("2006-01-02 15:04")))
+		lines = append(lines, fmt.Sprintf("%s  %s  %s  %s", entry.Project, entry.ArtifactType.String(), entry.Name, entry.LastUpdated.Format("2006-01-02 15:04")))
 	}
 	return strings.Join(lines, "\n")
 }

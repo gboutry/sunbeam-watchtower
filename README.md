@@ -373,6 +373,8 @@ Rules:
 
 Inspect cached snap and charm release matrices with target-aware revision output.
 
+When a snap and a charm share the same artifact name, Watchtower tracks and lists both entries separately. Use `--type` with `releases show` when a name matches multiple artifact types.
+
 ```bash
 # List cached release rows with target-qualified revisions
 watchtower releases list openstack

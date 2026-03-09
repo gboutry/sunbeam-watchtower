@@ -109,6 +109,44 @@ func TestDiscoverTrackedReleasesReportsSkippedArtifacts(t *testing.T) {
 	}
 }
 
+func TestTrackedReleasesKeepsSameNameAcrossArtifactTypes(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	snapRemote := createReleaseTestRemote(t, map[string]string{
+		"snap/snapcraft.yaml": "name: openstack\n",
+	})
+	charmRemote := createReleaseTestRemote(t, map[string]string{
+		"charms/openstack/charmcraft.yaml": "name: openstack\n",
+	})
+
+	application := NewApp(&config.Config{
+		Launchpad: config.LaunchpadConfig{Series: []string{"2024.1"}},
+		Projects: []config.ProjectConfig{{
+			Name:         "openstack-snap",
+			ArtifactType: "snap",
+			Code:         config.CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack", GitURL: snapRemote},
+		}, {
+			Name:         "openstack-charms",
+			ArtifactType: "charm",
+			Code:         config.CodeConfig{Forge: "gerrit", Host: "https://review.opendev.org", Project: "openstack/sunbeam-charms", GitURL: charmRemote},
+		}},
+	}, nil)
+
+	publications, err := application.TrackedReleases(context.Background())
+	if err != nil {
+		t.Fatalf("TrackedReleases() error = %v", err)
+	}
+	if len(publications) != 2 {
+		t.Fatalf("TrackedReleases() = %+v, want 2 entries", publications)
+	}
+	if publications[0].Name != "openstack" || publications[1].Name != "openstack" {
+		t.Fatalf("TrackedReleases() names = %+v, want duplicated openstack name across types", publications)
+	}
+	if publications[0].ArtifactType == publications[1].ArtifactType {
+		t.Fatalf("TrackedReleases() artifact types = %+v, want distinct snap and charm", publications)
+	}
+}
+
 func TestTrackedReleasesUsesLaunchpadSeriesByDefault(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 

@@ -107,6 +107,20 @@ func TestSummarizeReleaseArtifactsDeduplicatesByArtifact(t *testing.T) {
 	}
 }
 
+func TestSummarizeReleaseArtifactsKeepsSameNameAcrossTypes(t *testing.T) {
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	artifacts := summarizeReleaseArtifacts([]dto.ReleaseListEntry{
+		{Project: "demo", Name: "keystone", ArtifactType: dto.ArtifactSnap, Channel: "latest/stable", ReleasedAt: now},
+		{Project: "demo", Name: "keystone", ArtifactType: dto.ArtifactCharm, Channel: "2024.1/stable", ReleasedAt: now.Add(-time.Hour)},
+	})
+	if got := len(artifacts); got != 2 {
+		t.Fatalf("len(artifacts) = %d, want 2", got)
+	}
+	if artifacts[0].ArtifactType != dto.ArtifactSnap || artifacts[1].ArtifactType != dto.ArtifactCharm {
+		t.Fatalf("artifacts = %+v, want separate snap and charm summaries", artifacts)
+	}
+}
+
 func TestRenderReleaseDetailUsesLatestReleaseTime(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	detail := &dto.ReleaseShowResult{
@@ -361,6 +375,28 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		if !strings.Contains(rendered, tc.want) {
 			t.Fatalf("%s overlay missing %q:\n%s", tc.name, tc.want, rendered)
 		}
+	}
+}
+
+func TestRenderDashboardReleasesIncludesArtifactTypeForSameNameEntries(t *testing.T) {
+	model := newRootModel(nil, true)
+	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
+	model.dashboard.cache = &frontend.CacheStatusResponse{
+		Releases: struct {
+			Directory string
+			Entries   []dto.ReleaseCacheStatus
+			Error     string
+		}{
+			Entries: []dto.ReleaseCacheStatus{
+				{Project: "demo", Name: "keystone", ArtifactType: dto.ArtifactSnap, LastUpdated: now},
+				{Project: "demo", Name: "keystone", ArtifactType: dto.ArtifactCharm, LastUpdated: now.Add(-time.Minute)},
+			},
+		},
+	}
+
+	rendered := model.renderDashboardReleases()
+	if !strings.Contains(rendered, "snap  keystone") || !strings.Contains(rendered, "charm  keystone") {
+		t.Fatalf("renderDashboardReleases() = %q, want type-qualified duplicate names", rendered)
 	}
 }
 

@@ -61,3 +61,51 @@ func TestCacheStoreListStatusAndRemove(t *testing.T) {
 		t.Fatalf("List() after remove = %+v, want empty", list)
 	}
 }
+
+func TestCacheKeepsSameNameAcrossArtifactTypes(t *testing.T) {
+	cache, err := NewCache(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewCache() error = %v", err)
+	}
+	defer cache.Close()
+
+	now := time.Now().UTC()
+	for _, snapshot := range []dto.PublishedArtifactSnapshot{
+		{
+			Project:      "openstack",
+			Name:         "keystone",
+			ArtifactType: dto.ArtifactSnap,
+			Tracks:       []string{"latest"},
+			Channels:     []dto.ReleaseChannelSnapshot{{Track: "latest", Risk: dto.ReleaseRiskStable, Channel: "latest/stable"}},
+			UpdatedAt:    now,
+		},
+		{
+			Project:      "openstack",
+			Name:         "keystone",
+			ArtifactType: dto.ArtifactCharm,
+			Tracks:       []string{"2024.1"},
+			Channels:     []dto.ReleaseChannelSnapshot{{Track: "2024.1", Risk: dto.ReleaseRiskStable, Channel: "2024.1/stable"}},
+			UpdatedAt:    now,
+		},
+	} {
+		if err := cache.Store(context.Background(), snapshot); err != nil {
+			t.Fatalf("Store(%s) error = %v", snapshot.ArtifactType.String(), err)
+		}
+	}
+
+	list, err := cache.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("List() = %+v, want both snap and charm entries", list)
+	}
+
+	status, err := cache.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if len(status) != 2 {
+		t.Fatalf("Status() = %+v, want both snap and charm entries", status)
+	}
+}
