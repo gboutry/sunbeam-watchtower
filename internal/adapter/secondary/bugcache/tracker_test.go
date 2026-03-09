@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +21,12 @@ type mockBugTracker struct {
 	bugs  map[string]*forge.Bug
 	tasks map[string][]forge.BugTask // keyed by project
 	opts  []forge.ListBugTasksOpts
+
+	getBugDelay       time.Duration
+	getBugErrs        map[string]error
+	activeGetBugCalls atomic.Int32
+	maxGetBugCalls    atomic.Int32
+	getBugMu          sync.Mutex
 }
 
 func newMockBugTracker() *mockBugTracker {
@@ -31,6 +39,22 @@ func newMockBugTracker() *mockBugTracker {
 func (m *mockBugTracker) Type() forge.ForgeType { return forge.ForgeLaunchpad }
 
 func (m *mockBugTracker) GetBug(_ context.Context, id string) (*forge.Bug, error) {
+	current := m.activeGetBugCalls.Add(1)
+	defer m.activeGetBugCalls.Add(-1)
+	for {
+		previous := m.maxGetBugCalls.Load()
+		if current <= previous || m.maxGetBugCalls.CompareAndSwap(previous, current) {
+			break
+		}
+	}
+	if m.getBugDelay > 0 {
+		time.Sleep(m.getBugDelay)
+	}
+	if err := m.getBugErrs[id]; err != nil {
+		return nil, err
+	}
+	m.getBugMu.Lock()
+	defer m.getBugMu.Unlock()
 	b, ok := m.bugs[id]
 	if !ok {
 		return nil, fmt.Errorf("bug %s not found", id)
@@ -233,5 +257,58 @@ func TestCachedTrackerIncrementalSyncUsesCreatedAndModifiedSince(t *testing.T) {
 	wantModified := lastSync.Add(-24 * time.Hour).Format(time.RFC3339)
 	if mock.opts[0].CreatedSince != wantCreated || mock.opts[0].ModifiedSince != wantModified {
 		t.Fatalf("sync opts = %+v, want created_since=%q modified_since=%q", mock.opts[0], wantCreated, wantModified)
+	}
+}
+
+func TestCachedTrackerSyncFetchesBugDetailsWithBoundedConcurrency(t *testing.T) {
+	mock := newMockBugTracker()
+	mock.getBugDelay = 25 * time.Millisecond
+	mock.tasks["proj"] = make([]forge.BugTask, 0, 8)
+	for i := 0; i < 8; i++ {
+		id := fmt.Sprintf("%d", i+1)
+		mock.bugs[id] = &forge.Bug{Forge: forge.ForgeLaunchpad, ID: id, Title: "Bug " + id}
+		mock.tasks["proj"] = append(mock.tasks["proj"], forge.BugTask{
+			Forge:      forge.ForgeLaunchpad,
+			BugID:      id,
+			TargetName: "proj",
+			Status:     "New",
+			SelfLink:   "/task/" + id,
+		})
+	}
+
+	ct := newTestCachedTracker(t, mock, "proj")
+	if _, err := ct.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if got := mock.maxGetBugCalls.Load(); got < 2 || got > 4 {
+		t.Fatalf("max concurrent GetBug calls = %d, want between 2 and 4", got)
+	}
+}
+
+func TestCachedTrackerSyncContinuesWhenConcurrentBugFetchFails(t *testing.T) {
+	mock := newMockBugTracker()
+	mock.getBugErrs = map[string]error{"2": fmt.Errorf("boom")}
+	mock.bugs["1"] = &forge.Bug{Forge: forge.ForgeLaunchpad, ID: "1", Title: "Bug 1"}
+	mock.bugs["3"] = &forge.Bug{Forge: forge.ForgeLaunchpad, ID: "3", Title: "Bug 3"}
+	mock.tasks["proj"] = []forge.BugTask{
+		{Forge: forge.ForgeLaunchpad, BugID: "1", TargetName: "proj", Status: "New", SelfLink: "/task/1"},
+		{Forge: forge.ForgeLaunchpad, BugID: "2", TargetName: "proj", Status: "New", SelfLink: "/task/2"},
+		{Forge: forge.ForgeLaunchpad, BugID: "3", TargetName: "proj", Status: "New", SelfLink: "/task/3"},
+	}
+
+	ct := newTestCachedTracker(t, mock, "proj")
+	ctx := context.Background()
+	if _, err := ct.Sync(ctx); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	for _, id := range []string{"1", "3"} {
+		if _, err := ct.GetBug(ctx, id); err != nil {
+			t.Fatalf("GetBug(%s): %v", id, err)
+		}
+	}
+	if _, err := ct.GetBug(ctx, "2"); err == nil {
+		t.Fatal("GetBug(2) succeeded, want cached miss after fetch failure")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
@@ -25,6 +26,7 @@ type CachedBugTracker struct {
 }
 
 const incrementalModifiedOverlap = 24 * time.Hour
+const defaultBugFetchConcurrency = 4
 
 // NewCachedBugTracker wraps a BugTracker with caching support.
 func NewCachedBugTracker(inner port.BugTracker, cache port.BugCache, project string, logger *slog.Logger) *CachedBugTracker {
@@ -126,15 +128,7 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 	if err := c.cache.StoreBugTasks(ctx, forgeType, c.project, tasks); err != nil {
 		return 0, fmt.Errorf("storing tasks for %s: %w", c.project, err)
 	}
-	var bugs []*forge.Bug
-	for _, id := range bugIDs {
-		b, bErr := c.inner.GetBug(ctx, id)
-		if bErr != nil {
-			c.logger.Warn("failed to fetch bug details", "id", id, "error", bErr)
-			continue
-		}
-		bugs = append(bugs, b)
-	}
+	bugs := c.fetchBugs(ctx, bugIDs)
 
 	if len(bugs) > 0 {
 		if err := c.cache.StoreBugs(ctx, bugs); err != nil {
@@ -209,4 +203,62 @@ func mergeTasks(existing, incoming []forge.BugTask) []forge.BugTask {
 		result = append(result, t)
 	}
 	return result
+}
+
+func (c *CachedBugTracker) fetchBugs(ctx context.Context, bugIDs []string) []*forge.Bug {
+	if len(bugIDs) == 0 {
+		return nil
+	}
+
+	type fetchResult struct {
+		index int
+		bug   *forge.Bug
+	}
+
+	workerCount := min(defaultBugFetchConcurrency, len(bugIDs))
+	jobs := make(chan int)
+	results := make(chan fetchResult, len(bugIDs))
+
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				id := bugIDs[idx]
+				b, err := c.inner.GetBug(ctx, id)
+				if err != nil {
+					c.logger.Warn("failed to fetch bug details", "id", id, "error", err)
+					continue
+				}
+				results <- fetchResult{index: idx, bug: b}
+			}
+		}()
+	}
+
+	for idx := range bugIDs {
+		if ctx.Err() != nil {
+			break
+		}
+		jobs <- idx
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	ordered := make([]*forge.Bug, len(bugIDs))
+	for result := range results {
+		ordered[result.index] = result.bug
+	}
+
+	bugs := make([]*forge.Bug, 0, len(bugIDs))
+	for _, bug := range ordered {
+		if bug != nil {
+			bugs = append(bugs, bug)
+		}
+	}
+	return bugs
 }
