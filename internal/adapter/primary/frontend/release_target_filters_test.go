@@ -102,6 +102,74 @@ func TestFilterReleaseListEntries(t *testing.T) {
 	}
 }
 
+func TestFilterReleaseListEntriesNormalizesSnapBasesForMinBaseChannel(t *testing.T) {
+	cfg := &config.Config{
+		Releases: config.ReleasesConfig{
+			DefaultTargetProfile: "noble-and-newer",
+			TargetProfiles: map[string]config.ReleaseTargetProfileConfig{
+				"noble-and-newer": {
+					Include: []config.ReleaseTargetMatcherConfig{{BaseNames: []string{"ubuntu"}, MinBaseChannel: "24.04"}},
+				},
+			},
+		},
+	}
+
+	entries := []dto.ReleaseListEntry{{
+		Project: "openstack-hypervisor",
+		Name:    "openstack-hypervisor",
+		Targets: []dto.ReleaseTargetSnapshot{
+			{Architecture: "amd64", Base: dto.ReleaseBase{Name: "core22"}, Revision: 40, Version: "1.2.2"},
+			{Architecture: "amd64", Base: dto.ReleaseBase{Name: "core24"}, Revision: 41, Version: "1.2.3"},
+		},
+	}}
+
+	filtered, err := FilterReleaseListEntries(cfg, entries, "", false)
+	if err != nil {
+		t.Fatalf("FilterReleaseListEntries() error = %v", err)
+	}
+	if got := len(filtered); got != 1 {
+		t.Fatalf("len(filtered) = %d, want 1", got)
+	}
+	if got := len(filtered[0].Targets); got != 1 {
+		t.Fatalf("len(filtered[0].Targets) = %d, want 1", got)
+	}
+	if got := filtered[0].Targets[0].Base.Name; got != "core24" {
+		t.Fatalf("filtered target base = %q, want core24", got)
+	}
+}
+
+func TestFilterReleaseListEntriesKeepsBaseLessTargetsVisible(t *testing.T) {
+	cfg := &config.Config{
+		Releases: config.ReleasesConfig{
+			DefaultTargetProfile: "noble-and-newer",
+			TargetProfiles: map[string]config.ReleaseTargetProfileConfig{
+				"noble-and-newer": {
+					Include: []config.ReleaseTargetMatcherConfig{{BaseNames: []string{"ubuntu"}, MinBaseChannel: "24.04"}},
+				},
+			},
+		},
+	}
+
+	entries := []dto.ReleaseListEntry{{
+		Project: "openstack-hypervisor",
+		Name:    "openstack-hypervisor",
+		Targets: []dto.ReleaseTargetSnapshot{
+			{Architecture: "amd64", Revision: 41, Version: "1.2.3"},
+		},
+	}}
+
+	filtered, err := FilterReleaseListEntries(cfg, entries, "", false)
+	if err != nil {
+		t.Fatalf("FilterReleaseListEntries() error = %v", err)
+	}
+	if got := len(filtered); got != 1 {
+		t.Fatalf("len(filtered) = %d, want 1", got)
+	}
+	if got := len(filtered[0].Targets); got != 1 {
+		t.Fatalf("len(filtered[0].Targets) = %d, want 1", got)
+	}
+}
+
 func TestFilterReleaseShowResultDropsHiddenChannels(t *testing.T) {
 	cfg := &config.Config{
 		Releases: config.ReleasesConfig{
@@ -157,5 +225,14 @@ func TestFormatReleaseTargetAndTargets(t *testing.T) {
 	}
 	if got := FormatReleaseTargets([]dto.ReleaseTargetSnapshot{target}); got != "amd64@ubuntu/24.04:r41/1.2.3" {
 		t.Fatalf("FormatReleaseTargets() = %q", got)
+	}
+
+	snapTarget := dto.ReleaseTargetSnapshot{
+		Architecture: "amd64",
+		Base:         dto.ReleaseBase{Name: "core24"},
+		Revision:     7,
+	}
+	if got := FormatReleaseTargetCompact(snapTarget); got != "amd64@core24:r7" {
+		t.Fatalf("FormatReleaseTargetCompact(snap) = %q", got)
 	}
 }

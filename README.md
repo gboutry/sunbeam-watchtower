@@ -364,6 +364,7 @@ Rules:
 - `release.target_profile` selects the default named profile for one project
 - `release.target_profile_overrides` merges on top of the selected profile for that project
 - `min_base_channel` accepts dotted numeric version channels only, such as `22.04` or `24.04`
+- snap targets using `core22`/`core24`/`core26` are normalized against Ubuntu generations for `min_base_channel` matching
 - `--all-targets` bypasses all local filtering for that command or TUI session state
 - filtering affects rendered output only; server state and API payloads remain unchanged
 

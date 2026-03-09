@@ -58,6 +58,7 @@ The following are implemented and should be treated as the current baseline:
 - backend-neutral prepared-build contract using canonical `target_ref`, `repository_ref`, and `recipes` fields
 - narrower internal/app build/runtime factory helpers for recipe builders, repo managers, auth-flow stores, and operation stores
 - shared release target presentation/filtering for CLI and TUI, including base-aware revision formatting and config-driven visibility profiles
+- release target filtering normalizes snap `coreXX` bases against Ubuntu release generations so shared target profiles work across snaps and charms
 - release tracking keeps same-name snap and charm artifacts as distinct cached/listed entries and requires type narrowing only for ambiguous release-detail lookups
 - local daemon lifecycle commands and explicit runtime resolution order
 - Launchpad auth flows with durable server-side coordination
