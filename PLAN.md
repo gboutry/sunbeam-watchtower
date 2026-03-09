@@ -105,6 +105,8 @@ These are the main known gaps that still matter:
 - keep Launchpad bug-task reads aligned with the full documented `searchTasks.status` enum so default bug syncs do not silently omit task states such as `Deferred` or `Does Not Exist`
 - keep Launchpad URL construction multi-value safe so repeated query keys like `status` survive request building instead of collapsing to the last value
 - keep bug cache syncs best-effort but parallelize bug-detail hydration with a small bounded worker pool so cache refresh stays responsive without aggressive Launchpad fan-out
+- keep snap release syncs requesting `channel-map,base,revision,version` so cached/listed snap targets expose base and revision metadata like charms do
+- keep shared release target rendering concise by suppressing duplicate `/version` suffixes when the version equals the revision string
 - keep handler-focused API tests on ephemeral runtime helpers and shared local fixtures so test speed improves without weakening dedicated persistence coverage
 - continue removing host-environment assumptions from tests
 - keep changed-package coverage enforcement healthy by raising tests with feature work instead of bypassing the guard

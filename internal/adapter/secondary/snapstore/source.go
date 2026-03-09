@@ -35,7 +35,7 @@ func (s *Source) ArtifactType() dto.ArtifactType { return dto.ArtifactSnap }
 // Fetch returns the current published snap channel state.
 func (s *Source) Fetch(ctx context.Context, publication dto.TrackedPublication) (*dto.PublishedArtifactSnapshot, error) {
 	fields := url.Values{}
-	fields.Set("fields", "channel-map")
+	fields.Set("fields", "channel-map,base,revision,version")
 	endpoint := infoEndpoint + url.PathEscape(publication.Name) + "?" + fields.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

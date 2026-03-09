@@ -320,10 +320,20 @@ func formatReleaseTarget(target dto.ReleaseTargetSnapshot, includeVersion bool) 
 	if target.Revision > 0 {
 		label += fmt.Sprintf(":r%d", target.Revision)
 	}
-	if includeVersion && target.Version != "" {
+	if includeVersion && shouldRenderReleaseVersion(target) {
 		label += "/" + target.Version
 	}
 	return label
+}
+
+func shouldRenderReleaseVersion(target dto.ReleaseTargetSnapshot) bool {
+	if target.Version == "" {
+		return false
+	}
+	if target.Revision > 0 && target.Version == strconv.Itoa(target.Revision) {
+		return false
+	}
+	return true
 }
 
 func projectConfigByName(cfg *config.Config, project string) *config.ProjectConfig {

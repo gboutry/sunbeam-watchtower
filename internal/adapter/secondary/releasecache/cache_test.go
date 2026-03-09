@@ -109,3 +109,45 @@ func TestCacheKeepsSameNameAcrossArtifactTypes(t *testing.T) {
 		t.Fatalf("Status() = %+v, want both snap and charm entries", status)
 	}
 }
+
+func TestCacheStoresSnapTargetMetadata(t *testing.T) {
+	cache, err := NewCache(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewCache() error = %v", err)
+	}
+	defer cache.Close()
+
+	snapshot := dto.PublishedArtifactSnapshot{
+		Project:      "openstack-hypervisor",
+		Name:         "openstack-hypervisor",
+		ArtifactType: dto.ArtifactSnap,
+		Tracks:       []string{"2024.1"},
+		Channels: []dto.ReleaseChannelSnapshot{{
+			Track:   "2024.1",
+			Risk:    dto.ReleaseRiskStable,
+			Channel: "2024.1/stable",
+			Targets: []dto.ReleaseTargetSnapshot{{
+				Architecture: "amd64",
+				Base:         dto.ReleaseBase{Name: "core24"},
+				Revision:     527,
+				Version:      "2024.1",
+			}},
+		}},
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := cache.Store(context.Background(), snapshot); err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+
+	list, err := cache.List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("List() = %+v, want one stored snapshot", list)
+	}
+	got := list[0].Channels[0].Targets[0]
+	if got.Base.Name != "core24" || got.Revision != 527 || got.Version != "2024.1" {
+		t.Fatalf("stored target = %+v, want base/revision/version preserved", got)
+	}
+}

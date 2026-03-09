@@ -235,4 +235,24 @@ func TestFormatReleaseTargetAndTargets(t *testing.T) {
 	if got := FormatReleaseTargetCompact(snapTarget); got != "amd64@core24:r7" {
 		t.Fatalf("FormatReleaseTargetCompact(snap) = %q", got)
 	}
+
+	duplicateVersionTarget := dto.ReleaseTargetSnapshot{
+		Architecture: "amd64",
+		Base:         dto.ReleaseBase{Name: "ubuntu", Channel: "24.04"},
+		Revision:     347,
+		Version:      "347",
+	}
+	if got := FormatReleaseTarget(duplicateVersionTarget); got != "amd64@ubuntu/24.04:r347" {
+		t.Fatalf("FormatReleaseTarget(duplicate version) = %q", got)
+	}
+
+	snapDetailedTarget := dto.ReleaseTargetSnapshot{
+		Architecture: "amd64",
+		Base:         dto.ReleaseBase{Name: "core24"},
+		Revision:     527,
+		Version:      "2024.1",
+	}
+	if got := FormatReleaseTarget(snapDetailedTarget); got != "amd64@core24:r527/2024.1" {
+		t.Fatalf("FormatReleaseTarget(snap) = %q", got)
+	}
 }
