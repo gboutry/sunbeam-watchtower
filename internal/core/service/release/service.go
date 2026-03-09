@@ -20,6 +20,20 @@ var (
 	ErrAmbiguous = errors.New("release lookup is ambiguous")
 )
 
+// AmbiguousReleaseError reports that one release name matched multiple artifact types.
+type AmbiguousReleaseError struct {
+	Name          string
+	ArtifactTypes []dto.ArtifactType
+}
+
+func (e *AmbiguousReleaseError) Error() string {
+	return ErrAmbiguous.Error()
+}
+
+func (e *AmbiguousReleaseError) Unwrap() error {
+	return ErrAmbiguous
+}
+
 // Service manages cached published snap/charm release state.
 type Service struct {
 	cache   port.ReleaseCache
@@ -151,7 +165,19 @@ func (s *Service) Show(ctx context.Context, name string, artifactType *dto.Artif
 		return nil, ErrNotFound
 	}
 	if len(matches) > 1 {
-		return nil, ErrAmbiguous
+		typeSet := make(map[dto.ArtifactType]bool, len(matches))
+		types := make([]dto.ArtifactType, 0, len(matches))
+		for _, match := range matches {
+			if typeSet[match.ArtifactType] {
+				continue
+			}
+			typeSet[match.ArtifactType] = true
+			types = append(types, match.ArtifactType)
+		}
+		sort.Slice(types, func(i, j int) bool {
+			return types[i].String() < types[j].String()
+		})
+		return nil, &AmbiguousReleaseError{Name: name, ArtifactTypes: types}
 	}
 	result := matches[0]
 	if track != "" || branch != "" {

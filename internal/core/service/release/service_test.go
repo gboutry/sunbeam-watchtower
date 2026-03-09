@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -98,6 +99,13 @@ func TestServiceShowAmbiguous(t *testing.T) {
 	_, err := service.Show(context.Background(), "keystone", nil, "", "")
 	if !errors.Is(err, ErrAmbiguous) {
 		t.Fatalf("Show() error = %v, want ErrAmbiguous", err)
+	}
+	var ambiguousErr *AmbiguousReleaseError
+	if !errors.As(err, &ambiguousErr) {
+		t.Fatalf("Show() error = %T, want *AmbiguousReleaseError", err)
+	}
+	if !slices.Equal(ambiguousErr.ArtifactTypes, []dto.ArtifactType{dto.ArtifactCharm, dto.ArtifactSnap}) {
+		t.Fatalf("Show() ambiguous types = %+v, want charm+snap", ambiguousErr.ArtifactTypes)
 	}
 }
 

@@ -104,3 +104,83 @@ func TestReleasesCommandsRenderListAndShow(t *testing.T) {
 		t.Fatalf("--all-targets should restore hidden targets: %q", out.String())
 	}
 }
+
+func TestReleasesCommandsRequireTypeForSameNameAcrossArtifactTypes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/releases":
+			_ = json.NewEncoder(w).Encode(map[string]any{"releases": []dto.ReleaseListEntry{{
+				Project:      "openstack",
+				ArtifactType: dto.ArtifactSnap,
+				Name:         "keystone",
+				Track:        "latest",
+				Risk:         dto.ReleaseRiskStable,
+			}, {
+				Project:      "openstack",
+				ArtifactType: dto.ArtifactCharm,
+				Name:         "keystone",
+				Track:        "2024.1",
+				Risk:         dto.ReleaseRiskStable,
+			}}})
+		case "/api/v1/releases/keystone":
+			if r.URL.Query().Get("type") == "charm" {
+				_ = json.NewEncoder(w).Encode(dto.ReleaseShowResult{
+					Project:      "openstack",
+					ArtifactType: dto.ArtifactCharm,
+					Name:         "keystone",
+					Tracks:       []string{"2024.1"},
+				})
+				return
+			}
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"title":  "Conflict",
+				"status": http.StatusConflict,
+				"detail": `release "keystone" matched multiple artifact types (charm, snap); use the type filter`,
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &bytes.Buffer{},
+		Output: "table",
+		Client: client.NewClient(server.URL),
+		App:    app.NewAppWithOptions(&config.Config{}, nil, app.Options{}),
+		Logger: discardTestLogger(),
+	}
+
+	cmd := newReleasesCmd(opts)
+	cmd.SetArgs([]string{"list", "keystone"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("list Execute() error = %v", err)
+	}
+	if strings.Count(out.String(), "keystone") < 2 || !strings.Contains(out.String(), "snap") || !strings.Contains(out.String(), "charm") {
+		t.Fatalf("list output should show both same-name entries: %q", out.String())
+	}
+
+	out.Reset()
+	cmd = newReleasesCmd(opts)
+	cmd.SetArgs([]string{"show", "keystone"})
+	err := cmd.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("show Execute() error = nil, want ambiguity error")
+	}
+	if !strings.Contains(err.Error(), "multiple artifact types") || !strings.Contains(err.Error(), "use the type filter") {
+		t.Fatalf("show error = %v, want explicit ambiguity message", err)
+	}
+
+	out.Reset()
+	cmd = newReleasesCmd(opts)
+	cmd.SetArgs([]string{"show", "keystone", "--type", "charm"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("typed show Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Type:") || !strings.Contains(out.String(), "charm") {
+		t.Fatalf("typed show output = %q, want charm detail", out.String())
+	}
+}
