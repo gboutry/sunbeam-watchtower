@@ -103,6 +103,7 @@ These are the main known gaps that still matter:
 
 - keep the Huma optional-field guard in place and add regression tests when request shapes change
 - keep Launchpad bug-task reads aligned with the full documented `searchTasks.status` enum so default bug syncs do not silently omit task states such as `Deferred` or `Does Not Exist`
+- keep Launchpad URL construction multi-value safe so repeated query keys like `status` survive request building instead of collapsing to the last value
 - keep bug cache syncs best-effort but parallelize bug-detail hydration with a small bounded worker pool so cache refresh stays responsive without aggressive Launchpad fan-out
 - keep handler-focused API tests on ephemeral runtime helpers and shared local fixtures so test speed improves without weakening dedicated persistence coverage
 - continue removing host-environment assumptions from tests

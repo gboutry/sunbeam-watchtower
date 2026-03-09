@@ -234,6 +234,25 @@ func TestSearchBugTasks(t *testing.T) {
 	}
 }
 
+func TestWsOpURL_PreservesRepeatedQueryParams(t *testing.T) {
+	u := wsOpURL("https://api.launchpad.net/devel/snap-openstack", "searchTasks", BugTaskSearchOpts{}.values())
+
+	parsed, err := url.Parse(u)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	statuses := parsed.Query()["status"]
+	if len(statuses) != len(allBugTaskStatuses) {
+		t.Fatalf("len(statuses) = %d, want %d (%v)", len(statuses), len(allBugTaskStatuses), statuses)
+	}
+	for i, want := range allBugTaskStatuses {
+		if statuses[i] != want {
+			t.Fatalf("statuses[%d] = %q, want %q", i, statuses[i], want)
+		}
+	}
+}
+
 func TestGetGitRepository(t *testing.T) {
 	c, server := newTestServer(t, map[string]any{
 		"/~owner/project/+git/repo": GitRepository{
