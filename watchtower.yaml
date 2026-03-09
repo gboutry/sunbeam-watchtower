@@ -11,6 +11,14 @@ gerrit:
   hosts:
     - url: https://review.opendev.org
 
+releases:
+  default_target_profile: noble-and-newer
+  target_profiles:
+    noble-and-newer:
+      include:
+        - base_names: [ubuntu]
+          min_base_channel: "24.04"
+
 projects:
   - name: sunbeam-charms
     artifact_type: charm
@@ -24,6 +32,7 @@ projects:
       - forge: launchpad
         project: sunbeam-charms
     release:
+      target_profile: noble-and-newer
       skip_artifacts:
         - sunbeam-libs
 
