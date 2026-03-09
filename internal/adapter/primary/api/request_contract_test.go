@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 )
 
@@ -14,7 +13,7 @@ func TestCommitsList_OmittedOptionalQueryParamsReturns200(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterCommitsAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/commits")
@@ -42,7 +41,7 @@ func TestReviewsList_OmittedOptionalQueryParamsReturns200(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterReviewsAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/reviews")
@@ -72,7 +71,7 @@ func TestBugsList_OmittedOptionalQueryParamsReturns200(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterBugsAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/bugs")
@@ -100,7 +99,7 @@ func TestBuildsList_OmittedOptionalQueryParamsReturns200(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterBuildsAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/builds")

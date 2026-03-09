@@ -82,7 +82,7 @@ func TestLocalDaemonLifecycleCommands(t *testing.T) {
 	}
 }
 
-func TestLocalDaemonAuthPersistsAcrossInvocations(t *testing.T) {
+func TestLocalDaemonStatePersistsAcrossInvocations(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("daemon integration tests require unix sockets")
 	}
@@ -98,79 +98,66 @@ func TestLocalDaemonAuthPersistsAcrossInvocations(t *testing.T) {
 		_, _ = runCLIHelperNoFail(wrapper, env, "", "server", "stop")
 	})
 
-	login := runCLIHelper(t, wrapper, env, "\n", "auth", "login")
-	if !strings.Contains(login.Stdout, "Authenticated as: Jane Doe (jdoe)") {
-		t.Fatalf("auth login output = %q", login.Stdout)
-	}
+	t.Run("auth persists", func(t *testing.T) {
+		login := runCLIHelper(t, wrapper, env, "\n", "auth", "login")
+		if !strings.Contains(login.Stdout, "Authenticated as: Jane Doe (jdoe)") {
+			t.Fatalf("auth login output = %q", login.Stdout)
+		}
 
-	status := runCLIHelper(t, wrapper, env, "", "auth", "status")
-	if !strings.Contains(status.Stdout, "Authenticated as: Jane Doe (jdoe)") {
-		t.Fatalf("auth status output = %q", status.Stdout)
-	}
+		status := runCLIHelper(t, wrapper, env, "", "auth", "status")
+		if !strings.Contains(status.Stdout, "Authenticated as: Jane Doe (jdoe)") {
+			t.Fatalf("auth status output = %q", status.Stdout)
+		}
 
-	logout := runCLIHelper(t, wrapper, env, "", "auth", "logout")
-	if !strings.Contains(logout.Stdout, "Removed Launchpad credentials") {
-		t.Fatalf("auth logout output = %q", logout.Stdout)
-	}
+		logout := runCLIHelper(t, wrapper, env, "", "auth", "logout")
+		if !strings.Contains(logout.Stdout, "Removed Launchpad credentials") {
+			t.Fatalf("auth logout output = %q", logout.Stdout)
+		}
 
-	status = runCLIHelper(t, wrapper, env, "", "auth", "status")
-	if !strings.Contains(status.Stdout, "Not authenticated.") {
-		t.Fatalf("auth status after logout output = %q", status.Stdout)
-	}
-}
-
-func TestLocalDaemonOperationPersistsAcrossInvocations(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("daemon integration tests require unix sockets")
-	}
-
-	wrapper := writeCLIHelperWrapper(t)
-	env := append(daemonTestEnv(t, wrapper), "WATCHTOWER_TEST_FAKE_LAUNCHPAD=1")
-
-	start := runCLIHelper(t, wrapper, env, "", "server", "start")
-	if !strings.Contains(start.Stdout, "Started local server at unix://") {
-		t.Fatalf("server start output = %q", start.Stdout)
-	}
-	t.Cleanup(func() {
-		_, _ = runCLIHelperNoFail(wrapper, env, "", "server", "stop")
+		status = runCLIHelper(t, wrapper, env, "", "auth", "status")
+		if !strings.Contains(status.Stdout, "Not authenticated.") {
+			t.Fatalf("auth status after logout output = %q", status.Stdout)
+		}
 	})
 
-	login := runCLIHelper(t, wrapper, env, "\n", "auth", "login")
-	if !strings.Contains(login.Stdout, "Authenticated as: Jane Doe (jdoe)") {
-		t.Fatalf("auth login output = %q", login.Stdout)
-	}
+	t.Run("operations persist", func(t *testing.T) {
+		login := runCLIHelper(t, wrapper, env, "\n", "auth", "login")
+		if !strings.Contains(login.Stdout, "Authenticated as: Jane Doe (jdoe)") {
+			t.Fatalf("auth login output = %q", login.Stdout)
+		}
 
-	trigger := runCLIHelper(t, wrapper, env, "", "-o", "json", "project", "sync", "--async")
-	var job dto.OperationJob
-	if err := json.Unmarshal([]byte(trigger.Stdout), &job); err != nil {
-		t.Fatalf("json.Unmarshal(trigger) error = %v; stdout=%q", err, trigger.Stdout)
-	}
-	if job.ID == "" || job.Kind != dto.OperationKindProjectSync {
-		t.Fatalf("triggered job = %+v, want project sync operation", job)
-	}
+		trigger := runCLIHelper(t, wrapper, env, "", "-o", "json", "project", "sync", "--async")
+		var job dto.OperationJob
+		if err := json.Unmarshal([]byte(trigger.Stdout), &job); err != nil {
+			t.Fatalf("json.Unmarshal(trigger) error = %v; stdout=%q", err, trigger.Stdout)
+		}
+		if job.ID == "" || job.Kind != dto.OperationKindProjectSync {
+			t.Fatalf("triggered job = %+v, want project sync operation", job)
+		}
 
-	finalJob := waitForOperationStateViaCLI(t, wrapper, env, job.ID, dto.OperationStateSucceeded)
-	if finalJob.Summary == "" {
-		t.Fatalf("final job = %+v, want non-empty summary", finalJob)
-	}
+		finalJob := waitForOperationStateViaCLI(t, wrapper, env, job.ID, dto.OperationStateSucceeded)
+		if finalJob.Summary == "" {
+			t.Fatalf("final job = %+v, want non-empty summary", finalJob)
+		}
 
-	list := runCLIHelper(t, wrapper, env, "", "-o", "json", "operation", "list")
-	var jobs []dto.OperationJob
-	if err := json.Unmarshal([]byte(list.Stdout), &jobs); err != nil {
-		t.Fatalf("json.Unmarshal(list) error = %v; stdout=%q", err, list.Stdout)
-	}
-	if !containsOperationID(jobs, job.ID) {
-		t.Fatalf("operation list = %+v, want job %q", jobs, job.ID)
-	}
+		list := runCLIHelper(t, wrapper, env, "", "-o", "json", "operation", "list")
+		var jobs []dto.OperationJob
+		if err := json.Unmarshal([]byte(list.Stdout), &jobs); err != nil {
+			t.Fatalf("json.Unmarshal(list) error = %v; stdout=%q", err, list.Stdout)
+		}
+		if !containsOperationID(jobs, job.ID) {
+			t.Fatalf("operation list = %+v, want job %q", jobs, job.ID)
+		}
 
-	events := runCLIHelper(t, wrapper, env, "", "-o", "json", "operation", "events", job.ID)
-	var operationEvents []dto.OperationEvent
-	if err := json.Unmarshal([]byte(events.Stdout), &operationEvents); err != nil {
-		t.Fatalf("json.Unmarshal(events) error = %v; stdout=%q", err, events.Stdout)
-	}
-	if len(operationEvents) == 0 {
-		t.Fatal("operation events should not be empty")
-	}
+		events := runCLIHelper(t, wrapper, env, "", "-o", "json", "operation", "events", job.ID)
+		var operationEvents []dto.OperationEvent
+		if err := json.Unmarshal([]byte(events.Stdout), &operationEvents); err != nil {
+			t.Fatalf("json.Unmarshal(events) error = %v; stdout=%q", err, events.Stdout)
+		}
+		if len(operationEvents) == 0 {
+			t.Fatal("operation events should not be empty")
+		}
+	})
 }
 
 type helperCommandResult struct {

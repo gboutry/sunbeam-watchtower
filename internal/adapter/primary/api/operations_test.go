@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -18,7 +17,7 @@ func TestProjectsSyncAsync_EmptyConfigCreatesOperation(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterProjectsAPI(srv.API(), application)
 	RegisterOperationsAPI(srv.API(), application)
 
@@ -66,25 +65,30 @@ func TestOperationsCancel_CancelsRunningOperation(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterOperationsAPI(srv.API(), application)
 
 	service, err := application.OperationService()
 	if err != nil {
 		t.Fatal(err)
 	}
+	started := make(chan struct{})
+	done := make(chan struct{})
 	job, err := service.Start(context.Background(), dto.OperationKindProjectSync, nil, func(ctx context.Context, reporter *opsvc.Reporter) (string, error) {
 		reporter.Progress(dto.OperationProgress{
 			Phase:         "syncing",
 			Message:       "waiting for cancellation",
 			Indeterminate: true,
 		})
+		close(started)
 		<-ctx.Done()
+		close(done)
 		return "", ctx.Err()
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	<-started
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, base+"/api/v1/operations/"+job.ID+"/cancel", nil)
 	if err != nil {
@@ -99,6 +103,7 @@ func TestOperationsCancel_CancelsRunningOperation(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
+	<-done
 
 	finalJob := waitForOperationState(t, base, job.ID, dto.OperationStateCancelled)
 	if finalJob.Error != context.Canceled.Error() {

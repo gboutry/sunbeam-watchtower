@@ -31,7 +31,7 @@ func newTestServer(t *testing.T, routes map[string]any) (*Client, *httptest.Serv
 		json.NewEncoder(w).Encode(resp)
 	}))
 	creds := &Credentials{ConsumerKey: "test", AccessToken: "t", AccessTokenSecret: "s"}
-	c := NewClient(creds, nil)
+	c := NewClient(creds, nil, server.Client())
 	return c, server
 }
 
@@ -41,12 +41,8 @@ func TestGetPerson(t *testing.T) {
 	})
 	defer server.Close()
 
-	_, err := c.GetPerson(context.Background(), server.URL+"/~jdoe")
-	_ = err
-	// We use the full URL here because GetPerson prepends /~
-	// Instead, test with the raw URL approach:
 	var p Person
-	err = c.GetJSON(context.Background(), server.URL+"/~jdoe", &p)
+	err := c.GetJSON(context.Background(), server.URL+"/~jdoe", &p)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
@@ -159,7 +155,7 @@ func TestGetAllPages(t *testing.T) {
 	})
 
 	creds := &Credentials{ConsumerKey: "test", AccessToken: "t", AccessTokenSecret: "s"}
-	c := NewClient(creds, nil)
+	c := NewClient(creds, nil, server.Client())
 
 	all, err := GetAllPages[Person](context.Background(), c, server.URL+"/items")
 	if err != nil {

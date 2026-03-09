@@ -19,7 +19,7 @@ func testClient(handler http.Handler) (*Client, *httptest.Server) {
 		AccessToken:       "token",
 		AccessTokenSecret: "secret",
 	}
-	c := NewClient(creds, nil)
+	c := NewClient(creds, nil, server.Client())
 	return c, server
 }
 
@@ -146,8 +146,15 @@ func TestClient_ResolveURL(t *testing.T) {
 }
 
 func TestLogin_NilPromptFn(t *testing.T) {
+	orig := requestTokenURL
+	t.Cleanup(func() { requestTokenURL = orig })
+	requestTokenURL = "http://127.0.0.1:1"
+
 	_, _, err := Login("test-app", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for nil promptFn, got nil")
+	}
+	if !strings.Contains(err.Error(), "promptFn is required") {
+		t.Fatalf("err = %v, want promptFn requirement", err)
 	}
 }

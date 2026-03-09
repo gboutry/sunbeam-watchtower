@@ -37,6 +37,19 @@ func startTestServer(t *testing.T) (*Server, string) {
 	return srv, "http://" + srv.Addr()
 }
 
+func newEphemeralTestApp(t *testing.T, cfg *config.Config) *app.App {
+	t.Helper()
+	application := app.NewAppWithOptions(cfg, discardLogger(), app.Options{
+		RuntimeMode: app.RuntimeModeEphemeral,
+	})
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+	return application
+}
+
 func TestNewServer(t *testing.T) {
 	srv := NewServer(discardLogger(), ServerOptions{ListenAddr: "127.0.0.1:0"})
 	if srv.API() == nil {

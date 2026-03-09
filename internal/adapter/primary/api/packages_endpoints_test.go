@@ -16,7 +16,7 @@ import (
 func newEmptyPackagesApp(t *testing.T) *app.App {
 	t.Helper()
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	return app.NewApp(&config.Config{}, discardLogger())
+	return newEphemeralTestApp(t, &config.Config{})
 }
 
 func TestPackagesDiff_UnknownSetReturns404(t *testing.T) {

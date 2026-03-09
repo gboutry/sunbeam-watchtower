@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 )
 
@@ -16,7 +15,7 @@ func TestReviewsList_InvalidForgeReturns422(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterReviewsAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/reviews?forge=invalid")
@@ -34,7 +33,7 @@ func TestCommitsList_InvalidForgeReturns422(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterCommitsAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/commits?forge=invalid")
