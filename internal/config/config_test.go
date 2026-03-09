@@ -19,6 +19,9 @@ github:
 gerrit:
   hosts:
     - url: https://review.opendev.org
+bug_groups:
+  sunbeam:
+    common_project: snap-openstack
 projects:
   - name: snap-openstack
     code:
@@ -28,6 +31,7 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
   - name: sunbeam-charms
     code:
       forge: gerrit
@@ -36,8 +40,10 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
       - forge: launchpad
         project: sunbeam-charms
+        group: sunbeam
   - name: charm-keystone
     code:
       forge: launchpad
@@ -94,6 +100,9 @@ packages:
 	}
 	if len(p0.Bugs) != 1 || p0.Bugs[0].Forge != "launchpad" || p0.Bugs[0].Project != "snap-openstack" {
 		t.Errorf("Projects[0].Bugs = %+v", p0.Bugs)
+	}
+	if cfg.BugGroups["sunbeam"].CommonProject != "snap-openstack" {
+		t.Fatalf("BugGroups[sunbeam] = %+v", cfg.BugGroups["sunbeam"])
 	}
 
 	// sunbeam-charms: gerrit code + 2 LP bug trackers
@@ -279,6 +288,58 @@ func TestValidate_BugMissingProject(t *testing.T) {
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Error("Validate() should error for bug tracker missing project")
+	}
+}
+
+func TestValidate_BugGroupUnknown(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name: "p1",
+			Code: CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+			Bugs: []BugTrackerConfig{{Forge: "launchpad", Project: "lp-proj", Group: "missing"}},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should error for unknown bug group")
+	}
+}
+
+func TestValidate_BugGroupCommonProjectMustMatchTrackedProject(t *testing.T) {
+	cfg := &Config{
+		BugGroups: map[string]BugGroupConfig{
+			"sunbeam": {CommonProject: "snap-openstack"},
+		},
+		Projects: []ProjectConfig{{
+			Name: "p1",
+			Code: CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+			Bugs: []BugTrackerConfig{{Forge: "launchpad", Project: "sunbeam-charms", Group: "sunbeam"}},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should error when common_project is not among grouped tracker projects")
+	}
+}
+
+func TestValidate_BugGroupRejectsMixedForges(t *testing.T) {
+	cfg := &Config{
+		BugGroups: map[string]BugGroupConfig{
+			"mixed": {CommonProject: "demo"},
+		},
+		Projects: []ProjectConfig{
+			{
+				Name: "p1",
+				Code: CodeConfig{Forge: "github", Owner: "org", Project: "repo"},
+				Bugs: []BugTrackerConfig{{Forge: "launchpad", Project: "demo", Group: "mixed"}},
+			},
+			{
+				Name: "p2",
+				Code: CodeConfig{Forge: "github", Owner: "org", Project: "repo2"},
+				Bugs: []BugTrackerConfig{{Forge: "github", Owner: "org", Project: "repo2", Group: "mixed"}},
+			},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should error for mixed-forge bug group")
 	}
 }
 

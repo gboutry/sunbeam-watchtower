@@ -171,14 +171,14 @@ func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
 }
 
 // BuildBugTrackers creates bug tracker clients from config, deduplicating by (forge, project).
-func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][]string, error) {
+func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][]bug.ProjectBinding, error) {
 	cfg := a.Config
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("no configuration loaded")
 	}
 
 	trackers := make(map[string]bug.ProjectBugTracker)
-	projectMap := make(map[string][]string)
+	bindings := make(map[string][]bug.ProjectBinding)
 
 	var lpBugTracker *forge.LaunchpadBugTracker
 
@@ -206,7 +206,11 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 						ProjectID: b.Project,
 					}
 				}
-				projectMap[key] = append(projectMap[key], proj.Name)
+				bindings[key] = append(bindings[key], bug.ProjectBinding{
+					ProjectName:   proj.Name,
+					Group:         b.Group,
+					CommonProject: cfg.BugGroups[b.Group].CommonProject,
+				})
 
 			default:
 				return nil, nil, fmt.Errorf("unsupported bug tracker forge %q for project %s", b.Forge, proj.Name)
@@ -237,11 +241,13 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 				Tracker:   bugcache.NewCachedBugTracker(lpBugTracker, cache, status.Project, a.Logger),
 				ProjectID: status.Project,
 			}
-			projectMap[key] = []string{status.Project}
+			bindings[key] = []bug.ProjectBinding{{
+				ProjectName: status.Project,
+			}}
 		}
 	}
 
-	return trackers, projectMap, nil
+	return trackers, bindings, nil
 }
 
 func (a *App) newLaunchpadBugTrackerForReads(projectName string) *forge.LaunchpadBugTracker {

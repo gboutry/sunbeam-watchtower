@@ -17,6 +17,13 @@ type ProjectBugTracker struct {
 	ProjectID string // e.g. LP project name
 }
 
+// ProjectBinding associates one tracker query with one configured Watchtower project.
+type ProjectBinding struct {
+	ProjectName   string
+	Group         string
+	CommonProject string
+}
+
 // ListOptions controls filtering for List.
 type ListOptions struct {
 	Projects   []string // filter to these config project names (empty = all)
@@ -25,6 +32,7 @@ type ListOptions struct {
 	Assignee   string
 	Tags       []string
 	Since      string // ISO 8601 date — filter tasks created/modified since this date
+	Merge      bool
 }
 
 // ProjectResult holds bug tasks from one query, or an error.
@@ -38,18 +46,18 @@ type ProjectResult struct {
 type Service struct {
 	// keyed by dedup key "forge:projectID" to avoid querying the same tracker project twice
 	trackers map[string]ProjectBugTracker
-	// maps dedup key → list of watchtower project names
-	projectMap map[string][]string
-	logger     *slog.Logger
+	// maps dedup key → configured project bindings for that tracker project
+	bindings map[string][]ProjectBinding
+	logger   *slog.Logger
 }
 
 // NewService creates a bug service.
-// trackers maps dedup key to the tracker, projectMap maps dedup key to watchtower project names.
-func NewService(trackers map[string]ProjectBugTracker, projectMap map[string][]string, logger *slog.Logger) *Service {
+// trackers maps dedup key to the tracker, bindings maps dedup key to configured project bindings.
+func NewService(trackers map[string]ProjectBugTracker, bindings map[string][]ProjectBinding, logger *slog.Logger) *Service {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Service{trackers: trackers, projectMap: projectMap, logger: logger}
+	return &Service{trackers: trackers, bindings: bindings, logger: logger}
 }
 
 // Get fetches a single bug by ID. It tries each configured tracker until one succeeds.
@@ -94,15 +102,16 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 
 	var results []ProjectResult
 	var all []forge.BugTask
+	merged := make(map[string]mergedBugTask)
 
 	for key, pt := range s.trackers {
-		projectNames := s.projectMap[key]
+		projectBindings := s.bindings[key]
 
 		// If project filter is set, check if any associated project matches.
 		if len(projFilter) > 0 {
 			var matched bool
-			for _, name := range projectNames {
-				if projFilter[name] {
+			for _, binding := range projectBindings {
+				if projFilter[binding.ProjectName] {
 					matched = true
 					break
 				}
@@ -113,7 +122,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 			}
 		}
 
-		s.logger.Debug("querying tracker", "tracker", key, "projects", projectNames)
+		s.logger.Debug("querying tracker", "tracker", key, "projects", projectBindings)
 
 		tasks, err := pt.Tracker.ListBugTasks(ctx, pt.ProjectID, forge.ListBugTasksOpts{
 			Status:        opts.Status,
@@ -126,31 +135,48 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 
 		if err != nil {
 			s.logger.Warn("tracker query failed", "tracker", key, "error", err)
-			for _, name := range projectNames {
+			for _, binding := range projectBindings {
 				results = append(results, ProjectResult{
-					ProjectName: name,
-					Err:         fmt.Errorf("%s: %w", name, err),
+					ProjectName: binding.ProjectName,
+					Err:         fmt.Errorf("%s: %w", binding.ProjectName, err),
 				})
 			}
 			continue
 		}
 
 		// Expand results to all associated watchtower projects.
-		for _, name := range projectNames {
-			if len(projFilter) > 0 && !projFilter[name] {
+		for _, binding := range projectBindings {
+			if len(projFilter) > 0 && !projFilter[binding.ProjectName] {
 				continue
 			}
 			expanded := make([]forge.BugTask, len(tasks))
 			for i, t := range tasks {
-				t.Project = name
+				t.Project = binding.ProjectName
 				expanded[i] = t
+				if opts.Merge {
+					groupKey, displayProject := binding.mergeGroupKey(pt.ProjectID)
+					mergeKey := fmt.Sprintf("%s:%s:%s", groupKey, t.Forge.String(), t.BugID)
+					merged[mergeKey] = mergeTask(merged[mergeKey], mergeCandidate{
+						task:           t,
+						displayProject: displayProject,
+						trackerProject: pt.ProjectID,
+						commonProject:  binding.commonProjectOrTracker(pt.ProjectID),
+					})
+				}
 			}
 			results = append(results, ProjectResult{
-				ProjectName: name,
+				ProjectName: binding.ProjectName,
 				BugTasks:    expanded,
 			})
 			all = append(all, expanded...)
-			s.logger.Debug("tracker bugs fetched", "tracker", key, "project", name, "count", len(expanded))
+			s.logger.Debug("tracker bugs fetched", "tracker", key, "project", binding.ProjectName, "count", len(expanded))
+		}
+	}
+
+	if opts.Merge {
+		all = all[:0]
+		for _, item := range merged {
+			all = append(all, item.task)
 		}
 	}
 
@@ -162,4 +188,47 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 	s.logger.Debug("bugs aggregated", "total_count", len(all))
 
 	return all, results, nil
+}
+
+type mergeCandidate struct {
+	task           forge.BugTask
+	displayProject string
+	trackerProject string
+	commonProject  string
+}
+
+type mergedBugTask struct {
+	task forge.BugTask
+}
+
+func mergeTask(existing mergedBugTask, candidate mergeCandidate) mergedBugTask {
+	candidate.task.Project = candidate.displayProject
+	if existing.task.BugID == "" {
+		return mergedBugTask{task: candidate.task}
+	}
+
+	existingPreferred := existing.task.TargetName == candidate.commonProject
+	candidatePreferred := candidate.trackerProject == candidate.commonProject || candidate.task.TargetName == candidate.commonProject
+
+	if candidatePreferred && !existingPreferred {
+		return mergedBugTask{task: candidate.task}
+	}
+	if candidatePreferred == existingPreferred && candidate.task.UpdatedAt.After(existing.task.UpdatedAt) {
+		return mergedBugTask{task: candidate.task}
+	}
+	return existing
+}
+
+func (b ProjectBinding) mergeGroupKey(trackerProject string) (string, string) {
+	if b.Group != "" {
+		return "group:" + b.Group, b.commonProjectOrTracker(trackerProject)
+	}
+	return "tracker:" + trackerProject, trackerProject
+}
+
+func (b ProjectBinding) commonProjectOrTracker(trackerProject string) string {
+	if b.CommonProject != "" {
+		return b.CommonProject
+	}
+	return trackerProject
 }

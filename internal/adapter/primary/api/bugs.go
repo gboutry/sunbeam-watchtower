@@ -23,6 +23,7 @@ type BugsListInput struct {
 	Assignee   string   `query:"assignee" doc:"Filter by assignee"`
 	Tags       []string `query:"tag" required:"false" doc:"Filter by tag"`
 	Since      string   `query:"since" doc:"Return bugs created/modified since this date (ISO 8601)"`
+	Merge      bool     `query:"merge" required:"false" doc:"Collapse grouped duplicate bug rows"`
 }
 
 type BugsListOutput struct {
@@ -73,6 +74,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 			Assignee:   input.Assignee,
 			Tags:       input.Tags,
 			Since:      input.Since,
+			Merge:      input.Merge,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list bugs: %v", err))

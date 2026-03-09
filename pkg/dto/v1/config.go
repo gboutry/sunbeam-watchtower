@@ -35,6 +35,11 @@ type BugTrackerConfig struct {
 	Owner   string `json:"owner,omitempty" yaml:"owner,omitempty"`
 	Host    string `json:"host,omitempty" yaml:"host,omitempty"`
 	Project string `json:"project" yaml:"project"`
+	Group   string `json:"group,omitempty" yaml:"group,omitempty"`
+}
+
+type BugGroupConfig struct {
+	CommonProject string `json:"common_project" yaml:"common_project"`
 }
 
 type ProjectBuildConfig struct {
@@ -190,12 +195,13 @@ type OTelConfig struct {
 }
 
 type Config struct {
-	Launchpad LaunchpadConfig `json:"launchpad" yaml:"launchpad"`
-	GitHub    GitHubConfig    `json:"github" yaml:"github"`
-	Gerrit    GerritConfig    `json:"gerrit" yaml:"gerrit"`
-	Projects  []ProjectConfig `json:"projects" yaml:"projects"`
-	Build     BuildConfig     `json:"build" yaml:"build"`
-	Releases  ReleasesConfig  `json:"releases,omitempty" yaml:"releases,omitempty"`
-	Packages  PackagesConfig  `json:"packages,omitempty" yaml:"packages,omitempty"`
-	OTel      OTelConfig      `json:"otel,omitempty" yaml:"otel,omitempty"`
+	Launchpad LaunchpadConfig           `json:"launchpad" yaml:"launchpad"`
+	GitHub    GitHubConfig              `json:"github" yaml:"github"`
+	Gerrit    GerritConfig              `json:"gerrit" yaml:"gerrit"`
+	BugGroups map[string]BugGroupConfig `json:"bug_groups,omitempty" yaml:"bug_groups,omitempty"`
+	Projects  []ProjectConfig           `json:"projects" yaml:"projects"`
+	Build     BuildConfig               `json:"build" yaml:"build"`
+	Releases  ReleasesConfig            `json:"releases,omitempty" yaml:"releases,omitempty"`
+	Packages  PackagesConfig            `json:"packages,omitempty" yaml:"packages,omitempty"`
+	OTel      OTelConfig                `json:"otel,omitempty" yaml:"otel,omitempty"`
 }

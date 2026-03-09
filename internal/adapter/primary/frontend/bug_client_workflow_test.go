@@ -27,6 +27,9 @@ func TestBugClientWorkflowList(t *testing.T) {
 		if query.Get("since") != "2025-01-01T00:00:00Z" {
 			t.Fatalf("since = %q, want 2025-01-01T00:00:00Z", query.Get("since"))
 		}
+		if query.Get("merge") != "true" {
+			t.Fatalf("merge = %q, want true", query.Get("merge"))
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tasks": []forge.BugTask{{
 				Project: "keystone",
@@ -43,6 +46,7 @@ func TestBugClientWorkflowList(t *testing.T) {
 	got, err := workflow.List(context.Background(), BugListRequest{
 		Projects: []string{"keystone"},
 		Since:    "2025-01-01",
+		Merge:    true,
 	})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)

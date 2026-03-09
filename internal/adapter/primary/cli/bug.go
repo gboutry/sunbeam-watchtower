@@ -42,6 +42,7 @@ func newBugListCmd(opts *Options) *cobra.Command {
 		assignee   string
 		tags       []string
 		since      string
+		merge      bool
 	)
 
 	cmd := withActionID(&cobra.Command{
@@ -55,6 +56,7 @@ func newBugListCmd(opts *Options) *cobra.Command {
 				Assignee:   assignee,
 				Tags:       tags,
 				Since:      since,
+				Merge:      merge,
 			})
 			if err != nil {
 				return err
@@ -75,6 +77,7 @@ func newBugListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&assignee, "assignee", "", "filter by assignee username")
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "filter by tag (repeatable)")
 	cmd.Flags().StringVar(&since, "since", "", "show only bugs created/modified since (e.g. 2d, 1w, 30m, 2025-01-01)")
+	cmd.Flags().BoolVar(&merge, "merge", false, "collapse grouped duplicate bug rows")
 
 	return cmd
 }

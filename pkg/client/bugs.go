@@ -19,6 +19,7 @@ type BugsListOptions struct {
 	Assignee   string
 	Tags       []string
 	Since      string // ISO 8601 date — return bugs created/modified since this date
+	Merge      bool
 }
 
 // BugsListResult is the response returned by BugsList.
@@ -47,6 +48,9 @@ func (c *Client) BugsList(ctx context.Context, opts BugsListOptions) (*BugsListR
 	}
 	if opts.Since != "" {
 		q.Set("since", opts.Since)
+	}
+	if opts.Merge {
+		q.Set("merge", "true")
 	}
 
 	var result BugsListResult
