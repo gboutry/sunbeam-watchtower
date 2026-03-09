@@ -221,8 +221,9 @@ func wsOpURL(base, op string, params url.Values) string {
 	q := u.Query()
 	q.Set("ws.op", op)
 	for k, vs := range params {
+		q.Del(k)
 		for _, v := range vs {
-			q.Set(k, v)
+			q.Add(k, v)
 		}
 	}
 	u.RawQuery = q.Encode()
