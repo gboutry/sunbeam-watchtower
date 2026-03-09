@@ -62,14 +62,14 @@ func (s *Source) Fetch(ctx context.Context, publication dto.TrackedPublication) 
 
 	byChannel := make(map[string]*dto.ReleaseChannelSnapshot)
 	for _, entry := range payload.ChannelMap {
-		track, risk, branch, err := dto.ParseReleaseChannelName(entry.Channel.Name)
+		channelName, architecture, releasedAt := entry.releaseMetadata()
+		track, risk, branch, err := dto.ParseReleaseChannelName(channelName)
 		if err != nil {
 			continue
 		}
 		if !publication.AllowsChannel(track, risk, branch) {
 			continue
 		}
-		channelName := entry.Channel.Name
 		channel := byChannel[channelName]
 		if channel == nil {
 			channel = &dto.ReleaseChannelSnapshot{
@@ -77,18 +77,19 @@ func (s *Source) Fetch(ctx context.Context, publication dto.TrackedPublication) 
 				Risk:      risk,
 				Branch:    branch,
 				Channel:   channelName,
-				UpdatedAt: entry.Channel.ReleasedAt,
+				UpdatedAt: releasedAt,
 			}
 			byChannel[channelName] = channel
 		}
 		target := dto.ReleaseTargetSnapshot{
-			Architecture: entry.Channel.Architecture,
+			Architecture: architecture,
 			Base: dto.ReleaseBase{
-				Architecture: entry.Channel.Architecture,
+				Name:         entry.Base,
+				Architecture: architecture,
 			},
 			Revision:   entry.Revision,
 			Version:    entry.Version,
-			ReleasedAt: entry.Channel.ReleasedAt,
+			ReleasedAt: releasedAt,
 		}
 		channel.Targets = append(channel.Targets, target)
 		if target.ReleasedAt.After(channel.UpdatedAt) {
@@ -125,15 +126,33 @@ func (s *Source) Fetch(ctx context.Context, publication dto.TrackedPublication) 
 }
 
 type snapInfoResponse struct {
-	ChannelMap []struct {
-		Channel struct {
-			Architecture string    `json:"architecture"`
-			Name         string    `json:"name"`
-			ReleasedAt   time.Time `json:"released-at"`
-			Risk         string    `json:"risk"`
-			Track        string    `json:"track"`
-		} `json:"channel"`
-		Revision int    `json:"revision"`
-		Version  string `json:"version"`
-	} `json:"channel-map"`
+	ChannelMap []snapChannelMapRow `json:"channel-map"`
+}
+
+type snapChannelMapRow struct {
+	Architecture string    `json:"architecture"`
+	When         time.Time `json:"when"`
+	Channel      struct {
+		Architecture string    `json:"architecture"`
+		Name         string    `json:"name"`
+		ReleasedAt   time.Time `json:"released-at"`
+		Risk         string    `json:"risk"`
+		Track        string    `json:"track"`
+	} `json:"channel"`
+	Revision int    `json:"revision"`
+	Version  string `json:"version"`
+	Base     string `json:"base"`
+}
+
+func (e snapChannelMapRow) releaseMetadata() (string, string, time.Time) {
+	channelName := e.Channel.Name
+	architecture := e.Channel.Architecture
+	if architecture == "" {
+		architecture = e.Architecture
+	}
+	releasedAt := e.Channel.ReleasedAt
+	if releasedAt.IsZero() {
+		releasedAt = e.When
+	}
+	return channelName, architecture, releasedAt
 }

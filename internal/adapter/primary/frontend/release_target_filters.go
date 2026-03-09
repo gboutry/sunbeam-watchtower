@@ -5,6 +5,7 @@ package frontend
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,6 +28,8 @@ type ReleaseTargetMatcher struct {
 	MinBaseChannel string
 	Architectures  []string
 }
+
+var snapBasePattern = regexp.MustCompile(`^core(\d{2})$`)
 
 // ResolveReleaseTargetProfile resolves the active target profile for one project.
 func ResolveReleaseTargetProfile(cfg *config.Config, project string, selectedProfile string, allTargets bool) (*ReleaseTargetProfile, error) {
@@ -197,10 +200,12 @@ func releaseTargetVisible(target dto.ReleaseTargetSnapshot, profile *ReleaseTarg
 }
 
 func (m ReleaseTargetMatcher) matches(target dto.ReleaseTargetSnapshot) bool {
-	if len(m.BaseNames) > 0 && !slices.Contains(m.BaseNames, target.Base.Name) {
+	baseName, baseChannel := canonicalReleaseTargetBase(target)
+	hasBaseMetadata := baseName != "" || baseChannel != ""
+	if len(m.BaseNames) > 0 && hasBaseMetadata && !slices.Contains(m.BaseNames, baseName) {
 		return false
 	}
-	if len(m.BaseChannels) > 0 && !slices.Contains(m.BaseChannels, target.Base.Channel) {
+	if len(m.BaseChannels) > 0 && hasBaseMetadata && !slices.Contains(m.BaseChannels, baseChannel) {
 		return false
 	}
 	if len(m.Architectures) > 0 {
@@ -212,12 +217,24 @@ func (m ReleaseTargetMatcher) matches(target dto.ReleaseTargetSnapshot) bool {
 			return false
 		}
 	}
-	if m.MinBaseChannel != "" {
-		if compareBaseChannels(target.Base.Channel, m.MinBaseChannel) < 0 {
+	if m.MinBaseChannel != "" && hasBaseMetadata {
+		if compareBaseChannels(baseChannel, m.MinBaseChannel) < 0 {
 			return false
 		}
 	}
 	return true
+}
+
+func canonicalReleaseTargetBase(target dto.ReleaseTargetSnapshot) (string, string) {
+	baseName := strings.TrimSpace(target.Base.Name)
+	baseChannel := strings.TrimSpace(target.Base.Channel)
+	if normalizedChannel, ok := normalizeSnapBaseVersion(baseName); ok {
+		return "ubuntu", normalizedChannel
+	}
+	if normalizedChannel, ok := normalizeSnapBaseVersion(baseChannel); ok {
+		return "ubuntu", normalizedChannel
+	}
+	return baseName, baseChannel
 }
 
 func compareBaseChannels(left string, right string) int {
@@ -254,6 +271,9 @@ func parseBaseChannelVersion(raw string) ([]int, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("empty base channel")
 	}
+	if normalized, ok := normalizeSnapBaseVersion(raw); ok {
+		raw = normalized
+	}
 	parts := strings.Split(raw, ".")
 	values := make([]int, 0, len(parts))
 	for _, part := range parts {
@@ -269,6 +289,14 @@ func parseBaseChannelVersion(raw string) ([]int, error) {
 	return values, nil
 }
 
+func normalizeSnapBaseVersion(raw string) (string, bool) {
+	matches := snapBasePattern.FindStringSubmatch(strings.TrimSpace(raw))
+	if len(matches) != 2 {
+		return "", false
+	}
+	return matches[1] + ".04", true
+}
+
 func formatReleaseTarget(target dto.ReleaseTargetSnapshot, includeVersion bool) string {
 	label := target.Architecture
 	if label == "" {
@@ -279,14 +307,15 @@ func formatReleaseTarget(target dto.ReleaseTargetSnapshot, includeVersion bool) 
 	}
 	if target.Base.Name != "" || target.Base.Channel != "" {
 		baseName := target.Base.Name
-		if baseName == "" {
-			baseName = "base"
-		}
 		baseChannel := target.Base.Channel
-		if baseChannel == "" {
-			baseChannel = "-"
+		switch {
+		case baseName != "" && baseChannel != "":
+			label += "@" + baseName + "/" + baseChannel
+		case baseName != "":
+			label += "@" + baseName
+		default:
+			label += "@base/" + baseChannel
 		}
-		label += "@" + baseName + "/" + baseChannel
 	}
 	if target.Revision > 0 {
 		label += fmt.Sprintf(":r%d", target.Revision)
