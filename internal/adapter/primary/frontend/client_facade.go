@@ -42,7 +42,7 @@ func NewClientFacade(apiClient *ClientTransport, application *app.App) *ClientFa
 		operations:               NewOperationClientWorkflow(apiClient),
 		projects:                 NewProjectClientWorkflow(apiClient),
 		builds:                   builds,
-		releases:                 NewReleaseClientWorkflow(apiClient),
+		releases:                 NewReleaseClientWorkflow(apiClient, application),
 		packages:                 NewPackagesClientWorkflow(apiClient, application),
 		cache:                    NewCacheClientWorkflow(apiClient),
 		bugs:                     NewBugClientWorkflow(apiClient),

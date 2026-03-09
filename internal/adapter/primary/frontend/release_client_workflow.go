@@ -7,36 +7,43 @@ import (
 	"context"
 	"errors"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
 // ReleasesListRequest describes one release-list workflow.
 type ReleasesListRequest struct {
-	Names        []string
-	Projects     []string
-	ArtifactType string
-	Tracks       []string
-	Branches     []string
-	Risks        []string
+	Names         []string
+	Projects      []string
+	ArtifactType  string
+	Tracks        []string
+	Branches      []string
+	Risks         []string
+	TargetProfile string
+	AllTargets    bool
 }
 
 // ReleasesShowRequest describes one release-show workflow.
 type ReleasesShowRequest struct {
-	Name         string
-	ArtifactType string
-	Track        string
-	Branch       string
+	Name          string
+	ArtifactType  string
+	Track         string
+	Branch        string
+	TargetProfile string
+	AllTargets    bool
 }
 
 // ReleaseClientWorkflow exposes reusable client-side release workflows.
 type ReleaseClientWorkflow struct {
-	client *ClientTransport
+	client      *ClientTransport
+	application *app.App
 }
 
 // NewReleaseClientWorkflow creates a client-side release workflow.
-func NewReleaseClientWorkflow(apiClient *ClientTransport) *ReleaseClientWorkflow {
-	return &ReleaseClientWorkflow{client: apiClient}
+func NewReleaseClientWorkflow(apiClient *ClientTransport, application *app.App) *ReleaseClientWorkflow {
+	return &ReleaseClientWorkflow{client: apiClient, application: application}
 }
 
 // List lists cached published artifact release rows.
@@ -45,7 +52,7 @@ func (w *ReleaseClientWorkflow) List(ctx context.Context, req ReleasesListReques
 	if err != nil {
 		return nil, err
 	}
-	return apiClient.ReleasesList(ctx, client.ReleasesListOptions{
+	releases, err := apiClient.ReleasesList(ctx, client.ReleasesListOptions{
 		Names:        req.Names,
 		Projects:     req.Projects,
 		ArtifactType: req.ArtifactType,
@@ -53,6 +60,10 @@ func (w *ReleaseClientWorkflow) List(ctx context.Context, req ReleasesListReques
 		Branches:     req.Branches,
 		Risks:        req.Risks,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return FilterReleaseListEntries(w.config(), releases, req.TargetProfile, req.AllTargets)
 }
 
 // Show returns the cached full matrix for one published artifact.
@@ -61,11 +72,19 @@ func (w *ReleaseClientWorkflow) Show(ctx context.Context, req ReleasesShowReques
 	if err != nil {
 		return nil, err
 	}
-	return apiClient.ReleasesShow(ctx, req.Name, client.ReleasesShowOptions{
+	result, err := apiClient.ReleasesShow(ctx, req.Name, client.ReleasesShowOptions{
 		ArtifactType: req.ArtifactType,
 		Track:        req.Track,
 		Branch:       req.Branch,
 	})
+	if err != nil {
+		return nil, err
+	}
+	project := ""
+	if result != nil {
+		project = result.Project
+	}
+	return FilterReleaseShowResult(w.config(), project, result, req.TargetProfile, req.AllTargets)
 }
 
 func (w *ReleaseClientWorkflow) resolveClient() (*ClientTransport, error) {
@@ -73,4 +92,11 @@ func (w *ReleaseClientWorkflow) resolveClient() (*ClientTransport, error) {
 		return nil, errors.New("release client workflow requires an API client")
 	}
 	return w.client, nil
+}
+
+func (w *ReleaseClientWorkflow) config() *config.Config {
+	if w == nil || w.application == nil {
+		return nil
+	}
+	return w.application.Config
 }

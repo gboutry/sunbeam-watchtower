@@ -51,10 +51,29 @@ type ProjectReleaseBranchConfig struct {
 }
 
 type ProjectReleaseConfig struct {
-	Tracks        []string                     `json:"tracks,omitempty" yaml:"tracks,omitempty"`
-	TrackMap      map[string]string            `json:"track_map,omitempty" yaml:"track_map,omitempty"`
-	Branches      []ProjectReleaseBranchConfig `json:"branches,omitempty" yaml:"branches,omitempty"`
-	SkipArtifacts []string                     `json:"skip_artifacts,omitempty" yaml:"skip_artifacts,omitempty"`
+	Tracks                 []string                     `json:"tracks,omitempty" yaml:"tracks,omitempty"`
+	TrackMap               map[string]string            `json:"track_map,omitempty" yaml:"track_map,omitempty"`
+	Branches               []ProjectReleaseBranchConfig `json:"branches,omitempty" yaml:"branches,omitempty"`
+	SkipArtifacts          []string                     `json:"skip_artifacts,omitempty" yaml:"skip_artifacts,omitempty"`
+	TargetProfile          string                       `json:"target_profile,omitempty" yaml:"target_profile,omitempty"`
+	TargetProfileOverrides *ReleaseTargetProfileConfig  `json:"target_profile_overrides,omitempty" yaml:"target_profile_overrides,omitempty"`
+}
+
+type ReleaseTargetMatcherConfig struct {
+	BaseNames      []string `json:"base_names,omitempty" yaml:"base_names,omitempty"`
+	BaseChannels   []string `json:"base_channels,omitempty" yaml:"base_channels,omitempty"`
+	MinBaseChannel string   `json:"min_base_channel,omitempty" yaml:"min_base_channel,omitempty"`
+	Architectures  []string `json:"architectures,omitempty" yaml:"architectures,omitempty"`
+}
+
+type ReleaseTargetProfileConfig struct {
+	Include []ReleaseTargetMatcherConfig `json:"include,omitempty" yaml:"include,omitempty"`
+	Exclude []ReleaseTargetMatcherConfig `json:"exclude,omitempty" yaml:"exclude,omitempty"`
+}
+
+type ReleasesConfig struct {
+	DefaultTargetProfile string                                `json:"default_target_profile,omitempty" yaml:"default_target_profile,omitempty"`
+	TargetProfiles       map[string]ReleaseTargetProfileConfig `json:"target_profiles,omitempty" yaml:"target_profiles,omitempty"`
 }
 
 type ProjectConfig struct {
@@ -176,6 +195,7 @@ type Config struct {
 	Gerrit    GerritConfig    `json:"gerrit" yaml:"gerrit"`
 	Projects  []ProjectConfig `json:"projects" yaml:"projects"`
 	Build     BuildConfig     `json:"build" yaml:"build"`
+	Releases  ReleasesConfig  `json:"releases,omitempty" yaml:"releases,omitempty"`
 	Packages  PackagesConfig  `json:"packages,omitempty" yaml:"packages,omitempty"`
 	OTel      OTelConfig      `json:"otel,omitempty" yaml:"otel,omitempty"`
 }

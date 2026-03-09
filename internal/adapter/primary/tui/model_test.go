@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
+	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
@@ -61,8 +62,32 @@ func TestBuildTriggerRequestFromValuesAlwaysAsync(t *testing.T) {
 func TestSummarizeReleaseArtifactsDeduplicatesByArtifact(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
 	artifacts := summarizeReleaseArtifacts([]dto.ReleaseListEntry{
-		{Project: "demo", Name: "artifact-a", ArtifactType: dto.ArtifactSnap, Channel: "latest/edge", ReleasedAt: now.Add(-time.Hour)},
-		{Project: "demo", Name: "artifact-a", ArtifactType: dto.ArtifactSnap, Channel: "latest/stable", ReleasedAt: now},
+		{
+			Project:      "demo",
+			Name:         "artifact-a",
+			ArtifactType: dto.ArtifactSnap,
+			Channel:      "latest/edge",
+			ReleasedAt:   now.Add(-time.Hour),
+			Targets: []dto.ReleaseTargetSnapshot{{
+				Architecture: "amd64",
+				Base:         dto.ReleaseBase{Name: "ubuntu", Channel: "22.04"},
+				Revision:     40,
+				ReleasedAt:   now.Add(-time.Hour),
+			}},
+		},
+		{
+			Project:      "demo",
+			Name:         "artifact-a",
+			ArtifactType: dto.ArtifactSnap,
+			Channel:      "latest/stable",
+			ReleasedAt:   now,
+			Targets: []dto.ReleaseTargetSnapshot{{
+				Architecture: "amd64",
+				Base:         dto.ReleaseBase{Name: "ubuntu", Channel: "24.04"},
+				Revision:     41,
+				ReleasedAt:   now,
+			}},
+		},
 		{Project: "demo", Name: "artifact-b", ArtifactType: dto.ArtifactCharm, Channel: "2024.1/stable", ReleasedAt: now.Add(-2 * time.Hour)},
 	})
 	if got := len(artifacts); got != 2 {
@@ -73,6 +98,12 @@ func TestSummarizeReleaseArtifactsDeduplicatesByArtifact(t *testing.T) {
 	}
 	if !artifacts[0].ReleasedAt.Equal(now) {
 		t.Fatalf("artifacts[0].ReleasedAt = %s, want %s", artifacts[0].ReleasedAt, now)
+	}
+	if got := artifacts[0].LatestVisibleTarget; got != "amd64@ubuntu/24.04:r41" {
+		t.Fatalf("artifacts[0].LatestVisibleTarget = %q, want amd64@ubuntu/24.04:r41", got)
+	}
+	if got := artifacts[0].VisibleTargetCount; got != 2 {
+		t.Fatalf("artifacts[0].VisibleTargetCount = %d, want 2", got)
 	}
 }
 
@@ -89,7 +120,13 @@ func TestRenderReleaseDetailUsesLatestReleaseTime(t *testing.T) {
 				Channel: "latest/stable",
 				Track:   "latest",
 				Risk:    dto.ReleaseRiskStable,
-				Targets: []dto.ReleaseTargetSnapshot{{ReleasedAt: now}},
+				Targets: []dto.ReleaseTargetSnapshot{{
+					Architecture: "amd64",
+					Base:         dto.ReleaseBase{Name: "ubuntu", Channel: "24.04"},
+					Revision:     3,
+					Version:      "1.2.3",
+					ReleasedAt:   now,
+				}},
 				Resources: []dto.ReleaseResourceSnapshot{
 					{Name: "postgresql-image", Revision: 12},
 				},
@@ -104,6 +141,9 @@ func TestRenderReleaseDetailUsesLatestReleaseTime(t *testing.T) {
 	if strings.Contains(rendered, "Updated: 2026-03-08T15:00:00Z") {
 		t.Fatalf("detail should not use cache updated time:\n%s", rendered)
 	}
+	if !strings.Contains(rendered, "targets: amd64@ubuntu/24.04:r3/1.2.3") {
+		t.Fatalf("detail missing target-aware release formatting:\n%s", rendered)
+	}
 	if !strings.Contains(rendered, "resources: postgresql-image:r12") {
 		t.Fatalf("detail missing resources:\n%s", rendered)
 	}
@@ -112,9 +152,14 @@ func TestRenderReleaseDetailUsesLatestReleaseTime(t *testing.T) {
 func TestReleaseFilterFormAutocompleteUsesReleaseData(t *testing.T) {
 	session := newEmbeddedTestSession(t)
 	defer session.Close()
+	session.Config.Releases.TargetProfiles = map[string]config.ReleaseTargetProfileConfig{
+		"noble-and-newer": {
+			Include: []config.ReleaseTargetMatcherConfig{{BaseNames: []string{"ubuntu"}, MinBaseChannel: "24.04"}},
+		},
+	}
 
 	form := newReleaseFilterForm(session, releasesModel{
-		filters: releasesFilters{project: "demo"},
+		filters: releasesFilters{project: "demo", targetProfile: "noble-and-newer"},
 		rows: []dto.ReleaseListEntry{
 			{
 				Project:      "demo",
@@ -132,6 +177,9 @@ func TestReleaseFilterFormAutocompleteUsesReleaseData(t *testing.T) {
 	assertSuggestionsContain(t, form.fields[2].AvailableSuggestions(), "stable")
 	assertSuggestionsContain(t, form.fields[3].AvailableSuggestions(), "2024.1")
 	assertSuggestionsContain(t, form.fields[4].AvailableSuggestions(), "risc-v")
+	assertSuggestionsContain(t, form.fields[5].AvailableSuggestions(), "noble-and-newer")
+	assertSuggestionsContain(t, form.fields[6].AvailableSuggestions(), "true")
+	assertSuggestionsContain(t, form.fields[6].AvailableSuggestions(), "false")
 }
 
 func TestVimMotionGGAndGJumpReleases(t *testing.T) {
@@ -213,10 +261,11 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 	}}
 	model.builds.rows = model.dashboard.builds
 	model.releases.artifacts = []releaseArtifactSummary{{
-		Project:      "demo",
-		Name:         "artifact-a",
-		ArtifactType: dto.ArtifactCharm,
-		ReleasedAt:   now,
+		Project:             "demo",
+		Name:                "artifact-a",
+		ArtifactType:        dto.ArtifactCharm,
+		ReleasedAt:          now,
+		LatestVisibleTarget: "amd64@ubuntu/24.04:r3",
 	}}
 	model.releases.detail = &dto.ReleaseShowResult{
 		Project:      "demo",
@@ -288,6 +337,9 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 	model.activeView = viewReleases
 	if rendered := model.renderReleases(); !strings.Contains(rendered, "artifact-a") {
 		t.Fatalf("renderReleases missing artifact:\n%s", rendered)
+	}
+	if rendered := model.renderReleases(); !strings.Contains(rendered, "amd64@ubuntu/24.04:r3") {
+		t.Fatalf("renderReleases missing latest visible target:\n%s", rendered)
 	}
 
 	for _, tc := range []struct {

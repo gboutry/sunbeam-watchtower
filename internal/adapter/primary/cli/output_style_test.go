@@ -18,7 +18,13 @@ func TestRenderReleaseList_ColorizesTableOutput(t *testing.T) {
 		Name:         "snap-openstack",
 		Track:        "2024.1",
 		Risk:         dto.ReleaseRiskStable,
-		ReleasedAt:   time.Date(2026, 3, 8, 11, 0, 0, 0, time.UTC),
+		Targets: []dto.ReleaseTargetSnapshot{{
+			Architecture: "amd64",
+			Base:         dto.ReleaseBase{Name: "ubuntu", Channel: "24.04"},
+			Revision:     41,
+			Version:      "1.2.3",
+		}},
+		ReleasedAt: time.Date(2026, 3, 8, 11, 0, 0, 0, time.UTC),
 	}})
 	if err != nil {
 		t.Fatalf("renderReleaseList() error = %v", err)
@@ -28,7 +34,7 @@ func TestRenderReleaseList_ColorizesTableOutput(t *testing.T) {
 	if !strings.Contains(got, "\x1b[") {
 		t.Fatalf("expected ANSI color codes in output, got %q", got)
 	}
-	if !strings.Contains(got, "PROJECT") || !strings.Contains(got, "stable") {
+	if !strings.Contains(got, "PROJECT") || !strings.Contains(got, "amd64@ubuntu/24.04:r41/1.2.3") {
 		t.Fatalf("missing expected table content: %q", got)
 	}
 }

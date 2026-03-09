@@ -19,7 +19,8 @@ func newReleasesCmd(opts *Options) *cobra.Command {
 
 func newReleasesListCmd(opts *Options) *cobra.Command {
 	var names, projects, tracks, branches, risks []string
-	var artifactType string
+	var artifactType, targetProfile string
+	var allTargets bool
 
 	cmd := withActionID(&cobra.Command{
 		Use:   "list [names...]",
@@ -27,12 +28,14 @@ func newReleasesListCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			allNames := append(names, args...)
 			results, err := opts.Frontend().Releases().List(cmd.Context(), frontend.ReleasesListRequest{
-				Names:        allNames,
-				Projects:     projects,
-				ArtifactType: artifactType,
-				Tracks:       tracks,
-				Branches:     branches,
-				Risks:        risks,
+				Names:         allNames,
+				Projects:      projects,
+				ArtifactType:  artifactType,
+				Tracks:        tracks,
+				Branches:      branches,
+				Risks:         risks,
+				TargetProfile: targetProfile,
+				AllTargets:    allTargets,
 			})
 			if err != nil {
 				return err
@@ -47,12 +50,15 @@ func newReleasesListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&tracks, "track", nil, "filter by track")
 	cmd.Flags().StringSliceVar(&branches, "branch", nil, "filter by branch")
 	cmd.Flags().StringSliceVar(&risks, "risk", nil, "filter by risk (edge, beta, candidate, stable)")
+	cmd.Flags().StringVar(&targetProfile, "target-profile", "", "local target visibility profile for release targets")
+	cmd.Flags().BoolVar(&allTargets, "all-targets", false, "bypass local target visibility filtering")
 
 	return cmd
 }
 
 func newReleasesShowCmd(opts *Options) *cobra.Command {
-	var artifactType, track, branch string
+	var artifactType, track, branch, targetProfile string
+	var allTargets bool
 
 	cmd := withActionID(&cobra.Command{
 		Use:   "show <name>",
@@ -60,10 +66,12 @@ func newReleasesShowCmd(opts *Options) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := opts.Frontend().Releases().Show(cmd.Context(), frontend.ReleasesShowRequest{
-				Name:         args[0],
-				ArtifactType: artifactType,
-				Track:        track,
-				Branch:       branch,
+				Name:          args[0],
+				ArtifactType:  artifactType,
+				Track:         track,
+				Branch:        branch,
+				TargetProfile: targetProfile,
+				AllTargets:    allTargets,
 			})
 			if err != nil {
 				return err
@@ -75,5 +83,7 @@ func newReleasesShowCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&artifactType, "type", "", "artifact type to disambiguate duplicate names (snap|charm)")
 	cmd.Flags().StringVar(&track, "track", "", "optional track filter")
 	cmd.Flags().StringVar(&branch, "branch", "", "optional branch filter")
+	cmd.Flags().StringVar(&targetProfile, "target-profile", "", "local target visibility profile for release targets")
+	cmd.Flags().BoolVar(&allTargets, "all-targets", false, "bypass local target visibility filtering")
 	return cmd
 }
