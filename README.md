@@ -626,7 +626,7 @@ All list/show commands support `--output` (`-o`):
 | Flag        | Description |
 |-------------|-------------|
 | `--config`  | Path to config file (default: `~/.config/sunbeam-watchtower/config.yaml`) |
-| `--verbose` | Enable debug logging (written to stderr) |
+| `--verbose` | Enable debug logging (CLI/API write to stderr; TUI shows logs in its log pane) |
 | `-o, --output` | Output format: `table`, `json`, `yaml` |
 | `--no-color` | Disable colored output |
 
@@ -638,12 +638,14 @@ Enable verbose logging to see exactly what watchtower is doing:
 watchtower --verbose commit log
 ```
 
-This writes structured debug logs to stderr, including:
+For CLI and API runs, this writes structured debug logs to stderr, including:
 - Which forge clients are being configured
 - Which projects are being queried or skipped by filters
 - How many commits/reviews/bugs were fetched per project
 - Git cache operations (clone, fetch, path resolution)
 - Cache directory resolution
+
+For `watchtower-tui`, `--verbose` enables the same debug logs but keeps them inside the TUI. Press `l` to open the log pane, which shows the current session logs and, when connected to the local persistent daemon, a tail of the daemon log file.
 
 Example output:
 

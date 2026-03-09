@@ -43,6 +43,7 @@ const (
 	overlayAuth
 	overlayOperations
 	overlayCache
+	overlayLogs
 	overlayServer
 	overlayPrompt
 	overlayBuildFilters
@@ -160,6 +161,14 @@ type serverModalModel struct {
 	loaded bool
 }
 
+type logsModalModel struct {
+	sessionLines []string
+	daemonLines  []string
+	daemonNote   string
+	loaded       bool
+	err          string
+}
+
 type formModalModel struct {
 	title    string
 	fields   []textinput.Model
@@ -243,6 +252,13 @@ type localServerStatusMsg struct {
 	err    error
 }
 
+type logsLoadedMsg struct {
+	sessionLines []string
+	daemonLines  []string
+	daemonNote   string
+	err          error
+}
+
 type buildTriggeredMsg struct {
 	job *dto.OperationJob
 	err error
@@ -263,10 +279,12 @@ type browserOpenedMsg struct {
 
 type tickDashboardMsg time.Time
 type tickOperationsMsg time.Time
+type tickLogsMsg time.Time
 type clearToastMsg struct{}
 
 type rootModel struct {
 	session *runtimeadapter.Session
+	logs    *logBuffer
 	theme   theme
 
 	width  int
@@ -292,6 +310,7 @@ type rootModel struct {
 	ops       operationsDrawerModel
 	auth      authModalModel
 	cache     cacheModalModel
+	logsModal logsModalModel
 	server    serverModalModel
 
 	buildFilterForm   formModalModel
@@ -307,12 +326,17 @@ type rootModel struct {
 }
 
 func newRootModel(session *runtimeadapter.Session, noColor bool) rootModel {
+	return newRootModelWithLogs(session, noColor, nil)
+}
+
+func newRootModelWithLogs(session *runtimeadapter.Session, noColor bool, logs *logBuffer) rootModel {
 	t := newTheme()
 	if noColor {
 		lipgloss.SetColorProfile(0)
 	}
 	m := rootModel{
 		session:    session,
+		logs:       logs,
 		theme:      t,
 		activeView: viewDashboard,
 		builds: buildsModel{
@@ -541,6 +565,14 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			status := msg.status
 			m.server.local = &status
 		}
+	case logsLoadedMsg:
+		m.logsModal.loaded = msg.err == nil
+		m.logsModal.err = errString(msg.err)
+		if msg.err == nil {
+			m.logsModal.sessionLines = msg.sessionLines
+			m.logsModal.daemonLines = msg.daemonLines
+			m.logsModal.daemonNote = msg.daemonNote
+		}
 	case buildTriggeredMsg:
 		if msg.err != nil {
 			m.setToast(msg.err.Error(), "error")
@@ -594,6 +626,11 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
 		}
 		return m, nil
+	case tickLogsMsg:
+		if m.overlay == overlayLogs {
+			return m, tea.Batch(loadLogsCmd(m.session, m.logs), tickLogsCmd())
+		}
+		return m, nil
 	case clearToastMsg:
 		m.toast = toastState{}
 	}
@@ -631,6 +668,10 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.overlay = overlayCache
 		return m, loadCacheCmd(m.session)
+	case "l":
+		m.overlay = overlayLogs
+		m.overlayScroll = 0
+		return m, tea.Batch(loadLogsCmd(m.session, m.logs), tickLogsCmd())
 	case "s":
 		m.overlay = overlayServer
 		return m, loadLocalServerStatusCmd(m.session)
@@ -1026,6 +1067,39 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case overlayLogs:
+		switch msg.String() {
+		case "g":
+			if m.pendingG {
+				m.pendingG = false
+				m.overlayScroll = 0
+				return m, nil
+			}
+			m.pendingG = true
+			return m, nil
+		case "G":
+			m.pendingG = false
+			m.overlayScroll = viewportEndOffset()
+			return m, nil
+		default:
+			m.pendingG = false
+		}
+		switch msg.String() {
+		case "esc", "q":
+			m.overlay = overlayNone
+			m.overlayScroll = 0
+			return m, nil
+		case "r":
+			return m, loadLogsCmd(m.session, m.logs)
+		case "pgdown", "ctrl+d", "down", "j":
+			m.overlayScroll += m.scrollStep()
+		case "pgup", "ctrl+u", "up", "k":
+			m.overlayScroll -= m.scrollStep()
+			if m.overlayScroll < 0 {
+				m.overlayScroll = 0
+			}
+		}
+		return m, nil
 	case overlayServer:
 		m.pendingG = false
 		switch msg.String() {
@@ -1214,7 +1288,7 @@ func (m rootModel) renderStatusBar() string {
 	}
 	runningOps := countRunningOperations(m.dashboard.ops)
 	left := fmt.Sprintf("Mode %s  LP %s  Ops %d/%d", target, auth, runningOps, len(m.dashboard.ops))
-	right := "m Meta  a Auth  o Ops  c Cache  s Server  r Refresh  q Quit"
+	right := "m Meta  a Auth  o Ops  c Cache  l Logs  s Server  r Refresh  q Quit"
 	return m.theme.statusBar.Width(m.width).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top,
 			m.theme.statusLeft.Render(left),
@@ -1365,6 +1439,8 @@ func (m rootModel) renderOverlay(base string) string {
 		content = m.renderOperationsDrawer(fullscreen)
 	case overlayCache:
 		content = m.renderCacheModal()
+	case overlayLogs:
+		content = m.renderLogsModal()
 	case overlayServer:
 		content = m.renderServerModal()
 	case overlayPrompt:
@@ -1405,7 +1481,7 @@ func (m rootModel) renderHelp() string {
 		"Enter open detail or action",
 		"/ edit filters",
 		"m or ? open this meta pane",
-		"a auth  o operations  c cache  s server",
+		"a auth  o operations  c cache  l logs  s server",
 		"r refresh  q quit  esc close overlay",
 		"",
 		"Forms",
@@ -1470,6 +1546,32 @@ func (m rootModel) renderCacheModal() string {
 	}
 	lines = append(lines, "", "[Esc] close")
 	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
+}
+
+func (m rootModel) renderLogsModal() string {
+	lines := []string{m.theme.panelTitle.Render("Logs")}
+	if m.logsModal.err != "" {
+		lines = append(lines, m.theme.errorText.Render(m.logsModal.err))
+	}
+	lines = append(lines, "", "Session Logs:")
+	if len(m.logsModal.sessionLines) == 0 {
+		lines = append(lines, m.theme.subtle.Render("(none)"))
+	} else {
+		lines = append(lines, m.logsModal.sessionLines...)
+	}
+	lines = append(lines, "")
+	if m.logsModal.daemonNote != "" {
+		lines = append(lines, m.theme.subtle.Render(m.logsModal.daemonNote))
+	} else {
+		lines = append(lines, "Daemon Logs:")
+		if len(m.logsModal.daemonLines) == 0 {
+			lines = append(lines, m.theme.subtle.Render("(none)"))
+		} else {
+			lines = append(lines, m.logsModal.daemonLines...)
+		}
+	}
+	lines = append(lines, "", "[r] refresh  [Esc] close")
+	return m.theme.panel.Width(maxInt(60, m.width-4)).Render(strings.Join(lines, "\n"))
 }
 
 func (m rootModel) renderServerModal() string {
@@ -1814,6 +1916,31 @@ func loadCacheCmd(session *runtimeadapter.Session) tea.Cmd {
 	})
 }
 
+func loadLogsCmd(session *runtimeadapter.Session, logs *logBuffer) tea.Cmd {
+	return guardSessionAction(session, frontend.ActionLogsRefresh, func() tea.Msg {
+		var sessionLines []string
+		if logs != nil {
+			sessionLines = logs.Snapshot()
+		}
+		msg := logsLoadedMsg{sessionLines: sessionLines}
+		switch session.Target().Kind {
+		case runtimeadapter.TargetKindDaemon:
+			lines, err := session.ReadDaemonLogTail(200)
+			if err != nil {
+				msg.err = err
+				msg.daemonNote = "Daemon log unavailable."
+				return msg
+			}
+			msg.daemonLines = lines
+		case runtimeadapter.TargetKindRemote:
+			msg.daemonNote = "Remote server logs are not available locally."
+		default:
+			msg.daemonNote = "Daemon logs are only available when connected to the local persistent daemon."
+		}
+		return msg
+	})
+}
+
 func loadLocalServerStatusCmd(session *runtimeadapter.Session) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionServerStatus, func() tea.Msg {
 		status, err := session.LocalServerStatus(context.Background())
@@ -1856,6 +1983,10 @@ func tickDashboardCmd() tea.Cmd {
 
 func tickOperationsCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickOperationsMsg(t) })
+}
+
+func tickLogsCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickLogsMsg(t) })
 }
 
 func clearToastLater() tea.Cmd {
