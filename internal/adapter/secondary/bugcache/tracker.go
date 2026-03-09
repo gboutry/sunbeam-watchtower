@@ -24,6 +24,8 @@ type CachedBugTracker struct {
 	logger  *slog.Logger
 }
 
+const incrementalModifiedOverlap = 24 * time.Hour
+
 // NewCachedBugTracker wraps a BugTracker with caching support.
 func NewCachedBugTracker(inner port.BugTracker, cache port.BugCache, project string, logger *slog.Logger) *CachedBugTracker {
 	if logger == nil {
@@ -92,8 +94,16 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 	opts := forge.ListBugTasksOpts{}
 	lastSync, lsErr := c.cache.LastSync(ctx, forgeType, c.project)
 	if lsErr == nil && !lastSync.IsZero() {
-		opts.ModifiedSince = lastSync.UTC().Format(time.RFC3339)
-		c.logger.Debug("incremental bug cache sync", "project", c.project, "since", opts.ModifiedSince)
+		opts.CreatedSince = lastSync.UTC().Format(time.RFC3339)
+		modifiedSince := lastSync.Add(-incrementalModifiedOverlap)
+		opts.ModifiedSince = modifiedSince.UTC().Format(time.RFC3339)
+		c.logger.Debug(
+			"incremental bug cache sync",
+			"project", c.project,
+			"created_since", opts.CreatedSince,
+			"modified_since", opts.ModifiedSince,
+			"modified_overlap", incrementalModifiedOverlap.String(),
+		)
 	} else {
 		c.logger.Debug("full bug cache sync", "project", c.project)
 	}
@@ -108,7 +118,7 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 
 	// For incremental sync, merge new tasks with existing cached tasks.
 	tasks := incoming
-	if opts.ModifiedSince != "" {
+	if opts.ModifiedSince != "" || opts.CreatedSince != "" {
 		existing, _ := c.cache.ListBugTasks(ctx, forgeType, c.project, forge.ListBugTasksOpts{})
 		tasks = mergeTasks(existing, incoming)
 	}

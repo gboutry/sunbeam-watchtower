@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -418,4 +419,252 @@ func TestBugTaskSearchOpts_Values(t *testing.T) {
 	if v.Get("omit_duplicates") != "true" {
 		t.Errorf("omit_duplicates = %q", v.Get("omit_duplicates"))
 	}
+}
+
+func TestBugTaskSearchOpts_Values_DefaultsToAllStatuses(t *testing.T) {
+	v := (BugTaskSearchOpts{}).values()
+
+	statuses := v["status"]
+	if len(statuses) != len(allBugTaskStatuses) {
+		t.Fatalf("len(statuses) = %d, want %d", len(statuses), len(allBugTaskStatuses))
+	}
+	for i, status := range allBugTaskStatuses {
+		if statuses[i] != status {
+			t.Fatalf("statuses[%d] = %q, want %q", i, statuses[i], status)
+		}
+	}
+}
+
+func TestProjectAndBugWrappers(t *testing.T) {
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/projects", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			if got := r.FormValue("ws.op"); got != "new_project" {
+				t.Fatalf("ws.op = %q, want new_project", got)
+			}
+			w.WriteHeader(http.StatusCreated)
+		case http.MethodGet:
+			json.NewEncoder(w).Encode(Collection[Project]{
+				Entries: []Project{{Name: "sunbeam"}},
+			})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/sunbeam", func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Query().Get("ws.op") == "searchTasks":
+			json.NewEncoder(w).Encode(Collection[BugTask]{
+				Entries: []BugTask{{Title: "project task", Status: "Fix Released"}},
+			})
+		case r.Method == http.MethodPost && r.FormValue("ws.op") == "newSeries":
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodPatch:
+			w.WriteHeader(http.StatusOK)
+		default:
+			json.NewEncoder(w).Encode(Project{Name: "sunbeam"})
+		}
+	})
+	mux.HandleFunc("/sunbeam/series", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(Collection[ProjectSeries]{
+			Entries: []ProjectSeries{{Name: "2025.1"}},
+		})
+	})
+	mux.HandleFunc("/sunbeam/2025.1", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(ProjectSeries{Name: "2025.1"})
+	})
+	mux.HandleFunc("/bugs", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			json.NewEncoder(w).Encode(Collection[BugTask]{
+				Entries: []BugTask{{Title: "global task", Status: "New"}},
+			})
+		case http.MethodPost:
+			json.NewEncoder(w).Encode(Bug{ID: 42, Title: "Created bug"})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/bugs/42", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			json.NewEncoder(w).Encode(Bug{ID: 42, Title: "Created bug"})
+		case http.MethodPost:
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/bugs/42/bug_tasks", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(Collection[BugTask]{
+			Entries: []BugTask{{Title: "task 42", Status: "Triaged"}},
+		})
+	})
+	mux.HandleFunc("/task/42", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s, want PATCH", r.Method)
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	client := testRewrittenClient(t, server)
+
+	project, err := client.CreateProject(context.Background(), "sunbeam", "Sunbeam", "summary", "desc")
+	if err != nil || project.Name != "sunbeam" {
+		t.Fatalf("CreateProject() = %+v, %v", project, err)
+	}
+	if _, err := client.SearchProjects(context.Background(), "beam"); err != nil {
+		t.Fatalf("SearchProjects() error = %v", err)
+	}
+	if _, err := client.SearchBugTasks(context.Background(), "sunbeam", BugTaskSearchOpts{Status: []string{"Fix Released"}}); err != nil {
+		t.Fatalf("SearchBugTasks() error = %v", err)
+	}
+	if _, err := client.GetProjectSeries(context.Background(), "sunbeam"); err != nil {
+		t.Fatalf("GetProjectSeries() error = %v", err)
+	}
+	if _, err := client.CreateProjectSeries(context.Background(), "sunbeam", "2025.1", "summary"); err != nil {
+		t.Fatalf("CreateProjectSeries() error = %v", err)
+	}
+	if err := client.SetDevelopmentFocus(context.Background(), "sunbeam", server.URL+"/sunbeam/2025.1"); err != nil {
+		t.Fatalf("SetDevelopmentFocus() error = %v", err)
+	}
+	if _, err := client.GetBug(context.Background(), 42); err != nil {
+		t.Fatalf("GetBug() error = %v", err)
+	}
+	if _, err := client.GetBugTasks(context.Background(), 42); err != nil {
+		t.Fatalf("GetBugTasks() error = %v", err)
+	}
+	if _, err := client.SearchGlobalBugTasks(context.Background(), BugTaskSearchOpts{Status: []string{"New"}}); err != nil {
+		t.Fatalf("SearchGlobalBugTasks() error = %v", err)
+	}
+	if _, err := client.CreateBug(context.Background(), server.URL+"/sunbeam", "title", "desc", []string{"tag"}); err != nil {
+		t.Fatalf("CreateBug() error = %v", err)
+	}
+	if err := client.UpdateBugTaskStatus(context.Background(), server.URL+"/task/42", "Fix Released"); err != nil {
+		t.Fatalf("UpdateBugTaskStatus() error = %v", err)
+	}
+	if err := client.AddBugTask(context.Background(), 42, server.URL+"/sunbeam/2025.1"); err != nil {
+		t.Fatalf("AddBugTask() error = %v", err)
+	}
+}
+
+func TestPersonAndGitWrappers(t *testing.T) {
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/~team/ppas", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(Collection[Archive]{
+			Entries: []Archive{{Name: "ppa"}},
+		})
+	})
+	mux.HandleFunc("/~team", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("ws.op") {
+		case "getPPAByName":
+			json.NewEncoder(w).Encode(Archive{Name: "ppa"})
+		case "getOwnedProjects":
+			json.NewEncoder(w).Encode(Collection[Project]{Entries: []Project{{Name: "sunbeam"}}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	mux.HandleFunc("/+git", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("ws.op") == "getDefaultRepository" {
+			json.NewEncoder(w).Encode(GitRepository{Name: "repo"})
+			return
+		}
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusCreated)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	mux.HandleFunc("/~owner/sunbeam/+git/repo", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(GitRepository{Name: "repo"})
+	})
+	mux.HandleFunc("/repo", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("ws.op") {
+		case "getRefByPath":
+			json.NewEncoder(w).Encode(GitRef{Path: "refs/heads/main"})
+		case "getMergeProposals":
+			json.NewEncoder(w).Encode(Collection[MergeProposal]{Entries: []MergeProposal{{QueueStatus: "Needs review"}}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	mux.HandleFunc("/repo/branches", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(Collection[GitRef]{Entries: []GitRef{{Path: "refs/heads/main"}}})
+	})
+	mux.HandleFunc("/repo/refs", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(Collection[GitRef]{Entries: []GitRef{{Path: "refs/tags/v1"}}})
+	})
+	mux.HandleFunc("/mp/1", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		json.NewEncoder(w).Encode(MergeProposal{QueueStatus: "Approved"})
+	})
+
+	client := testRewrittenClient(t, server)
+
+	if _, err := client.GetPPAs(context.Background(), "team"); err != nil {
+		t.Fatalf("GetPPAs() error = %v", err)
+	}
+	if _, err := client.GetPPAByName(context.Background(), "team", "ppa"); err != nil {
+		t.Fatalf("GetPPAByName() error = %v", err)
+	}
+	if _, err := client.GetOwnedProjects(context.Background(), "team"); err != nil {
+		t.Fatalf("GetOwnedProjects() error = %v", err)
+	}
+	if _, err := client.CreateGitRepository(context.Background(), "owner", "sunbeam", "repo"); err != nil {
+		t.Fatalf("CreateGitRepository() error = %v", err)
+	}
+	if _, err := client.GetGitRef(context.Background(), server.URL+"/repo", "refs/heads/main"); err != nil {
+		t.Fatalf("GetGitRef() error = %v", err)
+	}
+	if _, err := client.GetGitBranches(context.Background(), server.URL+"/repo"); err != nil {
+		t.Fatalf("GetGitBranches() error = %v", err)
+	}
+	if _, err := client.GetGitRefs(context.Background(), server.URL+"/repo"); err != nil {
+		t.Fatalf("GetGitRefs() error = %v", err)
+	}
+	if _, err := client.GetGitRepoMergeProposals(context.Background(), server.URL+"/repo", "Needs review"); err != nil {
+		t.Fatalf("GetGitRepoMergeProposals() error = %v", err)
+	}
+	if _, err := client.GetDefaultRepository(context.Background(), server.URL+"/sunbeam"); err != nil {
+		t.Fatalf("GetDefaultRepository() error = %v", err)
+	}
+	if err := client.SetMergeProposalStatus(context.Background(), server.URL+"/mp/1", "Approved"); err != nil {
+		t.Fatalf("SetMergeProposalStatus() error = %v", err)
+	}
+}
+
+func testRewrittenClient(t *testing.T, server *httptest.Server) *Client {
+	t.Helper()
+	targetURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("Parse(server.URL): %v", err)
+	}
+	httpClient := server.Client()
+	httpClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		req.URL.Scheme = targetURL.Scheme
+		req.URL.Host = targetURL.Host
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/devel")
+		if req.URL.Path == "" {
+			req.URL.Path = "/"
+		}
+		return http.DefaultTransport.RoundTrip(req)
+	})
+	return NewClient(&Credentials{ConsumerKey: "test", AccessToken: "t", AccessTokenSecret: "s"}, nil, httpClient)
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

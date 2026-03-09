@@ -120,6 +120,7 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 			Importance:    opts.Importance,
 			Assignee:      opts.Assignee,
 			Tags:          opts.Tags,
+			CreatedSince:  opts.Since,
 			ModifiedSince: opts.Since,
 		})
 

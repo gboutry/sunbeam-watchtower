@@ -182,6 +182,52 @@ func TestListBugTasksWithFilter(t *testing.T) {
 	}
 }
 
+func TestListBugTasksWithSinceUsesCreatedOrModifiedUnion(t *testing.T) {
+	c := newTestCache(t)
+	ctx := context.Background()
+
+	tasks := []forge.BugTask{
+		{
+			Forge:      forge.ForgeLaunchpad,
+			BugID:      "1",
+			TargetName: "sunbeam-charms",
+			Status:     "Fix Released",
+			CreatedAt:  time.Date(2024, 7, 25, 5, 23, 26, 0, time.UTC),
+			UpdatedAt:  time.Date(2026, 3, 9, 9, 48, 58, 0, time.UTC),
+		},
+		{
+			Forge:      forge.ForgeLaunchpad,
+			BugID:      "2",
+			TargetName: "sunbeam-charms",
+			Status:     "New",
+			CreatedAt:  time.Date(2026, 3, 9, 8, 30, 0, 0, time.UTC),
+			UpdatedAt:  time.Date(2026, 3, 9, 8, 30, 0, 0, time.UTC),
+		},
+		{
+			Forge:      forge.ForgeLaunchpad,
+			BugID:      "3",
+			TargetName: "sunbeam-charms",
+			Status:     "Triaged",
+			CreatedAt:  time.Date(2026, 3, 7, 8, 0, 0, 0, time.UTC),
+			UpdatedAt:  time.Date(2026, 3, 7, 8, 0, 0, 0, time.UTC),
+		},
+	}
+	if err := c.StoreBugTasks(ctx, forge.ForgeLaunchpad, "sunbeam-charms", tasks); err != nil {
+		t.Fatalf("StoreBugTasks: %v", err)
+	}
+
+	got, err := c.ListBugTasks(ctx, forge.ForgeLaunchpad, "sunbeam-charms", forge.ListBugTasksOpts{
+		CreatedSince:  "2026-03-08T00:00:00Z",
+		ModifiedSince: "2026-03-08T00:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("ListBugTasks with since: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+}
+
 func TestLastSyncRoundTrip(t *testing.T) {
 	c := newTestCache(t)
 	ctx := context.Background()

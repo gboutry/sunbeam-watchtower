@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/bugcache"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
@@ -17,6 +18,7 @@ import (
 type mockBugTracker struct {
 	bugs  map[string]*forge.Bug
 	tasks map[string][]forge.BugTask // keyed by project
+	opts  []forge.ListBugTasksOpts
 }
 
 func newMockBugTracker() *mockBugTracker {
@@ -36,7 +38,8 @@ func (m *mockBugTracker) GetBug(_ context.Context, id string) (*forge.Bug, error
 	return b, nil
 }
 
-func (m *mockBugTracker) ListBugTasks(_ context.Context, project string, _ forge.ListBugTasksOpts) ([]forge.BugTask, error) {
+func (m *mockBugTracker) ListBugTasks(_ context.Context, project string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error) {
+	m.opts = append(m.opts, opts)
 	return m.tasks[project], nil
 }
 
@@ -191,5 +194,44 @@ func TestCachedTrackerPassThrough(t *testing.T) {
 	}
 	if proj != nil {
 		t.Errorf("expected nil project from mock, got %+v", proj)
+	}
+}
+
+func TestCachedTrackerIncrementalSyncUsesCreatedAndModifiedSince(t *testing.T) {
+	mock := newMockBugTracker()
+	mock.bugs["1"] = &forge.Bug{Forge: forge.ForgeLaunchpad, ID: "1", Title: "Bug 1"}
+	mock.tasks["proj"] = []forge.BugTask{
+		{Forge: forge.ForgeLaunchpad, BugID: "1", TargetName: "proj", Status: "New", SelfLink: "/task/1"},
+	}
+
+	dir := filepath.Join(t.TempDir(), "bugs")
+	cache, err := bugcache.NewCache(dir, nil)
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	t.Cleanup(func() { cache.Close() })
+
+	ct := bugcache.NewCachedBugTracker(mock, cache, "proj", nil)
+	ctx := context.Background()
+	if _, err := ct.Sync(ctx); err != nil {
+		t.Fatalf("initial Sync: %v", err)
+	}
+
+	mock.opts = nil
+	lastSync := time.Date(2026, 3, 9, 8, 0, 0, 0, time.UTC)
+	if err := cache.SetLastSync(ctx, forge.ForgeLaunchpad, "proj", lastSync); err != nil {
+		t.Fatalf("SetLastSync: %v", err)
+	}
+
+	if _, err := ct.Sync(ctx); err != nil {
+		t.Fatalf("incremental Sync: %v", err)
+	}
+	if len(mock.opts) != 1 {
+		t.Fatalf("ListBugTasks calls = %d, want 1", len(mock.opts))
+	}
+	wantCreated := lastSync.Format(time.RFC3339)
+	wantModified := lastSync.Add(-24 * time.Hour).Format(time.RFC3339)
+	if mock.opts[0].CreatedSince != wantCreated || mock.opts[0].ModifiedSince != wantModified {
+		t.Fatalf("sync opts = %+v, want created_since=%q modified_since=%q", mock.opts[0], wantCreated, wantModified)
 	}
 }

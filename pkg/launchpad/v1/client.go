@@ -102,7 +102,9 @@ func (c *Client) do(ctx context.Context, method, rawURL string, body io.Reader, 
 	}
 	req.Header.Set("Accept", "application/json")
 
-	signRequest(req, c.creds)
+	if c.creds != nil {
+		signRequest(req, c.creds)
+	}
 
 	c.logger.Debug("launchpad request", "method", method, "url", rawURL)
 

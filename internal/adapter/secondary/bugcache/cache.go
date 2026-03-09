@@ -343,19 +343,28 @@ func matchesOpts(t *forge.BugTask, opts *forge.ListBugTasksOpts) bool {
 			}
 		}
 	}
+	createdPass := true
+	if opts.CreatedSince != "" {
+		since, err := time.Parse(time.RFC3339, opts.CreatedSince)
+		if err == nil {
+			createdPass = !t.CreatedAt.Before(since)
+		}
+	}
+	modifiedPass := true
 	if opts.ModifiedSince != "" {
 		since, err := time.Parse(time.RFC3339, opts.ModifiedSince)
 		if err == nil {
-			if t.UpdatedAt.Before(since) && t.CreatedAt.Before(since) {
-				return false
-			}
+			modifiedPass = !t.UpdatedAt.Before(since) || !t.CreatedAt.Before(since)
 		}
 	}
-	if opts.CreatedSince != "" {
-		since, err := time.Parse(time.RFC3339, opts.CreatedSince)
-		if err == nil && t.CreatedAt.Before(since) {
+	if opts.CreatedSince != "" && opts.ModifiedSince != "" {
+		if !createdPass && !modifiedPass {
 			return false
 		}
+		return true
+	}
+	if !createdPass || !modifiedPass {
+		return false
 	}
 	return true
 }

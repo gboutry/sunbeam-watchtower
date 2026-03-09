@@ -67,6 +67,8 @@ func TestReviewsList_OmittedOptionalQueryParamsReturns200(t *testing.T) {
 }
 
 func TestBugsList_OmittedOptionalQueryParamsReturns200(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
