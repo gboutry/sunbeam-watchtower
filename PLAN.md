@@ -61,6 +61,7 @@ The following are implemented and should be treated as the current baseline:
 - release target filtering normalizes snap `coreXX` bases against Ubuntu release generations so shared target profiles work across snaps and charms
 - release tracking keeps same-name snap and charm artifacts as distinct cached/listed entries and requires type narrowing only for ambiguous release-detail lookups
 - bug cache sync and bug `since` filtering treat created-or-modified task activity as in-scope, with Launchpad task activity timestamps derived from the latest task state transition and incremental bug sync using a small modified-time overlap to recover recent closed-task transitions
+- bug list supports group-aware `--merge` output driven by explicit `bug_groups` config, collapsing same-forge bug IDs within one shared tracker group under that group's common project label
 - local daemon lifecycle commands and explicit runtime resolution order
 - Launchpad auth flows with durable server-side coordination
 - durable operations surface for async workflows

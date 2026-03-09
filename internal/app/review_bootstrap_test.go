@@ -17,24 +17,28 @@ func TestBuildBugTrackersCreatesLaunchpadTrackerWithoutStoredAuth(t *testing.T) 
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
 	application := NewApp(&config.Config{
+		BugGroups: map[string]config.BugGroupConfig{
+			"sunbeam": {CommonProject: "snap-openstack"},
+		},
 		Projects: []config.ProjectConfig{{
 			Name: "openstack",
 			Bugs: []config.BugTrackerConfig{{
 				Forge:   "launchpad",
 				Project: "snap-openstack",
+				Group:   "sunbeam",
 			}},
 		}},
 	}, slog.Default())
 
-	trackers, projectMap, err := application.BuildBugTrackers()
+	trackers, bindings, err := application.BuildBugTrackers()
 	if err != nil {
 		t.Fatalf("BuildBugTrackers() error = %v", err)
 	}
 	if len(trackers) != 1 {
 		t.Fatalf("len(trackers) = %d, want 1", len(trackers))
 	}
-	if got := projectMap["launchpad:snap-openstack"]; len(got) != 1 || got[0] != "openstack" {
-		t.Fatalf("projectMap = %+v, want openstack mapping", projectMap)
+	if got := bindings["launchpad:snap-openstack"]; len(got) != 1 || got[0].ProjectName != "openstack" || got[0].Group != "sunbeam" || got[0].CommonProject != "snap-openstack" {
+		t.Fatalf("bindings = %+v, want openstack mapping", bindings)
 	}
 }
 
@@ -64,7 +68,7 @@ func TestBuildBugTrackersFallsBackToCachedLaunchpadProjects(t *testing.T) {
 		t.Fatalf("SetLastSync() error = %v", err)
 	}
 
-	trackers, projectMap, err := application.BuildBugTrackers()
+	trackers, bindings, err := application.BuildBugTrackers()
 	if err != nil {
 		t.Fatalf("BuildBugTrackers() error = %v", err)
 	}
@@ -83,7 +87,7 @@ func TestBuildBugTrackersFallsBackToCachedLaunchpadProjects(t *testing.T) {
 	if len(tasks) != 1 {
 		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
 	}
-	if got := projectMap["launchpad:"+project]; len(got) != 1 || got[0] != project {
-		t.Fatalf("projectMap = %+v, want cache-backed project mapping", projectMap)
+	if got := bindings["launchpad:"+project]; len(got) != 1 || got[0].ProjectName != project {
+		t.Fatalf("bindings = %+v, want cache-backed project mapping", bindings)
 	}
 }

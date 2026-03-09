@@ -50,6 +50,12 @@ type BugTrackerConfig struct {
 	Owner   string `mapstructure:"owner" yaml:"owner,omitempty"`
 	Host    string `mapstructure:"host" yaml:"host,omitempty"`
 	Project string `mapstructure:"project" yaml:"project"`
+	Group   string `mapstructure:"group" yaml:"group,omitempty"`
+}
+
+// BugGroupConfig defines one shared bug tracker group.
+type BugGroupConfig struct {
+	CommonProject string `mapstructure:"common_project" yaml:"common_project"`
 }
 
 // ProjectBuildConfig holds per-project build settings.
@@ -262,14 +268,15 @@ type OTelConfig struct {
 
 // Config is the top-level configuration.
 type Config struct {
-	Launchpad LaunchpadConfig `mapstructure:"launchpad" yaml:"launchpad"`
-	GitHub    GitHubConfig    `mapstructure:"github" yaml:"github"`
-	Gerrit    GerritConfig    `mapstructure:"gerrit" yaml:"gerrit"`
-	Projects  []ProjectConfig `mapstructure:"projects" yaml:"projects"`
-	Build     BuildConfig     `mapstructure:"build" yaml:"build"`
-	Releases  ReleasesConfig  `mapstructure:"releases" yaml:"releases,omitempty"`
-	Packages  PackagesConfig  `mapstructure:"packages" yaml:"packages,omitempty"`
-	OTel      OTelConfig      `mapstructure:"otel" yaml:"otel,omitempty"`
+	Launchpad LaunchpadConfig           `mapstructure:"launchpad" yaml:"launchpad"`
+	GitHub    GitHubConfig              `mapstructure:"github" yaml:"github"`
+	Gerrit    GerritConfig              `mapstructure:"gerrit" yaml:"gerrit"`
+	BugGroups map[string]BugGroupConfig `mapstructure:"bug_groups" yaml:"bug_groups,omitempty"`
+	Projects  []ProjectConfig           `mapstructure:"projects" yaml:"projects"`
+	Build     BuildConfig               `mapstructure:"build" yaml:"build"`
+	Releases  ReleasesConfig            `mapstructure:"releases" yaml:"releases,omitempty"`
+	Packages  PackagesConfig            `mapstructure:"packages" yaml:"packages,omitempty"`
+	OTel      OTelConfig                `mapstructure:"otel" yaml:"otel,omitempty"`
 }
 
 // Load reads configuration from the given path. If configPath is empty,
@@ -331,6 +338,17 @@ func defaults(v *viper.Viper) (*Config, error) {
 
 // Validate checks that the configuration is consistent.
 func (c *Config) Validate() error {
+	for name, group := range c.BugGroups {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("bug_groups cannot contain an empty group name")
+		}
+		if strings.TrimSpace(group.CommonProject) == "" {
+			return fmt.Errorf("bug_groups.%s.common_project is required", name)
+		}
+	}
+
+	groupProjects := make(map[string]map[string]bool, len(c.BugGroups))
+	groupForges := make(map[string]string, len(c.BugGroups))
 	if c.Launchpad.DevelopmentFocus != "" && len(c.Launchpad.Series) > 0 {
 		found := false
 		for _, s := range c.Launchpad.Series {
@@ -366,6 +384,20 @@ func (c *Config) Validate() error {
 		for j, bug := range p.Bugs {
 			if err := validateForgeRef(fmt.Sprintf("projects[%d] (%s) bugs[%d]", i, p.Name, j), bug.Forge, bug.Owner, bug.Host, bug.Project); err != nil {
 				return err
+			}
+			if bug.Group != "" {
+				_, ok := c.BugGroups[bug.Group]
+				if !ok {
+					return fmt.Errorf("projects[%d] (%s) bugs[%d]: unknown bug group %q", i, p.Name, j, bug.Group)
+				}
+				if groupProjects[bug.Group] == nil {
+					groupProjects[bug.Group] = make(map[string]bool)
+				}
+				groupProjects[bug.Group][bug.Project] = true
+				if existing, ok := groupForges[bug.Group]; ok && existing != bug.Forge {
+					return fmt.Errorf("bug_groups.%s must use a single forge, got %q and %q", bug.Group, existing, bug.Forge)
+				}
+				groupForges[bug.Group] = bug.Forge
 			}
 		}
 
@@ -507,6 +539,16 @@ func (c *Config) Validate() error {
 	}
 	if err := validateOTelConfig(c.OTel); err != nil {
 		return err
+	}
+
+	for groupName, group := range c.BugGroups {
+		projects := groupProjects[groupName]
+		if len(projects) == 0 {
+			return fmt.Errorf("bug_groups.%s is not referenced by any bug tracker entry", groupName)
+		}
+		if !projects[group.CommonProject] {
+			return fmt.Errorf("bug_groups.%s.common_project %q must match one of the grouped tracker projects", groupName, group.CommonProject)
+		}
 	}
 	return nil
 }

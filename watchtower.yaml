@@ -11,6 +11,10 @@ gerrit:
   hosts:
     - url: https://review.opendev.org
 
+bug_groups:
+  sunbeam:
+    common_project: snap-openstack
+
 releases:
   default_target_profile: noble-and-newer
   target_profiles:
@@ -29,8 +33,10 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
       - forge: launchpad
         project: sunbeam-charms
+        group: sunbeam
     release:
       target_profile: noble-and-newer
       skip_artifacts:
@@ -45,6 +51,7 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
     release:
       branches:
         - series: "2024.1"
@@ -60,8 +67,10 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
       - forge: launchpad
         project: snap-openstack-hypervisor
+        group: sunbeam
 
   - name: ubuntu-openstack-rocks
     artifact_type: rock
@@ -76,8 +85,10 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
       - forge: launchpad
         project: ubuntu-openstack-rocks
+        group: sunbeam
 
   - name: cinder-volume
     artifact_type: snap
@@ -88,8 +99,10 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
       - forge: launchpad
         project: snap-cinder-volume
+        group: sunbeam
 
   - name: epa-orchestrator
     artifact_type: snap
@@ -100,8 +113,10 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
       - forge: launchpad
         project: snap-epa-orchestrator
+        group: sunbeam
 
   - name: manila-data
     artifact_type: snap
@@ -112,8 +127,10 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
       - forge: launchpad
         project: snap-manila-data
+        group: sunbeam
 
   - name: openstack-network-agents
     artifact_type: snap
@@ -124,8 +141,10 @@ projects:
     bugs:
       - forge: launchpad
         project: snap-openstack
+        group: sunbeam
       - forge: launchpad
         project: snap-openstack-network-agents
+        group: sunbeam
 
   - name: consul-client
     artifact_type: snap

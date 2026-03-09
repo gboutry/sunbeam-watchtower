@@ -93,10 +93,12 @@ func TestCacheStatusCmd_RendersCacheStatus(t *testing.T) {
 }
 
 func TestBugListCmd_RendersWarningsAndTasks(t *testing.T) {
+	var gotQuery string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/bugs" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
 		}
+		gotQuery = r.URL.RawQuery
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tasks": []forge.BugTask{{
 				Project: "keystone",
@@ -119,13 +121,16 @@ func TestBugListCmd_RendersWarningsAndTasks(t *testing.T) {
 	}
 
 	cmd := newBugCmd(opts)
-	cmd.SetArgs([]string{"list"})
+	cmd.SetArgs([]string{"list", "--merge"})
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
 	if !strings.Contains(out.String(), "12345") || !strings.Contains(errOut.String(), "partial tracker failure") {
 		t.Fatalf("unexpected output: out=%q err=%q", out.String(), errOut.String())
+	}
+	if !strings.Contains(gotQuery, "merge=true") {
+		t.Fatalf("query = %q, want merge=true", gotQuery)
 	}
 }
 

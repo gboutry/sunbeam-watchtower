@@ -54,6 +54,7 @@ func configToDTO(cfg *config.Config) *dto.Config {
 			DefaultTargetProfile: cfg.Releases.DefaultTargetProfile,
 			TargetProfiles:       make(map[string]dto.ReleaseTargetProfileConfig, len(cfg.Releases.TargetProfiles)),
 		},
+		BugGroups: make(map[string]dto.BugGroupConfig, len(cfg.BugGroups)),
 		OTel: dto.OTelConfig{
 			ServiceName:        cfg.OTel.ServiceName,
 			ServiceNamespace:   cfg.OTel.ServiceNamespace,
@@ -131,6 +132,7 @@ func configToDTO(cfg *config.Config) *dto.Config {
 				Owner:   bug.Owner,
 				Host:    bug.Host,
 				Project: bug.Project,
+				Group:   bug.Group,
 			}
 		}
 		if project.Release != nil {
@@ -162,6 +164,11 @@ func configToDTO(cfg *config.Config) *dto.Config {
 
 	for name, profile := range cfg.Releases.TargetProfiles {
 		out.Releases.TargetProfiles[name] = *profileConfigToDTO(&profile)
+	}
+	for name, group := range cfg.BugGroups {
+		out.BugGroups[name] = dto.BugGroupConfig{
+			CommonProject: group.CommonProject,
+		}
 	}
 
 	if len(cfg.Packages.Distros) > 0 {

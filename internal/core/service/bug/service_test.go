@@ -61,8 +61,11 @@ func TestService_List_Aggregation(t *testing.T) {
 		map[string]ProjectBugTracker{
 			"launchpad:snap-openstack": {Tracker: tracker, ProjectID: "snap-openstack"},
 		},
-		map[string][]string{
-			"launchpad:snap-openstack": {"sunbeam", "microstack"},
+		map[string][]ProjectBinding{
+			"launchpad:snap-openstack": {
+				{ProjectName: "sunbeam"},
+				{ProjectName: "microstack"},
+			},
 		},
 		nil)
 
@@ -103,8 +106,11 @@ func TestService_List_FilterByProject(t *testing.T) {
 		map[string]ProjectBugTracker{
 			"launchpad:snap-openstack": {Tracker: tracker, ProjectID: "snap-openstack"},
 		},
-		map[string][]string{
-			"launchpad:snap-openstack": {"sunbeam", "microstack"},
+		map[string][]ProjectBinding{
+			"launchpad:snap-openstack": {
+				{ProjectName: "sunbeam"},
+				{ProjectName: "microstack"},
+			},
 		},
 		nil)
 
@@ -127,8 +133,10 @@ func TestService_List_PassesSinceToCreatedAndModifiedFilters(t *testing.T) {
 		map[string]ProjectBugTracker{
 			"launchpad:snap-openstack": {Tracker: tracker, ProjectID: "snap-openstack"},
 		},
-		map[string][]string{
-			"launchpad:snap-openstack": {"sunbeam"},
+		map[string][]ProjectBinding{
+			"launchpad:snap-openstack": {
+				{ProjectName: "sunbeam"},
+			},
 		},
 		nil)
 
@@ -154,8 +162,11 @@ func TestService_List_Deduplication(t *testing.T) {
 		map[string]ProjectBugTracker{
 			"launchpad:snap-openstack": {Tracker: countingTracker, ProjectID: "snap-openstack"},
 		},
-		map[string][]string{
-			"launchpad:snap-openstack": {"sunbeam", "microstack"},
+		map[string][]ProjectBinding{
+			"launchpad:snap-openstack": {
+				{ProjectName: "sunbeam"},
+				{ProjectName: "microstack"},
+			},
 		},
 		nil)
 
@@ -180,9 +191,9 @@ func TestService_List_GracefulDegradation(t *testing.T) {
 			"launchpad:good-project": {Tracker: goodTracker, ProjectID: "good-project"},
 			"launchpad:bad-project":  {Tracker: badTracker, ProjectID: "bad-project"},
 		},
-		map[string][]string{
-			"launchpad:good-project": {"good"},
-			"launchpad:bad-project":  {"bad"},
+		map[string][]ProjectBinding{
+			"launchpad:good-project": {{ProjectName: "good"}},
+			"launchpad:bad-project":  {{ProjectName: "bad"}},
 		},
 		nil)
 
@@ -203,6 +214,85 @@ func TestService_List_GracefulDegradation(t *testing.T) {
 	}
 	if !hadError {
 		t.Error("expected at least one project result with error")
+	}
+}
+
+func TestService_List_MergeCollapsesGroupedBugRows(t *testing.T) {
+	now := time.Now()
+	commonTracker := &mockBugTracker{
+		forgeType: forge.ForgeLaunchpad,
+		tasks: []forge.BugTask{
+			{Forge: forge.ForgeLaunchpad, BugID: "42", Title: "Bug", TargetName: "snap-openstack", UpdatedAt: now.Add(-1 * time.Hour), Status: "Fix Released"},
+		},
+	}
+	projectTracker := &mockBugTracker{
+		forgeType: forge.ForgeLaunchpad,
+		tasks: []forge.BugTask{
+			{Forge: forge.ForgeLaunchpad, BugID: "42", Title: "Bug", TargetName: "sunbeam-charms", UpdatedAt: now, Status: "Fix Committed"},
+		},
+	}
+
+	svc := NewService(
+		map[string]ProjectBugTracker{
+			"launchpad:snap-openstack": {Tracker: commonTracker, ProjectID: "snap-openstack"},
+			"launchpad:sunbeam-charms": {Tracker: projectTracker, ProjectID: "sunbeam-charms"},
+		},
+		map[string][]ProjectBinding{
+			"launchpad:snap-openstack": {
+				{ProjectName: "sunbeam-charms", Group: "sunbeam", CommonProject: "snap-openstack"},
+				{ProjectName: "openstack", Group: "sunbeam", CommonProject: "snap-openstack"},
+			},
+			"launchpad:sunbeam-charms": {
+				{ProjectName: "sunbeam-charms", Group: "sunbeam", CommonProject: "snap-openstack"},
+			},
+		},
+		nil,
+	)
+
+	tasks, _, err := svc.List(context.Background(), ListOptions{Merge: true})
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	if tasks[0].Project != "snap-openstack" {
+		t.Fatalf("tasks[0].Project = %q, want snap-openstack", tasks[0].Project)
+	}
+	if tasks[0].TargetName != "snap-openstack" {
+		t.Fatalf("tasks[0].TargetName = %q, want snap-openstack representative", tasks[0].TargetName)
+	}
+}
+
+func TestService_List_MergeKeepsSameBugSeparateAcrossGroups(t *testing.T) {
+	now := time.Now()
+	trackerA := &mockBugTracker{
+		forgeType: forge.ForgeLaunchpad,
+		tasks:     []forge.BugTask{{Forge: forge.ForgeLaunchpad, BugID: "42", Title: "Bug", TargetName: "snap-openstack", UpdatedAt: now}},
+	}
+	trackerB := &mockBugTracker{
+		forgeType: forge.ForgeLaunchpad,
+		tasks:     []forge.BugTask{{Forge: forge.ForgeLaunchpad, BugID: "42", Title: "Bug", TargetName: "other-project", UpdatedAt: now}},
+	}
+
+	svc := NewService(
+		map[string]ProjectBugTracker{
+			"launchpad:snap-openstack": {Tracker: trackerA, ProjectID: "snap-openstack"},
+			"launchpad:other-project":  {Tracker: trackerB, ProjectID: "other-project"},
+		},
+		map[string][]ProjectBinding{
+			"launchpad:snap-openstack": {{ProjectName: "sunbeam-charms", Group: "sunbeam", CommonProject: "snap-openstack"}},
+			"launchpad:other-project":  {{ProjectName: "other", Group: "other-group", CommonProject: "other-project"}},
+		},
+		nil,
+	)
+
+	tasks, _, err := svc.List(context.Background(), ListOptions{Merge: true})
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("len(tasks) = %d, want 2", len(tasks))
 	}
 }
 
@@ -254,8 +344,8 @@ func TestService_Get(t *testing.T) {
 		map[string]ProjectBugTracker{
 			"launchpad:snap-openstack": {Tracker: tracker, ProjectID: "snap-openstack"},
 		},
-		map[string][]string{
-			"launchpad:snap-openstack": {"sunbeam"},
+		map[string][]ProjectBinding{
+			"launchpad:snap-openstack": {{ProjectName: "sunbeam"}},
 		},
 		nil)
 
@@ -274,7 +364,7 @@ func TestService_Get(t *testing.T) {
 func TestService_Get_NotConfigured(t *testing.T) {
 	svc := NewService(
 		map[string]ProjectBugTracker{},
-		map[string][]string{},
+		map[string][]ProjectBinding{},
 		nil,
 	)
 
