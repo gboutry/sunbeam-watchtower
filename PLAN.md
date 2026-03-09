@@ -67,16 +67,17 @@ The following are implemented and should be treated as the current baseline:
 - durable operations surface for async workflows
 - release tracking and release cache support for snaps and charms
 - cache-first OpenTelemetry support confined to `internal/adapter/secondary/otel`
-- initial `watchtower-tui` shell with `Dashboard`, `Builds`, and `Releases`
+- initial `watchtower-tui` shell with `Dashboard`, `Builds`, `Releases`, `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects`
 - TUI meta surfaces for auth, operations, cache, server/about, and shortcuts
+- TUI read-only workflow tabs for packages, bugs, reviews, commits, and config-backed project inspection, including filter forms and list/detail layouts
 
 ## Current Gaps
 
 These are the main known gaps that still matter:
 
 - Launchpad auth is implemented, but the same authenticated-flow model is not yet extended to other forges such as GitHub or Gerrit
-- the TUI only covers `Dashboard`, `Builds`, and `Releases`; `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects` still need first-class views
-- the TUI does not yet expose cache mutation, config browsing beyond server/about context, or direct build retry/cancel flows
+- the TUI now covers the main read-only workflows, but it still does not expose cache mutation, project sync, bug sync, or direct build retry/cancel flows
+- the `Packages` and `Commits` TUI tabs now have read-only submodes, but deeper workflow actions remain CLI/API-first
 - some forge/package bootstrap paths in `internal/app` still contain logic that should continue moving into narrower builders/factories
 - some tests still have environment-sensitive assumptions and need further hardening
 
@@ -94,7 +95,6 @@ These are the main known gaps that still matter:
 
 ### TUI
 
-- add workflow views for `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects`
 - expose cache mutation and richer config inspection where the frontend/API contracts are ready
 - add direct retry/cancel workflows for builds where the server/API model is settled
 - continue improving dense keyboard UX, list/detail layouts, and responsive rendering
