@@ -74,6 +74,7 @@ const (
 	ActionOperationsRefresh     ActionID = "operations.refresh"
 	ActionAuthRefresh           ActionID = "auth.refresh"
 	ActionCacheRefresh          ActionID = "cache.refresh"
+	ActionLogsRefresh           ActionID = "logs.refresh"
 	ActionOperationList         ActionID = "operation.list"
 	ActionOperationShow         ActionID = "operation.show"
 	ActionOperationEvents       ActionID = "operation.events"
@@ -146,6 +147,7 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionOperationsRefresh:     descriptor(ActionOperationsRefresh, "operation", "operation", MutabilityRead, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Refresh the TUI operations view."),
 	ActionAuthRefresh:           descriptor(ActionAuthRefresh, "auth", "auth", MutabilityRead, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Refresh the TUI auth view."),
 	ActionCacheRefresh:          descriptor(ActionCacheRefresh, "cache", "cache", MutabilityRead, LocalEffectRead, RuntimeEmbeddedOK, ExportPolicyAllowed, "Refresh the TUI cache view."),
+	ActionLogsRefresh:           descriptor(ActionLogsRefresh, "system", "system", MutabilityRead, LocalEffectRead, RuntimeEmbeddedOK, ExportPolicyHidden, "Refresh the TUI logs view."),
 	ActionOperationList:         descriptor(ActionOperationList, "operation", "operation", MutabilityRead, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "List operations."),
 	ActionOperationShow:         descriptor(ActionOperationShow, "operation", "operation", MutabilityRead, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Show one operation."),
 	ActionOperationEvents:       descriptor(ActionOperationEvents, "operation", "operation", MutabilityRead, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Show operation events."),

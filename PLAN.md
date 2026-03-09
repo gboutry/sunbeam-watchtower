@@ -68,7 +68,7 @@ The following are implemented and should be treated as the current baseline:
 - release tracking and release cache support for snaps and charms
 - cache-first OpenTelemetry support confined to `internal/adapter/secondary/otel`
 - initial `watchtower-tui` shell with `Dashboard`, `Builds`, `Releases`, `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects`
-- TUI meta surfaces for auth, operations, cache, server/about, and shortcuts
+- TUI meta surfaces for auth, operations, cache, logs, server/about, and shortcuts
 - TUI read-only workflow tabs for packages, bugs, reviews, commits, and config-backed project inspection, including filter forms and list/detail layouts
 
 ## Current Gaps

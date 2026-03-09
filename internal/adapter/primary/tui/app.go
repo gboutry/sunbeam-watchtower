@@ -29,11 +29,12 @@ type Options struct {
 
 // Run starts the TUI.
 func Run(ctx context.Context, opts Options) error {
+	logs := newLogBuffer(sessionLogLineLimit)
 	session, err := runtimeadapter.NewSession(ctx, runtimeadapter.Options{
 		ConfigPath:     opts.ConfigPath,
 		ServerAddr:     opts.ServerAddr,
 		Verbose:        opts.Verbose,
-		LogWriter:      opts.ErrOut,
+		LogWriter:      logs,
 		ExecutablePath: opts.ExecutablePath,
 		TargetPolicy:   runtimeadapter.TargetPolicyPreferEmbedded,
 		AccessMode:     runtimeadapter.AccessModeFull,
@@ -43,7 +44,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer session.Close()
 
-	model := newRootModel(session, opts.NoColor)
+	model := newRootModelWithLogs(session, opts.NoColor, logs)
 	programOpts := []tea.ProgramOption{tea.WithAltScreen()}
 	if opts.In != nil {
 		programOpts = append(programOpts, tea.WithInput(opts.In))

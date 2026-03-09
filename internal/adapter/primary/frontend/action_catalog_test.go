@@ -87,3 +87,16 @@ func TestDryRunAndApplyVariantsDiffer(t *testing.T) {
 		}
 	}
 }
+
+func TestLogsRefreshIsHiddenReadOnlyLocal(t *testing.T) {
+	desc := DescribeAction(ActionLogsRefresh)
+	if desc.Mutability != MutabilityRead {
+		t.Fatalf("Mutability = %q, want read", desc.Mutability)
+	}
+	if desc.LocalEffect != LocalEffectRead {
+		t.Fatalf("LocalEffect = %q, want local_read", desc.LocalEffect)
+	}
+	if desc.ExportPolicy != ExportPolicyHidden {
+		t.Fatalf("ExportPolicy = %q, want hidden", desc.ExportPolicy)
+	}
+}

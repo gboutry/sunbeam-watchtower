@@ -6,9 +6,13 @@ package tui
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	tea "github.com/charmbracelet/bubbletea"
 	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
@@ -239,7 +243,7 @@ func TestRenderMetaPaneListsVimShortcuts(t *testing.T) {
 	model.width = 120
 	model.height = 30
 	rendered := model.renderHelp()
-	for _, want := range []string{"Meta", "gg jump to the beginning", "G jump to the end", "autocomplete"} {
+	for _, want := range []string{"Meta", "gg jump to the beginning", "G jump to the end", "autocomplete", "l logs"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("meta pane missing %q:\n%s", want, rendered)
 		}
@@ -338,6 +342,10 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		}{Entries: []dto.ReleaseCacheStatus{{Project: "demo", Name: "artifact-a"}}},
 	}
 	model.server.local = &runtimeadapter.LocalServerStatus{Running: true, PID: 42, LogFile: "/tmp/watchtower.log"}
+	model.logsModal = logsModalModel{
+		sessionLines: []string{"time=... level=INFO msg=\"session\""},
+		daemonLines:  []string{"time=... level=INFO msg=\"daemon\""},
+	}
 	model.prompt = promptModel{title: "Switch?", body: "body", accept: "Yes", reject: "No"}
 	model.buildFilterForm = newBuildFilterForm(buildsFilters{project: "demo", state: "building", active: true, source: "remote"})
 	model.releaseFilterForm = newReleaseFilterForm(session, releasesModel{
@@ -424,6 +432,7 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		{name: "auth", overlay: overlayAuth, want: "Authorize URL:"},
 		{name: "operations", overlay: overlayOperations, want: "Events"},
 		{name: "cache", overlay: overlayCache, want: "Release entries: 1"},
+		{name: "logs", overlay: overlayLogs, want: "Session Logs:"},
 		{name: "server", overlay: overlayServer, want: "PID: 42"},
 		{name: "prompt", overlay: overlayPrompt, want: "[Enter] Yes"},
 		{name: "build-filters", overlay: overlayBuildFilters, want: "Build Filters"},
@@ -529,6 +538,13 @@ func TestUpdateGlobalAndOverlayNavigation(t *testing.T) {
 	}
 
 	model.overlay = overlayNone
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	model = next.(rootModel)
+	if model.overlay != overlayLogs {
+		t.Fatalf("overlay = %v, want logs", model.overlay)
+	}
+
+	model.overlay = overlayNone
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
 	model = next.(rootModel)
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
@@ -584,6 +600,53 @@ func TestUpdateGlobalAndOverlayNavigation(t *testing.T) {
 	model = next.(rootModel)
 	if model.ops.index != 1 {
 		t.Fatalf("ops.index = %d, want 1", model.ops.index)
+	}
+}
+
+func TestRenderLogsModalRemoteNote(t *testing.T) {
+	model := newRootModel(nil, true)
+	model.width = 120
+	model.logsModal = logsModalModel{
+		sessionLines: []string{"time=... level=DEBUG msg=\"session\""},
+		daemonNote:   "Remote server logs are not available locally.",
+	}
+	rendered := model.renderLogsModal()
+	for _, want := range []string{"Session Logs:", "Remote server logs are not available locally."} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("renderLogsModal missing %q:\n%s", want, rendered)
+		}
+	}
+}
+
+func TestLoadLogsCmdIncludesDaemonTail(t *testing.T) {
+	session := newEmbeddedTestSession(t)
+	defer session.Close()
+
+	logFile := filepath.Join(t.TempDir(), "watchtower.log")
+	if err := os.WriteFile(logFile, []byte("daemon-one\ndaemon-two\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	setSessionTarget(t, session, runtimeadapter.TargetInfo{
+		Kind:    runtimeadapter.TargetKindDaemon,
+		Address: "unix:///tmp/watchtower.sock",
+		LogFile: logFile,
+	})
+
+	logs := newLogBuffer(10)
+	_, _ = logs.Write([]byte("session-one\n"))
+	msg := loadLogsCmd(session, logs)()
+	loaded, ok := msg.(logsLoadedMsg)
+	if !ok {
+		t.Fatalf("msg = %T, want logsLoadedMsg", msg)
+	}
+	if loaded.err != nil {
+		t.Fatalf("logsLoadedMsg.err = %v", loaded.err)
+	}
+	if len(loaded.sessionLines) != 1 || loaded.sessionLines[0] != "session-one" {
+		t.Fatalf("sessionLines = %v, want session-one", loaded.sessionLines)
+	}
+	if len(loaded.daemonLines) != 2 || loaded.daemonLines[1] != "daemon-two" {
+		t.Fatalf("daemonLines = %v, want daemon tail", loaded.daemonLines)
 	}
 }
 
@@ -846,4 +909,10 @@ func assertSuggestionsContain(t *testing.T, suggestions []string, want string) {
 		}
 	}
 	t.Fatalf("suggestions %v do not contain %q", suggestions, want)
+}
+
+func setSessionTarget(t *testing.T, session *runtimeadapter.Session, target runtimeadapter.TargetInfo) {
+	t.Helper()
+	field := reflect.ValueOf(session).Elem().FieldByName("target")
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(target))
 }
