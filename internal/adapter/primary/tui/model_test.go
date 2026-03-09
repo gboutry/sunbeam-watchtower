@@ -14,7 +14,9 @@ import (
 	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
+	distro "github.com/gboutry/sunbeam-watchtower/pkg/distro/v1"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
 func TestViewRendersAcrossWidths(t *testing.T) {
@@ -38,7 +40,7 @@ func TestViewRendersAcrossWidths(t *testing.T) {
 		model.width = width
 		model.height = 40
 		view := model.View()
-		for _, want := range []string{"watchtower-tui", "Dashboard", "Builds", "Releases"} {
+		for _, want := range []string{"watchtower-tui", "Dashboard", "Builds", "Releases", "Packages", "Bugs", "Reviews", "Commits", "Projects"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("width %d view missing %q", width, want)
 			}
@@ -56,6 +58,13 @@ func TestBuildTriggerRequestFromValuesAlwaysAsync(t *testing.T) {
 	}
 	if got := len(req.Artifacts); got != 2 {
 		t.Fatalf("len(req.Artifacts) = %d, want 2", got)
+	}
+}
+
+func TestNewRootModelDefaultsBugViewToMerge(t *testing.T) {
+	model := newRootModel(nil, true)
+	if !model.bugs.filters.merge {
+		t.Fatal("model.bugs.filters.merge = false, want true")
 	}
 }
 
@@ -342,6 +351,11 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		}},
 	})
 	model.buildTriggerForm = newBuildTriggerForm(session)
+	model.packageFilterForm = newPackageFilterForm(session, model.packages)
+	model.bugFilterForm = newBugFilterForm(session, model.bugs)
+	model.reviewFilterForm = newReviewFilterForm(session, model.reviews)
+	model.commitFilterForm = newCommitFilterForm(session, model.commits)
+	model.projectFilterForm = newProjectFilterForm(model.projects)
 
 	model.activeView = viewBuilds
 	if rendered := model.renderBuilds(); !strings.Contains(rendered, "demo build") {
@@ -354,6 +368,52 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 	}
 	if rendered := model.renderReleases(); !strings.Contains(rendered, "amd64@ubuntu/24.04:r3") {
 		t.Fatalf("renderReleases missing latest visible target:\n%s", rendered)
+	}
+
+	model.packages.inventoryRows = []distro.SourcePackage{{
+		Package:   "nova",
+		Version:   "2:1.0-0ubuntu1",
+		Suite:     "noble",
+		Component: "main",
+	}}
+	model.packages.inventoryDetail = &distro.SourcePackageInfo{
+		SourcePackage: distro.SourcePackage{
+			Package:   "nova",
+			Version:   "2:1.0-0ubuntu1",
+			Suite:     "noble",
+			Component: "main",
+		},
+		Fields: []distro.FieldEntry{{Key: "Maintainer", Value: "Canonical"}},
+	}
+	model.activeView = viewPackages
+	if rendered := model.renderPackages(); !strings.Contains(rendered, "nova") {
+		t.Fatalf("renderPackages missing package detail:\n%s", rendered)
+	}
+
+	model.bugs.rows = []forge.BugTask{{Project: "snap-openstack", BugID: "12345", Status: "Fix Released", Title: "nova bug"}}
+	model.bugs.detail = &forge.Bug{ID: "12345", Title: "nova bug", Tasks: []forge.BugTask{{Project: "snap-openstack", Status: "Fix Released"}}}
+	model.activeView = viewBugs
+	if rendered := model.renderBugs(); !strings.Contains(rendered, "12345") {
+		t.Fatalf("renderBugs missing bug detail:\n%s", rendered)
+	}
+
+	model.reviews.rows = []forge.MergeRequest{{Repo: "snap-openstack", Forge: forge.ForgeGitHub, ID: "#42", Title: "Improve test coverage", Author: "alice", State: forge.MergeStateOpen}}
+	model.reviews.detail = &forge.MergeRequest{Repo: "snap-openstack", Forge: forge.ForgeGitHub, ID: "#42", Title: "Improve test coverage", Author: "alice", State: forge.MergeStateOpen}
+	model.activeView = viewReviews
+	if rendered := model.renderReviews(); !strings.Contains(rendered, "Improve test coverage") {
+		t.Fatalf("renderReviews missing MR detail:\n%s", rendered)
+	}
+
+	model.commits.rows = []forge.Commit{{Repo: "snap-openstack", Forge: forge.ForgeGitHub, SHA: "0123456789abcdef", Message: "Fix bug\n\nmore", Author: "alice", Date: now}}
+	model.activeView = viewCommits
+	if rendered := model.renderCommits(); !strings.Contains(rendered, "0123456789") {
+		t.Fatalf("renderCommits missing commit detail:\n%s", rendered)
+	}
+
+	model.projects.rows = []projectSummary{{Name: "snap-openstack", CodeForge: "github", CodeProject: "snap-openstack", Series: []string{"2025.1"}}}
+	model.activeView = viewProjects
+	if rendered := model.renderProjects(); !strings.Contains(rendered, "snap-openstack") {
+		t.Fatalf("renderProjects missing project detail:\n%s", rendered)
 	}
 
 	for _, tc := range []struct {
@@ -369,6 +429,11 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		{name: "build-filters", overlay: overlayBuildFilters, want: "Build Filters"},
 		{name: "release-filters", overlay: overlayReleaseFilters, want: "Release Filters"},
 		{name: "build-trigger", overlay: overlayBuildTrigger, want: "Trigger Build"},
+		{name: "package-filters", overlay: overlayPackageFilters, want: "Package Filters"},
+		{name: "bug-filters", overlay: overlayBugFilters, want: "Bug Filters"},
+		{name: "review-filters", overlay: overlayReviewFilters, want: "Review Filters"},
+		{name: "commit-filters", overlay: overlayCommitFilters, want: "Commit Filters"},
+		{name: "project-filters", overlay: overlayProjectFilters, want: "Project Filters"},
 	} {
 		model.overlay = tc.overlay
 		rendered := model.renderOverlay("base")
@@ -464,6 +529,51 @@ func TestUpdateGlobalAndOverlayNavigation(t *testing.T) {
 	}
 
 	model.overlay = overlayNone
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
+	model = next.(rootModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	model = next.(rootModel)
+	if model.overlay != overlayPackageFilters {
+		t.Fatalf("overlay = %v, want package filters", model.overlay)
+	}
+
+	model.overlay = overlayNone
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
+	model = next.(rootModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	model = next.(rootModel)
+	if model.overlay != overlayBugFilters {
+		t.Fatalf("overlay = %v, want bug filters", model.overlay)
+	}
+
+	model.overlay = overlayNone
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("6")})
+	model = next.(rootModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	model = next.(rootModel)
+	if model.overlay != overlayReviewFilters {
+		t.Fatalf("overlay = %v, want review filters", model.overlay)
+	}
+
+	model.overlay = overlayNone
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("7")})
+	model = next.(rootModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	model = next.(rootModel)
+	if model.overlay != overlayCommitFilters {
+		t.Fatalf("overlay = %v, want commit filters", model.overlay)
+	}
+
+	model.overlay = overlayNone
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("8")})
+	model = next.(rootModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	model = next.(rootModel)
+	if model.overlay != overlayProjectFilters {
+		t.Fatalf("overlay = %v, want project filters", model.overlay)
+	}
+
+	model.overlay = overlayNone
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
 	model = next.(rootModel)
 	if model.overlay != overlayOperations {
@@ -474,6 +584,48 @@ func TestUpdateGlobalAndOverlayNavigation(t *testing.T) {
 	model = next.(rootModel)
 	if model.ops.index != 1 {
 		t.Fatalf("ops.index = %d, want 1", model.ops.index)
+	}
+}
+
+func TestPackagesAndCommitsSubmodeNavigation(t *testing.T) {
+	model := newRootModel(nil, true)
+	model.activeView = viewPackages
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+	model = next.(rootModel)
+	if model.packages.filters.mode != packageModeDiff {
+		t.Fatalf("package mode after ] = %v, want diff", model.packages.filters.mode)
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
+	model = next.(rootModel)
+	if model.packages.filters.mode != packageModeInventory {
+		t.Fatalf("package mode after [ = %v, want inventory", model.packages.filters.mode)
+	}
+
+	model.activeView = viewCommits
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+	model = next.(rootModel)
+	if model.commits.filters.mode != commitModeTrack {
+		t.Fatalf("commit mode after ] = %v, want track", model.commits.filters.mode)
+	}
+}
+
+func TestPromptRenderingForPackagesDiffAndCommitTrack(t *testing.T) {
+	model := newRootModel(nil, true)
+	model.width = 120
+	model.height = 40
+
+	model.packages.filters.mode = packageModeDiff
+	model.packages.prompt = "Select a package set in filters to load diff results."
+	if rendered := model.renderPackages(); !strings.Contains(rendered, "Select a package set") {
+		t.Fatalf("renderPackages missing diff prompt:\n%s", rendered)
+	}
+
+	model.commits.filters.mode = commitModeTrack
+	model.commits.prompt = "Enter a bug ID in filters to track matching commits."
+	if rendered := model.renderCommits(); !strings.Contains(rendered, "Enter a bug ID") {
+		t.Fatalf("renderCommits missing track prompt:\n%s", rendered)
 	}
 }
 

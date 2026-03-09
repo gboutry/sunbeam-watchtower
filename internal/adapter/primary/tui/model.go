@@ -28,6 +28,11 @@ const (
 	viewDashboard viewID = iota
 	viewBuilds
 	viewReleases
+	viewPackages
+	viewBugs
+	viewReviews
+	viewCommits
+	viewProjects
 )
 
 type overlayKind int
@@ -43,6 +48,11 @@ const (
 	overlayBuildFilters
 	overlayReleaseFilters
 	overlayBuildTrigger
+	overlayPackageFilters
+	overlayBugFilters
+	overlayReviewFilters
+	overlayCommitFilters
+	overlayProjectFilters
 )
 
 type deferredActionKind int
@@ -274,6 +284,11 @@ type rootModel struct {
 	dashboard dashboardModel
 	builds    buildsModel
 	releases  releasesModel
+	packages  packagesModel
+	bugs      bugsModel
+	reviews   reviewsModel
+	commits   commitsModel
+	projects  projectsModel
 	ops       operationsDrawerModel
 	auth      authModalModel
 	cache     cacheModalModel
@@ -282,6 +297,11 @@ type rootModel struct {
 	buildFilterForm   formModalModel
 	releaseFilterForm formModalModel
 	buildTriggerForm  formModalModel
+	packageFilterForm formModalModel
+	bugFilterForm     formModalModel
+	reviewFilterForm  formModalModel
+	commitFilterForm  formModalModel
+	projectFilterForm formModalModel
 	prompt            promptModel
 	deferred          deferredAction
 }
@@ -301,6 +321,15 @@ func newRootModel(session *runtimeadapter.Session, noColor bool) rootModel {
 		releases: releasesModel{
 			filters: releasesFilters{},
 		},
+		packages: packagesModel{
+			filters: packagesFilters{mode: packageModeInventory, backport: "none"},
+		},
+		bugs: bugsModel{
+			filters: bugsFilters{merge: true},
+		},
+		commits: commitsModel{
+			filters: commitsFilters{mode: commitModeLog},
+		},
 	}
 	return m
 }
@@ -310,6 +339,11 @@ func (m rootModel) Init() tea.Cmd {
 		loadDashboardCmd(m.session),
 		loadBuildsCmd(m.session, m.builds.filters),
 		loadReleasesCmd(m.session, m.releases.filters),
+		loadPackagesCmd(m.session, m.packages.filters),
+		loadBugsCmd(m.session, m.bugs.filters),
+		loadReviewsCmd(m.session, m.reviews.filters),
+		loadCommitsCmd(m.session, m.commits.filters),
+		loadProjectsCmd(m.session, m.projects.filters),
 		tickDashboardCmd(),
 	)
 }
@@ -362,6 +396,88 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case releaseDetailLoadedMsg:
 		if msg.err == nil && msg.key == m.releaseDetailKey() {
 			m.releases.detail = msg.detail
+		}
+	case packagesLoadedMsg:
+		m.packages.loaded = msg.err == nil
+		m.packages.err = errString(msg.err)
+		if msg.err == nil {
+			m.packages.inventoryRows = msg.inventoryRows
+			m.packages.diffRows = msg.diffRows
+			m.packages.diffSources = msg.diffSources
+			m.packages.diffHasUpstream = msg.diffHasUpstream
+			m.packages.excuseRows = msg.excuseRows
+			m.packages.prompt = msg.prompt
+			m.packages.index = clampIndex(m.packages.index, m.packages.rowCount())
+			m.packages.clearStaleDetail()
+			m.lastRefresh = time.Now()
+			return m, loadPackageDetailCmd(m.session, m.packages)
+		}
+	case packageInventoryDetailLoadedMsg:
+		if msg.err == nil && msg.key == m.packageDetailKey() {
+			m.packages.inventoryDetail = msg.detail
+		}
+	case packageDiffDetailLoadedMsg:
+		if msg.err == nil && msg.key == m.packageDetailKey() {
+			m.packages.diffDetail = msg.detail
+		}
+	case packageExcuseDetailLoadedMsg:
+		if msg.err == nil && msg.key == m.packageDetailKey() {
+			m.packages.excuseDetail = msg.detail
+		}
+	case bugsLoadedMsg:
+		m.bugs.loaded = msg.err == nil
+		m.bugs.err = errString(msg.err)
+		if msg.err == nil {
+			m.bugs.rows = msg.rows
+			m.bugs.warnings = msg.warnings
+			m.bugs.index = clampIndex(m.bugs.index, len(m.bugs.rows))
+			if task := selectedBug(m.bugs.rows, m.bugs.index); task != nil {
+				m.lastRefresh = time.Now()
+				return m, loadBugDetailCmd(m.session, *task)
+			}
+			m.bugs.detail = nil
+			m.lastRefresh = time.Now()
+		}
+	case bugDetailLoadedMsg:
+		if msg.err == nil && msg.key == m.bugDetailKey() {
+			m.bugs.detail = msg.detail
+		}
+	case reviewsLoadedMsg:
+		m.reviews.loaded = msg.err == nil
+		m.reviews.err = errString(msg.err)
+		if msg.err == nil {
+			m.reviews.rows = msg.rows
+			m.reviews.warnings = msg.warnings
+			m.reviews.index = clampIndex(m.reviews.index, len(m.reviews.rows))
+			if mr := selectedReview(m.reviews.rows, m.reviews.index); mr != nil {
+				m.lastRefresh = time.Now()
+				return m, loadReviewDetailCmd(m.session, *mr)
+			}
+			m.reviews.detail = nil
+			m.lastRefresh = time.Now()
+		}
+	case reviewDetailLoadedMsg:
+		if msg.err == nil && msg.key == m.reviewDetailKey() {
+			m.reviews.detail = msg.detail
+		}
+	case commitsLoadedMsg:
+		m.commits.loaded = msg.err == nil
+		m.commits.err = errString(msg.err)
+		if msg.err == nil {
+			m.commits.rows = msg.rows
+			m.commits.warnings = msg.warnings
+			m.commits.prompt = msg.prompt
+			m.commits.index = clampIndex(m.commits.index, len(m.commits.rows))
+			m.lastRefresh = time.Now()
+		}
+	case projectsLoadedMsg:
+		m.projects.loaded = msg.err == nil
+		m.projects.err = errString(msg.err)
+		if msg.err == nil {
+			m.projects.config = msg.config
+			m.projects.rows = msg.rows
+			m.projects.index = clampIndex(m.projects.index, len(m.projects.rows))
+			m.lastRefresh = time.Now()
 		}
 	case opsLoadedMsg:
 		m.ops.loaded = msg.err == nil
@@ -530,14 +646,34 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.activeView = viewReleases
 		m.contentScroll = 0
 		return m, nil
+	case "4":
+		m.activeView = viewPackages
+		m.contentScroll = 0
+		return m, nil
+	case "5":
+		m.activeView = viewBugs
+		m.contentScroll = 0
+		return m, nil
+	case "6":
+		m.activeView = viewReviews
+		m.contentScroll = 0
+		return m, nil
+	case "7":
+		m.activeView = viewCommits
+		m.contentScroll = 0
+		return m, nil
+	case "8":
+		m.activeView = viewProjects
+		m.contentScroll = 0
+		return m, nil
 	case "tab":
-		m.activeView = (m.activeView + 1) % 3
+		m.activeView = (m.activeView + 1) % 8
 		m.contentScroll = 0
 		return m, nil
 	case "shift+tab":
 		m.activeView--
 		if m.activeView < 0 {
-			m.activeView = viewReleases
+			m.activeView = viewProjects
 		}
 		m.contentScroll = 0
 		return m, nil
@@ -562,8 +698,58 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.releaseFilterForm = newReleaseFilterForm(m.session, m.releases)
 			m.overlay = overlayReleaseFilters
 			m.overlayScroll = 0
+		case viewPackages:
+			m.packageFilterForm = newPackageFilterForm(m.session, m.packages)
+			m.overlay = overlayPackageFilters
+			m.overlayScroll = 0
+		case viewBugs:
+			m.bugFilterForm = newBugFilterForm(m.session, m.bugs)
+			m.overlay = overlayBugFilters
+			m.overlayScroll = 0
+		case viewReviews:
+			m.reviewFilterForm = newReviewFilterForm(m.session, m.reviews)
+			m.overlay = overlayReviewFilters
+			m.overlayScroll = 0
+		case viewCommits:
+			m.commitFilterForm = newCommitFilterForm(m.session, m.commits)
+			m.overlay = overlayCommitFilters
+			m.overlayScroll = 0
+		case viewProjects:
+			m.projectFilterForm = newProjectFilterForm(m.projects)
+			m.overlay = overlayProjectFilters
+			m.overlayScroll = 0
 		}
 		return m, nil
+	case "[":
+		switch m.activeView {
+		case viewPackages:
+			m.packages.filters.mode--
+			if m.packages.filters.mode < packageModeInventory {
+				m.packages.filters.mode = packageModeExcuses
+			}
+			m.packages.index = 0
+			m.packages.clearDetails()
+			return m, loadPackagesCmd(m.session, m.packages.filters)
+		case viewCommits:
+			m.commits.filters.mode--
+			if m.commits.filters.mode < commitModeLog {
+				m.commits.filters.mode = commitModeTrack
+			}
+			m.commits.index = 0
+			return m, loadCommitsCmd(m.session, m.commits.filters)
+		}
+	case "]":
+		switch m.activeView {
+		case viewPackages:
+			m.packages.filters.mode = (m.packages.filters.mode + 1) % 3
+			m.packages.index = 0
+			m.packages.clearDetails()
+			return m, loadPackagesCmd(m.session, m.packages.filters)
+		case viewCommits:
+			m.commits.filters.mode = (m.commits.filters.mode + 1) % 2
+			m.commits.index = 0
+			return m, loadCommitsCmd(m.session, m.commits.filters)
+		}
 	case "up", "k":
 		switch m.activeView {
 		case viewDashboard:
@@ -580,6 +766,33 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if artifact := m.selectedReleaseArtifact(); artifact != nil {
 					return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 				}
+			}
+		case viewPackages:
+			if m.packages.index > 0 {
+				m.packages.index--
+				return m, loadPackageDetailCmd(m.session, m.packages)
+			}
+		case viewBugs:
+			if m.bugs.index > 0 {
+				m.bugs.index--
+				if task := selectedBug(m.bugs.rows, m.bugs.index); task != nil {
+					return m, loadBugDetailCmd(m.session, *task)
+				}
+			}
+		case viewReviews:
+			if m.reviews.index > 0 {
+				m.reviews.index--
+				if review := selectedReview(m.reviews.rows, m.reviews.index); review != nil {
+					return m, loadReviewDetailCmd(m.session, *review)
+				}
+			}
+		case viewCommits:
+			if m.commits.index > 0 {
+				m.commits.index--
+			}
+		case viewProjects:
+			if m.projects.index > 0 {
+				m.projects.index--
 			}
 		}
 	case "down", "j":
@@ -598,6 +811,33 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if artifact := m.selectedReleaseArtifact(); artifact != nil {
 					return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 				}
+			}
+		case viewPackages:
+			if m.packages.index < m.packages.rowCount()-1 {
+				m.packages.index++
+				return m, loadPackageDetailCmd(m.session, m.packages)
+			}
+		case viewBugs:
+			if m.bugs.index < len(m.bugs.rows)-1 {
+				m.bugs.index++
+				if task := selectedBug(m.bugs.rows, m.bugs.index); task != nil {
+					return m, loadBugDetailCmd(m.session, *task)
+				}
+			}
+		case viewReviews:
+			if m.reviews.index < len(m.reviews.rows)-1 {
+				m.reviews.index++
+				if review := selectedReview(m.reviews.rows, m.reviews.index); review != nil {
+					return m, loadReviewDetailCmd(m.session, *review)
+				}
+			}
+		case viewCommits:
+			if m.commits.index < len(m.commits.rows)-1 {
+				m.commits.index++
+			}
+		case viewProjects:
+			if m.projects.index < len(m.projects.rows)-1 {
+				m.projects.index++
 			}
 		}
 	case "enter":
@@ -620,6 +860,16 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case viewReleases:
 			if artifact := m.selectedReleaseArtifact(); artifact != nil {
 				return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
+			}
+		case viewPackages:
+			return m, loadPackageDetailCmd(m.session, m.packages)
+		case viewBugs:
+			if task := selectedBug(m.bugs.rows, m.bugs.index); task != nil {
+				return m, loadBugDetailCmd(m.session, *task)
+			}
+		case viewReviews:
+			if review := selectedReview(m.reviews.rows, m.reviews.index); review != nil {
+				return m, loadReviewDetailCmd(m.session, *review)
 			}
 		}
 	case "t":
@@ -815,6 +1065,21 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayBuildTrigger:
 		m.pendingG = false
 		return m.updateBuildTriggerForm(msg)
+	case overlayPackageFilters:
+		m.pendingG = false
+		return m.updatePackageFilterForm(msg)
+	case overlayBugFilters:
+		m.pendingG = false
+		return m.updateBugFilterForm(msg)
+	case overlayReviewFilters:
+		m.pendingG = false
+		return m.updateReviewFilterForm(msg)
+	case overlayCommitFilters:
+		m.pendingG = false
+		return m.updateCommitFilterForm(msg)
+	case overlayProjectFilters:
+		m.pendingG = false
+		return m.updateProjectFilterForm(msg)
 	}
 	return m, nil
 }
@@ -902,6 +1167,11 @@ func (m rootModel) renderTabs() string {
 		m.renderTab("1 Dashboard", m.activeView == viewDashboard),
 		m.renderTab("2 Builds", m.activeView == viewBuilds),
 		m.renderTab("3 Releases", m.activeView == viewReleases),
+		m.renderTab("4 Packages", m.activeView == viewPackages),
+		m.renderTab("5 Bugs", m.activeView == viewBugs),
+		m.renderTab("6 Reviews", m.activeView == viewReviews),
+		m.renderTab("7 Commits", m.activeView == viewCommits),
+		m.renderTab("8 Projects", m.activeView == viewProjects),
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
@@ -921,6 +1191,16 @@ func (m rootModel) renderContent() string {
 		return m.renderBuilds()
 	case viewReleases:
 		return m.renderReleases()
+	case viewPackages:
+		return m.renderPackages()
+	case viewBugs:
+		return m.renderBugs()
+	case viewReviews:
+		return m.renderReviews()
+	case viewCommits:
+		return m.renderCommits()
+	case viewProjects:
+		return m.renderProjects()
 	default:
 		return ""
 	}
@@ -1095,6 +1375,16 @@ func (m rootModel) renderOverlay(base string) string {
 		content = renderFormModal(m.theme, m.releaseFilterForm)
 	case overlayBuildTrigger:
 		content = renderFormModal(m.theme, m.buildTriggerForm)
+	case overlayPackageFilters:
+		content = renderFormModal(m.theme, m.packageFilterForm)
+	case overlayBugFilters:
+		content = renderFormModal(m.theme, m.bugFilterForm)
+	case overlayReviewFilters:
+		content = renderFormModal(m.theme, m.reviewFilterForm)
+	case overlayCommitFilters:
+		content = renderFormModal(m.theme, m.commitFilterForm)
+	case overlayProjectFilters:
+		content = renderFormModal(m.theme, m.projectFilterForm)
 	}
 	if fullscreen {
 		return renderViewport(content, m.height-1, m.overlayScroll)
@@ -1105,8 +1395,9 @@ func (m rootModel) renderOverlay(base string) string {
 func (m rootModel) renderHelp() string {
 	body := strings.Join([]string{
 		"Shortcuts",
-		"1/2/3 switch workflow",
+		"1..8 switch workflow",
 		"Tab / Shift+Tab cycle workflows",
+		"[/] cycle submodes on Packages and Commits",
 		"j/k or arrows move selection",
 		"gg jump to the beginning",
 		"G jump to the end",
@@ -1226,6 +1517,16 @@ func (m rootModel) refreshActiveView() tea.Cmd {
 			loadReleasesCmd(m.session, m.releases.filters),
 			loadReleaseDetailCmdIfSelected(m.session, m.selectedReleaseArtifact(), m.releases.filters),
 		)
+	case viewPackages:
+		return tea.Batch(loadPackagesCmd(m.session, m.packages.filters), loadPackageDetailCmd(m.session, m.packages))
+	case viewBugs:
+		return tea.Batch(loadBugsCmd(m.session, m.bugs.filters), loadBugDetailCmdIfSelected(m.session, selectedBug(m.bugs.rows, m.bugs.index)))
+	case viewReviews:
+		return tea.Batch(loadReviewsCmd(m.session, m.reviews.filters), loadReviewDetailCmdIfSelected(m.session, selectedReview(m.reviews.rows, m.reviews.index)))
+	case viewCommits:
+		return loadCommitsCmd(m.session, m.commits.filters)
+	case viewProjects:
+		return loadProjectsCmd(m.session, m.projects.filters)
 	default:
 		return nil
 	}
@@ -1246,6 +1547,19 @@ func (m rootModel) jumpActiveTop() (tea.Model, tea.Cmd) {
 		if artifact := m.selectedReleaseArtifact(); artifact != nil {
 			return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 		}
+	case viewPackages:
+		m.packages.index = 0
+		return m, loadPackageDetailCmd(m.session, m.packages)
+	case viewBugs:
+		m.bugs.index = 0
+		return m, loadBugDetailCmdIfSelected(m.session, selectedBug(m.bugs.rows, m.bugs.index))
+	case viewReviews:
+		m.reviews.index = 0
+		return m, loadReviewDetailCmdIfSelected(m.session, selectedReview(m.reviews.rows, m.reviews.index))
+	case viewCommits:
+		m.commits.index = 0
+	case viewProjects:
+		m.projects.index = 0
 	}
 	return m, nil
 }
@@ -1266,6 +1580,29 @@ func (m rootModel) jumpActiveBottom() (tea.Model, tea.Cmd) {
 		m.releases.index = len(m.releases.artifacts) - 1
 		if artifact := m.selectedReleaseArtifact(); artifact != nil {
 			return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
+		}
+	case viewPackages:
+		if m.packages.rowCount() > 0 {
+			m.packages.index = m.packages.rowCount() - 1
+		}
+		return m, loadPackageDetailCmd(m.session, m.packages)
+	case viewBugs:
+		if len(m.bugs.rows) > 0 {
+			m.bugs.index = len(m.bugs.rows) - 1
+		}
+		return m, loadBugDetailCmdIfSelected(m.session, selectedBug(m.bugs.rows, m.bugs.index))
+	case viewReviews:
+		if len(m.reviews.rows) > 0 {
+			m.reviews.index = len(m.reviews.rows) - 1
+		}
+		return m, loadReviewDetailCmdIfSelected(m.session, selectedReview(m.reviews.rows, m.reviews.index))
+	case viewCommits:
+		if len(m.commits.rows) > 0 {
+			m.commits.index = len(m.commits.rows) - 1
+		}
+	case viewProjects:
+		if len(m.projects.rows) > 0 {
+			m.projects.index = len(m.projects.rows) - 1
 		}
 	}
 	return m, nil
