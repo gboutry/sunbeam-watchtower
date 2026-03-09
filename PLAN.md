@@ -102,6 +102,7 @@ These are the main known gaps that still matter:
 ### API and test contracts
 
 - keep the Huma optional-field guard in place and add regression tests when request shapes change
+- keep Launchpad bug-task reads aligned with the full documented `searchTasks.status` enum so default bug syncs do not silently omit task states such as `Deferred` or `Does Not Exist`
 - continue removing host-environment assumptions from tests
 - keep changed-package coverage enforcement healthy by raising tests with feature work instead of bypassing the guard
 

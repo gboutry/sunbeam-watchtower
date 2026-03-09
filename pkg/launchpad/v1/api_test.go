@@ -435,6 +435,24 @@ func TestBugTaskSearchOpts_Values_DefaultsToAllStatuses(t *testing.T) {
 	}
 }
 
+func TestBugTaskSearchOpts_Values_IncludesDocumentedClosedAndDeferredStatuses(t *testing.T) {
+	statuses := (BugTaskSearchOpts{}).values()["status"]
+	for _, want := range []string{"Deferred", "Does Not Exist", "Fix Released"} {
+		if !containsString(statuses, want) {
+			t.Fatalf("default statuses = %v, want to include %q", statuses, want)
+		}
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestProjectAndBugWrappers(t *testing.T) {
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)

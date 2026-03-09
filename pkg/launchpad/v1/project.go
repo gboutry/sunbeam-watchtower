@@ -89,8 +89,10 @@ var allBugTaskStatuses = []string{
 	"Confirmed",
 	"Triaged",
 	"In Progress",
+	"Deferred",
 	"Fix Committed",
 	"Fix Released",
+	"Does Not Exist",
 }
 
 func (o BugTaskSearchOpts) values() url.Values {
