@@ -16,9 +16,10 @@ const (
 	cacheTypeBugs          = "bugs"
 	cacheTypeExcuses       = "excuses"
 	cacheTypeReleases      = "releases"
+	cacheTypeReviews       = "reviews"
 )
 
-var allCacheTypes = []string{cacheTypeGit, cacheTypePackagesIndex, cacheTypeUpstreamRepos, cacheTypeBugs, cacheTypeExcuses, cacheTypeReleases}
+var allCacheTypes = []string{cacheTypeGit, cacheTypePackagesIndex, cacheTypeUpstreamRepos, cacheTypeBugs, cacheTypeExcuses, cacheTypeReleases, cacheTypeReviews}
 
 func validateCacheTypes(args []string) error {
 	for _, arg := range args {
@@ -49,6 +50,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 	var project string
 	var distros, releases, backports []string
 	var trackers []string
+	var since string
 
 	cmd := withActionSelector(&cobra.Command{
 		Use:   "sync [types...]",
@@ -137,6 +139,21 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 					styler.semantic(result.Status), result.Discovered, result.Synced, result.Skipped)
 			}
 
+			if wantCacheType(args, cacheTypeReviews) {
+				fmt.Fprintf(progressOut, "%s review caches...\n", styler.Action("syncing"))
+				result, err := workflow.SyncReviews(cmd.Context(), frontend.CacheSyncReviewsRequest{Project: project, Since: since})
+				if err != nil {
+					return err
+				}
+				for _, w := range result.Warnings {
+					if err := writeWarningLine(opts.ErrOut, errStyler, w); err != nil {
+						return err
+					}
+				}
+				fmt.Fprintf(progressOut, "review cache sync %s (%d projects, %d summaries, %d details).\n",
+					styler.Action("done"), result.ProjectsSynced, result.SummariesSynced, result.DetailsSynced)
+			}
+
 			return nil
 		},
 	}, "cache.sync")
@@ -146,6 +163,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to sync (packages-index only, default: all configured)")
 	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to sync (packages-index only, default: all)")
 	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to sync (excuses only, default: all configured trackers)")
+	cmd.Flags().StringVar(&since, "since", "", "sync full review detail for closed reviews updated since this time (reviews only)")
 
 	return cmd
 }
@@ -220,6 +238,14 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 				fmt.Fprintf(progressOut, "release cache %s.\n", styler.Action("cleared"))
 			}
 
+			if wantCacheType(args, cacheTypeReviews) {
+				fmt.Fprintf(progressOut, "%s review cache...\n", styler.Action("clearing"))
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "reviews", Project: project}); err != nil {
+					return err
+				}
+				fmt.Fprintf(progressOut, "review cache %s.\n", styler.Action("cleared"))
+			}
+
 			return nil
 		},
 	}, frontend.ActionCacheClear)
@@ -263,6 +289,9 @@ func newCacheStatusCmd(opts *Options) *cobra.Command {
 			status.Releases.Entries = append(status.Releases.Entries, result.Releases.Entries...)
 			status.Releases.Directory = result.Releases.Directory
 			status.Releases.Error = result.Releases.Error
+			status.Reviews.Entries = append(status.Reviews.Entries, result.Reviews.Entries...)
+			status.Reviews.Directory = result.Reviews.Directory
+			status.Reviews.Error = result.Reviews.Error
 
 			return renderCacheFullStatus(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), &status)
 		},

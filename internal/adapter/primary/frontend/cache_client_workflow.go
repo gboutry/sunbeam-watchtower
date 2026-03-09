@@ -63,6 +63,20 @@ type CacheSyncReleasesResponse struct {
 	Warnings   []string
 }
 
+// CacheSyncReviewsRequest describes one review-cache sync workflow.
+type CacheSyncReviewsRequest struct {
+	Project string
+	Since   string
+}
+
+// CacheSyncReviewsResponse contains the outcome of one review-cache sync.
+type CacheSyncReviewsResponse struct {
+	ProjectsSynced  int
+	SummariesSynced int
+	DetailsSynced   int
+	Warnings        []string
+}
+
 // CacheClearRequest describes one cache-clear workflow.
 type CacheClearRequest struct {
 	Type     string
@@ -104,6 +118,11 @@ type CacheStatusResponse struct {
 	Releases struct {
 		Directory string
 		Entries   []dto.ReleaseCacheStatus
+		Error     string
+	}
+	Reviews struct {
+		Directory string
+		Entries   []dto.ReviewCacheStatus
 		Error     string
 	}
 }
@@ -205,6 +224,31 @@ func (w *CacheClientWorkflow) SyncReleases(ctx context.Context) (*CacheSyncRelea
 	}, nil
 }
 
+// SyncReviews syncs cached review state.
+func (w *CacheClientWorkflow) SyncReviews(ctx context.Context, req CacheSyncReviewsRequest) (*CacheSyncReviewsResponse, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	resolvedSince, err := dto.ResolveSince(req.Since)
+	if err != nil {
+		return nil, err
+	}
+	result, err := apiClient.CacheSyncReviews(ctx, client.CacheSyncReviewsOptions{
+		Project: req.Project,
+		Since:   resolvedSince,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &CacheSyncReviewsResponse{
+		ProjectsSynced:  result.ProjectsSynced,
+		SummariesSynced: result.SummariesSynced,
+		DetailsSynced:   result.DetailsSynced,
+		Warnings:        append([]string(nil), result.Warnings...),
+	}, nil
+}
+
 // Clear clears one cache type.
 func (w *CacheClientWorkflow) Clear(ctx context.Context, req CacheClearRequest) error {
 	apiClient, err := w.resolveClient()
@@ -249,6 +293,9 @@ func (w *CacheClientWorkflow) Status(ctx context.Context) (*CacheStatusResponse,
 	response.Releases.Directory = result.Releases.Directory
 	response.Releases.Entries = append(response.Releases.Entries, result.Releases.Entries...)
 	response.Releases.Error = result.Releases.Error
+	response.Reviews.Directory = result.Reviews.Directory
+	response.Reviews.Entries = append(response.Reviews.Entries, result.Reviews.Entries...)
+	response.Reviews.Error = result.Reviews.Error
 	return response, nil
 }
 

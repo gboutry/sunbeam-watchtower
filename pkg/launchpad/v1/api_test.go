@@ -410,6 +410,55 @@ func TestGetMergeProposal(t *testing.T) {
 	}
 }
 
+func TestGetMergeProposalCommentsAndDiffText(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/comments":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(Collection[CodeReviewComment]{
+				Entries: []CodeReviewComment{{Content: "Looks good", AuthorLink: "https://api.launchpad.net/devel/~alice"}},
+			})
+		case "/diff":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(PreviewDiff{DiffTextLink: server.URL + "/diff.txt"})
+		case "/diff.txt":
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte("diff --git a/foo b/foo"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	creds := &Credentials{ConsumerKey: "test", AccessToken: "t", AccessTokenSecret: "s"}
+	client := NewClient(creds, nil, server.Client())
+
+	comments, err := client.GetMergeProposalComments(context.Background(), server.URL+"/comments")
+	if err != nil {
+		t.Fatalf("GetMergeProposalComments() error = %v", err)
+	}
+	if len(comments) != 1 || comments[0].Content != "Looks good" {
+		t.Fatalf("GetMergeProposalComments() = %+v, want one comment", comments)
+	}
+
+	diff, err := client.GetPreviewDiff(context.Background(), server.URL+"/diff")
+	if err != nil {
+		t.Fatalf("GetPreviewDiff() error = %v", err)
+	}
+	if diff.DiffTextLink == "" {
+		t.Fatalf("GetPreviewDiff() = %+v, want diff text link", diff)
+	}
+
+	diffText, err := client.GetPreviewDiffText(context.Background(), diff.DiffTextLink)
+	if err != nil {
+		t.Fatalf("GetPreviewDiffText() error = %v", err)
+	}
+	if diffText != "diff --git a/foo b/foo" {
+		t.Fatalf("GetPreviewDiffText() = %q, want raw diff text", diffText)
+	}
+}
+
 func TestBugTaskSearchOpts_Values(t *testing.T) {
 	opts := BugTaskSearchOpts{
 		Status:         []string{"New", "Confirmed"},

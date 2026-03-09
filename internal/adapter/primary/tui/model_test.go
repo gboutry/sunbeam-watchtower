@@ -406,10 +406,23 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 	}
 
 	model.reviews.rows = []forge.MergeRequest{{Repo: "snap-openstack", Forge: forge.ForgeGitHub, ID: "#42", Title: "Improve test coverage", Author: "alice", State: forge.MergeStateOpen}}
-	model.reviews.detail = &forge.MergeRequest{Repo: "snap-openstack", Forge: forge.ForgeGitHub, ID: "#42", Title: "Improve test coverage", Author: "alice", State: forge.MergeStateOpen}
+	model.reviews.detail = &forge.MergeRequest{
+		Repo:     "snap-openstack",
+		Forge:    forge.ForgeGitHub,
+		ID:       "#42",
+		Title:    "Improve test coverage",
+		Author:   "alice",
+		State:    forge.MergeStateOpen,
+		Comments: []forge.ReviewComment{{Kind: forge.ReviewCommentGeneral, Author: "bob", Body: "looks good"}},
+		Files:    []forge.ReviewFile{{Path: "README.md", Status: "modified", Additions: 1}},
+		DiffText: "diff --git a/README.md b/README.md",
+	}
 	model.activeView = viewReviews
 	if rendered := model.renderReviews(); !strings.Contains(rendered, "Improve test coverage") {
 		t.Fatalf("renderReviews missing MR detail:\n%s", rendered)
+	}
+	if rendered := model.renderReviews(); !strings.Contains(rendered, "looks good") || !strings.Contains(rendered, "README.md") {
+		t.Fatalf("renderReviews missing cached review detail:\n%s", rendered)
 	}
 
 	model.commits.rows = []forge.Commit{{Repo: "snap-openstack", Forge: forge.ForgeGitHub, SHA: "0123456789abcdef", Message: "Fix bug\n\nmore", Author: "alice", Date: now}}

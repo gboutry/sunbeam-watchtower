@@ -127,6 +127,14 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 				Directory: "/tmp/releases",
 				Entries:   []dto.ReleaseCacheStatus{{Project: "sunbeam", Name: "snap-openstack", ArtifactType: dto.ArtifactSnap, TrackCount: 1, ChannelCount: 2}},
 			},
+			Reviews: struct {
+				Directory string                  `json:"directory"`
+				Entries   []dto.ReviewCacheStatus `json:"entries"`
+				Error     string                  `json:"error,omitempty"`
+			}{
+				Directory: "/tmp/reviews",
+				Entries:   []dto.ReviewCacheStatus{{Project: "snap-openstack", ForgeType: "GitHub", SummaryCount: 4, DetailCount: 2}},
+			},
 		})
 	}))
 	defer ts.Close()
@@ -141,6 +149,9 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 	}
 	if got.Releases.Directory != "/tmp/releases" || len(got.Releases.Entries) != 1 || got.Releases.Entries[0].Name != "snap-openstack" {
 		t.Fatalf("Status() releases = %+v, want releases snapshot", got.Releases)
+	}
+	if got.Reviews.Directory != "/tmp/reviews" || len(got.Reviews.Entries) != 1 || got.Reviews.Entries[0].Project != "snap-openstack" {
+		t.Fatalf("Status() reviews = %+v, want reviews snapshot", got.Reviews)
 	}
 }
 
@@ -166,5 +177,40 @@ func TestCacheClientWorkflowSyncReleases(t *testing.T) {
 	}
 	if got.Status != "ok" || got.Discovered != 4 || got.Synced != 3 || got.Skipped != 1 || len(got.Warnings) != 1 {
 		t.Fatalf("SyncReleases() = %+v, want counted result", got)
+	}
+}
+
+func TestCacheClientWorkflowSyncReviews(t *testing.T) {
+	var gotBody client.CacheSyncReviewsOptions
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/cache/sync/reviews" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(client.CacheSyncReviewsResult{
+			ProjectsSynced:  1,
+			SummariesSynced: 5,
+			DetailsSynced:   3,
+			Warnings:        []string{"snap-openstack:#43: rate limited"},
+		})
+	}))
+	defer ts.Close()
+
+	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
+	got, err := workflow.SyncReviews(context.Background(), CacheSyncReviewsRequest{
+		Project: "snap-openstack",
+		Since:   "2025-01-01",
+	})
+	if err != nil {
+		t.Fatalf("SyncReviews() error = %v", err)
+	}
+	if gotBody.Project != "snap-openstack" || gotBody.Since != "2025-01-01T00:00:00Z" {
+		t.Fatalf("request body = %+v, want project and resolved since", gotBody)
+	}
+	if got.ProjectsSynced != 1 || got.SummariesSynced != 5 || got.DetailsSynced != 3 || len(got.Warnings) != 1 {
+		t.Fatalf("SyncReviews() = %+v, want counted result", got)
 	}
 }

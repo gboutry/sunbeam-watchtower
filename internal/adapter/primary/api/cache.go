@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 
@@ -53,8 +54,8 @@ type CacheSyncUpstreamOutput struct {
 
 // CacheDeleteInput is the request for DELETE /api/v1/cache/{type}.
 type CacheDeleteInput struct {
-	Type     string   `path:"type" doc:"Cache type to clear (git, packages-index, upstream-repos, bugs, excuses, releases)"`
-	Project  string   `query:"project" required:"false" doc:"Clear only this project (git/bugs types only)"`
+	Type     string   `path:"type" doc:"Cache type to clear (git, packages-index, upstream-repos, bugs, excuses, releases, reviews)"`
+	Project  string   `query:"project" required:"false" doc:"Clear only this project (git/bugs/reviews types only)"`
 	Trackers []string `query:"tracker" required:"false" doc:"Clear only these excuses trackers (excuses type only)"`
 }
 
@@ -98,6 +99,24 @@ type CacheSyncReleasesOutput struct {
 	Body dto.ReleaseSyncResult
 }
 
+// CacheSyncReviewsInput is the request body for POST /api/v1/cache/sync/reviews.
+type CacheSyncReviewsInput struct {
+	Body struct {
+		Project string `json:"project,omitempty" required:"false" doc:"Sync only this project (empty = all configured)"`
+		Since   string `json:"since,omitempty" required:"false" doc:"Sync full detail for closed reviews updated since this RFC 3339 timestamp"`
+	}
+}
+
+// CacheSyncReviewsOutput is the response for POST /api/v1/cache/sync/reviews.
+type CacheSyncReviewsOutput struct {
+	Body struct {
+		ProjectsSynced  int      `json:"projects_synced"`
+		SummariesSynced int      `json:"summaries_synced"`
+		DetailsSynced   int      `json:"details_synced"`
+		Warnings        []string `json:"warnings,omitempty"`
+	}
+}
+
 // CacheStatusOutput is the response for GET /api/v1/cache/status.
 type CacheStatusOutput struct {
 	Body struct {
@@ -129,6 +148,11 @@ type CacheStatusOutput struct {
 			Entries   []dto.ReleaseCacheStatus `json:"entries"`
 			Error     string                   `json:"error,omitempty"`
 		} `json:"releases"`
+		Reviews struct {
+			Directory string                  `json:"directory"`
+			Entries   []dto.ReviewCacheStatus `json:"entries"`
+			Error     string                  `json:"error,omitempty"`
+		} `json:"reviews"`
 	}
 }
 
@@ -324,6 +348,35 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		return out, nil
 	})
 
+	// POST /api/v1/cache/sync/reviews
+	huma.Register(api, huma.Operation{
+		OperationID: "cache-sync-reviews",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/cache/sync/reviews",
+		Summary:     "Sync cached review summaries and details",
+		Tags:        []string{"cache", "reviews"},
+	}, func(ctx context.Context, input *CacheSyncReviewsInput) (*CacheSyncReviewsOutput, error) {
+		var since *time.Time
+		if input.Body.Since != "" {
+			parsed, err := time.Parse(time.RFC3339, input.Body.Since)
+			if err != nil {
+				return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("invalid since value %q: %v", input.Body.Since, err))
+			}
+			since = &parsed
+		}
+
+		result, err := application.SyncReviewCache(ctx, input.Body.Project, since)
+		if err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("review cache sync failed: %v", err))
+		}
+		out := &CacheSyncReviewsOutput{}
+		out.Body.ProjectsSynced = result.ProjectsSynced
+		out.Body.SummariesSynced = result.SummariesSynced
+		out.Body.DetailsSynced = result.DetailsSynced
+		out.Body.Warnings = result.Warnings
+		return out, nil
+	})
+
 	// DELETE /api/v1/cache/{type}
 	huma.Register(api, huma.Operation{
 		OperationID: "cache-delete",
@@ -449,9 +502,38 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing release cache: %v", err))
 			}
 
+		case "reviews":
+			cache, err := application.ReviewCache()
+			if err != nil {
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open review cache: %v", err))
+			}
+			if input.Project == "" {
+				if err := cache.RemoveAll(ctx); err != nil {
+					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing review cache: %v", err))
+				}
+			} else {
+				if application.Config == nil {
+					return nil, huma.Error500InternalServerError("no configuration loaded")
+				}
+				found := false
+				for _, proj := range application.Config.Projects {
+					if proj.Name != input.Project {
+						continue
+					}
+					found = true
+					if err := cache.Remove(ctx, app.ForgeTypeFromConfig(proj.Code.Forge), input.Project); err != nil {
+						return nil, huma.Error500InternalServerError(fmt.Sprintf("removing review cache: %v", err))
+					}
+					break
+				}
+				if !found {
+					return nil, huma.Error404NotFound(fmt.Sprintf("project %q not found in config", input.Project))
+				}
+			}
+
 		default:
 			return nil, huma.Error400BadRequest(
-				fmt.Sprintf("unknown cache type %q (valid: git, packages-index, upstream-repos, bugs, excuses, releases)", input.Type))
+				fmt.Sprintf("unknown cache type %q (valid: git, packages-index, upstream-repos, bugs, excuses, releases, reviews)", input.Type))
 		}
 
 		out := &CacheDeleteOutput{}
@@ -565,6 +647,20 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				out.Body.Releases.Error = sErr.Error()
 			} else {
 				out.Body.Releases.Entries = statuses
+			}
+		}
+
+		// Review cache status.
+		reviewCache, err := application.ReviewCache()
+		if err != nil {
+			out.Body.Reviews.Error = err.Error()
+		} else {
+			out.Body.Reviews.Directory = reviewCache.CacheDir()
+			statuses, sErr := reviewCache.Status(ctx)
+			if sErr != nil {
+				out.Body.Reviews.Error = sErr.Error()
+			} else {
+				out.Body.Reviews.Entries = statuses
 			}
 		}
 

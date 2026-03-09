@@ -221,7 +221,7 @@ func (s *telemetrySnapshotSource) ReleaseSnapshot(ctx context.Context) (*otelada
 }
 
 func (s *telemetrySnapshotSource) ReviewSnapshot(ctx context.Context) (*oteladapter.ReviewSnapshot, error) {
-	clients, err := s.app.BuildForgeClients()
+	clients, err := s.app.BuildReviewProjects()
 	if err != nil {
 		return nil, err
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-github/v68/github"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/bugcache"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/reviewcache"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bug"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/review"
@@ -22,6 +23,14 @@ import (
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
+
+// ReviewCacheSyncResult reports the result of one review-cache refresh.
+type ReviewCacheSyncResult struct {
+	ProjectsSynced  int
+	SummariesSynced int
+	DetailsSynced   int
+	Warnings        []string
+}
 
 // NewLaunchpadClient creates an LP client with credentials from the credential store.
 // Returns nil if no credentials are available.
@@ -165,6 +174,57 @@ func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
 		}
 
 		result[proj.Name] = pf
+	}
+
+	return result, nil
+}
+
+// BuildReviewProjects returns cache-backed review clients keyed by config project name.
+func (a *App) BuildReviewProjects() (map[string]review.ProjectForge, error) {
+	live, err := a.BuildForgeClients()
+	if err != nil {
+		return nil, err
+	}
+	cache, err := a.ReviewCache()
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]review.ProjectForge, len(live))
+	for project, pf := range live {
+		result[project] = review.ProjectForge{
+			Forge:     reviewcache.NewCachedForge(pf.Forge, cache, project, a.Logger),
+			ProjectID: pf.ProjectID,
+		}
+	}
+	return result, nil
+}
+
+// SyncReviewCache refreshes cached review summaries and details for configured projects.
+func (a *App) SyncReviewCache(ctx context.Context, project string, since *time.Time) (*ReviewCacheSyncResult, error) {
+	liveClients, err := a.BuildForgeClients()
+	if err != nil {
+		return nil, err
+	}
+	cache, err := a.ReviewCache()
+	if err != nil {
+		return nil, err
+	}
+
+	result := &ReviewCacheSyncResult{}
+	for name, pf := range liveClients {
+		if project != "" && project != name {
+			continue
+		}
+		cachedForge := reviewcache.NewCachedForge(pf.Forge, cache, name, a.Logger)
+		syncResult, err := cachedForge.Sync(ctx, pf.ProjectID, since)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s: %v", name, err))
+			continue
+		}
+		result.ProjectsSynced++
+		result.SummariesSynced += syncResult.Summaries
+		result.DetailsSynced += syncResult.Details
+		result.Warnings = append(result.Warnings, syncResult.Warnings...)
 	}
 
 	return result, nil

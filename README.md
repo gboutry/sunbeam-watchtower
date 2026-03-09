@@ -172,7 +172,7 @@ otel:
       enabled: true
       listen_addr: 127.0.0.1:9465
       path: /metrics
-      live_systems: [reviews]
+      live_systems: []
     collectors:
       reviews:
         refresh_interval: 15m
@@ -437,10 +437,11 @@ watchtower commit track --bug-id 12345
 
 ### `watchtower review`
 
-List and inspect merge requests across forges.
+List and inspect cached merge requests across forges. Review browsing is cache-first by default, so run `watchtower cache sync reviews` before relying on `review list/show` in the CLI or TUI.
 
 ```bash
 # List open merge requests
+watchtower cache sync reviews
 watchtower review list --state open
 
 # Filter by project or forge
@@ -451,6 +452,9 @@ watchtower review list --since 1w
 
 # Show details for a specific merge request
 watchtower review show --project snap-openstack "#42"
+
+# Refresh cached detail for recently updated closed reviews too
+watchtower cache sync reviews --since 30d
 ```
 
 ### `watchtower bug`
@@ -524,7 +528,7 @@ watchtower project sync --project snap-openstack --project sunbeam-charms
 
 ### `watchtower cache`
 
-Manage local caches used by commit tracking, package lookups, upstream repository inspection, and bug tracking.
+Manage local caches used by commit tracking, package lookups, upstream repository inspection, bug tracking, release tracking, and review browsing.
 
 ```bash
 # Sync all cache types
@@ -542,6 +546,9 @@ watchtower cache sync upstream-repos
 # Sync only bug/task caches
 watchtower cache sync bugs
 
+# Sync cached review summaries and details
+watchtower cache sync reviews
+
 # Sync Ubuntu and Debian excuses caches
 watchtower cache sync excuses --tracker ubuntu --tracker debian
 
@@ -550,6 +557,9 @@ watchtower cache sync excuses --tracker ubuntu
 
 # Sync a specific project's git cache
 watchtower cache sync git --project snap-openstack
+
+# Sync only one project's review cache
+watchtower cache sync reviews --project snap-openstack
 
 # Show cached repos and their disk usage
 watchtower cache status
@@ -564,7 +574,9 @@ watchtower cache clear git --project snap-openstack
 watchtower cache clear excuses --tracker debian
 ```
 
-Valid cache types are `git`, `packages-index`, `upstream-repos`, `bugs`, and `excuses`.
+Valid cache types are `git`, `packages-index`, `upstream-repos`, `bugs`, `excuses`, `releases`, and `reviews`.
+
+Review cache data is stored at `$XDG_CACHE_HOME/sunbeam-watchtower/reviews/` (defaults to `~/.cache/sunbeam-watchtower/reviews/`). It stores cached review summaries for all synced items plus full comments/files/diff detail for open reviews and recently updated closed reviews.
 
 Git cache data is stored at `$XDG_CACHE_HOME/sunbeam-watchtower/repos/` (defaults to `~/.cache/sunbeam-watchtower/repos/`). Repos are bare git clones organized by host:
 

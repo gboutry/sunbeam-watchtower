@@ -143,6 +143,7 @@ func TestGitHubForge_GetMergeRequest(t *testing.T) {
 		pr := &github.PullRequest{
 			Number:  ptr(42),
 			Title:   ptr("Fix the thing"),
+			Body:    ptr("Detailed body"),
 			State:   ptr("open"),
 			Merged:  ptr(false),
 			HTMLURL: ptr("https://github.com/canonical/sunbeam/pull/42"),
@@ -154,9 +155,27 @@ func TestGitHubForge_GetMergeRequest(t *testing.T) {
 	})
 	mux.HandleFunc("/repos/canonical/sunbeam/pulls/42/reviews", func(w http.ResponseWriter, r *http.Request) {
 		reviews := []*github.PullRequestReview{
-			{User: &github.User{Login: ptr("reviewer1")}, State: ptr("APPROVED")},
+			{User: &github.User{Login: ptr("reviewer1")}, State: ptr("APPROVED"), Body: ptr("ship it"), SubmittedAt: &github.Timestamp{Time: time.Date(2024, 3, 3, 10, 0, 0, 0, time.UTC)}},
 		}
 		json.NewEncoder(w).Encode(reviews)
+	})
+	mux.HandleFunc("/repos/canonical/sunbeam/issues/42/comments", func(w http.ResponseWriter, r *http.Request) {
+		comments := []*github.IssueComment{
+			{Body: ptr("general comment"), HTMLURL: ptr("https://github.com/canonical/sunbeam/pull/42#issuecomment-1"), User: &github.User{Login: ptr("bob")}, CreatedAt: &github.Timestamp{Time: time.Date(2024, 3, 2, 9, 0, 0, 0, time.UTC)}, UpdatedAt: &github.Timestamp{Time: time.Date(2024, 3, 2, 9, 0, 0, 0, time.UTC)}},
+		}
+		json.NewEncoder(w).Encode(comments)
+	})
+	mux.HandleFunc("/repos/canonical/sunbeam/pulls/42/comments", func(w http.ResponseWriter, r *http.Request) {
+		comments := []*github.PullRequestComment{
+			{Body: ptr("inline comment"), HTMLURL: ptr("https://github.com/canonical/sunbeam/pull/42#discussion_r1"), User: &github.User{Login: ptr("carol")}, Path: ptr("README.md"), Line: ptr(12), CreatedAt: &github.Timestamp{Time: time.Date(2024, 3, 2, 12, 0, 0, 0, time.UTC)}, UpdatedAt: &github.Timestamp{Time: time.Date(2024, 3, 2, 12, 0, 0, 0, time.UTC)}},
+		}
+		json.NewEncoder(w).Encode(comments)
+	})
+	mux.HandleFunc("/repos/canonical/sunbeam/pulls/42/files", func(w http.ResponseWriter, r *http.Request) {
+		files := []*github.CommitFile{
+			{Filename: ptr("README.md"), Status: ptr("modified"), Additions: ptr(3), Deletions: ptr(1), Patch: ptr("@@ -1 +1 @@")},
+		}
+		json.NewEncoder(w).Encode(files)
 	})
 
 	forge, server := newGitHubTestServer(t, mux)
@@ -171,6 +190,18 @@ func TestGitHubForge_GetMergeRequest(t *testing.T) {
 	}
 	if mr.ReviewState != ReviewStateApproved {
 		t.Errorf("ReviewState = %v, want Approved", mr.ReviewState)
+	}
+	if mr.Description != "Detailed body" {
+		t.Errorf("Description = %q, want detailed body", mr.Description)
+	}
+	if len(mr.Comments) != 3 {
+		t.Fatalf("len(Comments) = %d, want 3", len(mr.Comments))
+	}
+	if mr.Comments[0].Kind != ReviewCommentGeneral || mr.Comments[1].Kind != ReviewCommentInline || mr.Comments[2].Kind != ReviewCommentSystem {
+		t.Fatalf("Comments = %+v, want general/inline/system ordering", mr.Comments)
+	}
+	if len(mr.Files) != 1 || mr.Files[0].Path != "README.md" || mr.Files[0].Patch == "" {
+		t.Fatalf("Files = %+v, want README.md patch", mr.Files)
 	}
 }
 

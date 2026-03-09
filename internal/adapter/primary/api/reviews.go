@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -9,6 +10,7 @@ import (
 
 	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
@@ -77,6 +79,12 @@ func RegisterReviewsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *ReviewGetInput) (*ReviewGetOutput, error) {
 		mr, err := facade.Reviews().Show(ctx, input.Project, input.ID)
 		if err != nil {
+			switch {
+			case errors.Is(err, port.ErrReviewCacheNotSynced):
+				return nil, huma.Error409Conflict("review cache not synced; run `watchtower cache sync reviews` first")
+			case errors.Is(err, port.ErrReviewDetailNotCached):
+				return nil, huma.Error409Conflict("review detail not cached; run `watchtower cache sync reviews` first")
+			}
 			return nil, huma.Error404NotFound(fmt.Sprintf("review %s/%s not found", input.Project, input.ID), err)
 		}
 

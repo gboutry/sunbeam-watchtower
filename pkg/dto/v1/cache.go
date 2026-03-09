@@ -46,6 +46,15 @@ type BugCacheStatus struct {
 	LastSync  time.Time `json:"last_sync" yaml:"last_sync"`
 }
 
+// ReviewCacheStatus reports per-project review cache statistics.
+type ReviewCacheStatus struct {
+	ForgeType    string    `json:"forge_type" yaml:"forge_type"`
+	Project      string    `json:"project" yaml:"project"`
+	SummaryCount int       `json:"summary_count" yaml:"summary_count"`
+	DetailCount  int       `json:"detail_count" yaml:"detail_count"`
+	LastSync     time.Time `json:"last_sync" yaml:"last_sync"`
+}
+
 // CacheStatus reports metadata about a cached source group.
 type CacheStatus struct {
 	Name        string    `json:"name" yaml:"name"`

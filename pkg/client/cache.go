@@ -77,10 +77,31 @@ func (c *Client) CacheSyncExcuses(ctx context.Context, opts CacheSyncExcusesOpti
 // CacheSyncReleasesResult is the response returned by CacheSyncReleases.
 type CacheSyncReleasesResult = dto.ReleaseSyncResult
 
+// CacheSyncReviewsOptions holds the request body for syncing review caches.
+type CacheSyncReviewsOptions struct {
+	Project string `json:"project,omitempty"`
+	Since   string `json:"since,omitempty"`
+}
+
+// CacheSyncReviewsResult is the response returned by CacheSyncReviews.
+type CacheSyncReviewsResult struct {
+	ProjectsSynced  int      `json:"projects_synced"`
+	SummariesSynced int      `json:"summaries_synced"`
+	DetailsSynced   int      `json:"details_synced"`
+	Warnings        []string `json:"warnings,omitempty"`
+}
+
 // CacheSyncReleases syncs cached published snap/charm release state.
 func (c *Client) CacheSyncReleases(ctx context.Context) (*CacheSyncReleasesResult, error) {
 	var result CacheSyncReleasesResult
 	err := c.post(ctx, "/api/v1/cache/sync/releases", nil, &result)
+	return &result, err
+}
+
+// CacheSyncReviews syncs cached review state.
+func (c *Client) CacheSyncReviews(ctx context.Context, opts CacheSyncReviewsOptions) (*CacheSyncReviewsResult, error) {
+	var result CacheSyncReviewsResult
+	err := c.post(ctx, "/api/v1/cache/sync/reviews", opts, &result)
 	return &result, err
 }
 
@@ -137,6 +158,11 @@ type CacheStatusResult struct {
 		Entries   []dto.ReleaseCacheStatus `json:"entries"`
 		Error     string                   `json:"error,omitempty"`
 	} `json:"releases"`
+	Reviews struct {
+		Directory string                  `json:"directory"`
+		Entries   []dto.ReviewCacheStatus `json:"entries"`
+		Error     string                  `json:"error,omitempty"`
+	} `json:"reviews"`
 }
 
 // CacheStatus returns the full cache status (git + packages + upstream).

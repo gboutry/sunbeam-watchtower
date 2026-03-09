@@ -16,6 +16,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/gitcache"
 	oteladapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/otel"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/releasecache"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/reviewcache"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
@@ -71,6 +72,10 @@ type App struct {
 	releaseCache     *releasecache.Cache
 	releaseCacheErr  error
 
+	reviewCacheOnce sync.Once
+	reviewCache     *reviewcache.Cache
+	reviewCacheErr  error
+
 	operationStoreOnce sync.Once
 	operationStore     port.OperationStore
 
@@ -119,6 +124,11 @@ func (a *App) Close() error {
 	}
 	if a.releaseCache != nil {
 		if err := a.releaseCache.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if a.reviewCache != nil {
+		if err := a.reviewCache.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}

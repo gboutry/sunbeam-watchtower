@@ -59,6 +59,7 @@ func TestDynamicActionResolution(t *testing.T) {
 		{name: "bug sync dry run", path: []string{"bug", "sync"}, flags: map[string]string{"dry-run": "true"}, want: frontend.ActionBugSyncDryRun},
 		{name: "cache sync all", path: []string{"cache", "sync"}, want: frontend.ActionCacheSync},
 		{name: "cache sync packages", path: []string{"cache", "sync"}, args: []string{cacheTypePackagesIndex}, want: frontend.ActionCacheSyncPackages},
+		{name: "cache sync reviews", path: []string{"cache", "sync"}, args: []string{cacheTypeReviews}, want: frontend.ActionCacheSyncReviews},
 	}
 
 	for _, tt := range tests {

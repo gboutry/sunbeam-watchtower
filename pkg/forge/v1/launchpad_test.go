@@ -207,15 +207,29 @@ func TestLaunchpadForge_GetMergeRequest(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mp/1", func(w http.ResponseWriter, r *http.Request) {
 		mp := lp.MergeProposal{
-			SelfLink:       "https://api.launchpad.net/devel/mp/1",
-			WebLink:        "https://code.launchpad.net/mp/1",
-			QueueStatus:    "Approved",
-			Description:    "A great change",
-			RegistrantLink: "https://api.launchpad.net/devel/~alice",
-			SourceGitPath:  "refs/heads/great-change",
-			TargetGitPath:  "refs/heads/main",
+			SelfLink:                  "https://api.launchpad.net/devel/mp/1",
+			WebLink:                   "https://code.launchpad.net/mp/1",
+			QueueStatus:               "Approved",
+			Description:               "A great change",
+			RegistrantLink:            "https://api.launchpad.net/devel/~alice",
+			SourceGitPath:             "refs/heads/great-change",
+			TargetGitPath:             "refs/heads/main",
+			AllCommentsCollectionLink: serverURL(r) + "/comments",
+			PreviewDiffLink:           serverURL(r) + "/diff",
 		}
 		json.NewEncoder(w).Encode(mp)
+	})
+	mux.HandleFunc("/comments", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(lp.Collection[lp.CodeReviewComment]{
+			Entries: []lp.CodeReviewComment{{Content: "Looks good", AuthorLink: "https://api.launchpad.net/devel/~bob"}},
+		})
+	})
+	mux.HandleFunc("/diff", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(lp.PreviewDiff{DiffTextLink: serverURL(r) + "/diff.txt"})
+	})
+	mux.HandleFunc("/diff.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("diff --git a/foo b/foo"))
 	})
 
 	forge, server := newLaunchpadTestServer(t, mux)
@@ -234,6 +248,12 @@ func TestLaunchpadForge_GetMergeRequest(t *testing.T) {
 	if mr.Author != "alice" {
 		t.Errorf("Author = %q", mr.Author)
 	}
+	if len(mr.Comments) != 1 || mr.Comments[0].Author != "bob" {
+		t.Fatalf("Comments = %+v, want one cached comment", mr.Comments)
+	}
+	if mr.DiffText != "diff --git a/foo b/foo" {
+		t.Fatalf("DiffText = %q, want raw diff text", mr.DiffText)
+	}
 }
 
 func TestLaunchpadForge_ListCommits_NotSupported(t *testing.T) {
@@ -244,4 +264,8 @@ func TestLaunchpadForge_ListCommits_NotSupported(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for unsupported ListCommits")
 	}
+}
+
+func serverURL(r *http.Request) string {
+	return "http://" + r.Host
 }

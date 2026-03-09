@@ -23,7 +23,7 @@ func NewReviewServerWorkflow(application *app.App) *ReviewServerWorkflow {
 
 // Show returns one merge request by project and ID.
 func (w *ReviewServerWorkflow) Show(ctx context.Context, project, id string) (*forge.MergeRequest, error) {
-	clients, err := w.application.BuildForgeClients()
+	clients, err := w.application.BuildReviewProjects()
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +32,7 @@ func (w *ReviewServerWorkflow) Show(ctx context.Context, project, id string) (*f
 
 // List returns merge requests matching the requested filters.
 func (w *ReviewServerWorkflow) List(ctx context.Context, req ReviewListRequest) (*ReviewListResponse, error) {
-	clients, err := w.application.BuildForgeClients()
+	clients, err := w.application.BuildReviewProjects()
 	if err != nil {
 		return nil, err
 	}

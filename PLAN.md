@@ -62,6 +62,7 @@ The following are implemented and should be treated as the current baseline:
 - release tracking keeps same-name snap and charm artifacts as distinct cached/listed entries and requires type narrowing only for ambiguous release-detail lookups
 - bug cache sync and bug `since` filtering treat created-or-modified task activity as in-scope, with Launchpad task activity timestamps derived from the latest task state transition and incremental bug sync using a small modified-time overlap to recover recent closed-task transitions
 - bug list supports group-aware `--merge` output driven by explicit `bug_groups` config, collapsing same-forge bug IDs within one shared tracker group under that group's common project label
+- review browsing is now cache-first across CLI/API/TUI, backed by a dedicated review cache that stores summary rows plus cached comments/files/diff detail for open and recently updated closed reviews
 - local daemon lifecycle commands and explicit runtime resolution order
 - Launchpad auth flows with durable server-side coordination
 - durable operations surface for async workflows
@@ -105,6 +106,7 @@ These are the main known gaps that still matter:
 - keep Launchpad bug-task reads aligned with the full documented `searchTasks.status` enum so default bug syncs do not silently omit task states such as `Deferred` or `Does Not Exist`
 - keep Launchpad URL construction multi-value safe so repeated query keys like `status` survive request building instead of collapsing to the last value
 - keep bug cache syncs best-effort but parallelize bug-detail hydration with a small bounded worker pool so cache refresh stays responsive without aggressive Launchpad fan-out
+- keep review browsing cache-first so the TUI and `review list/show` do not fan out live forge calls by default, with explicit `cache sync reviews` for refresh and bounded detail hydration during sync
 - keep snap release syncs requesting `channel-map,base,revision,version` so cached/listed snap targets expose base and revision metadata like charms do
 - keep shared release target rendering concise by suppressing duplicate `/version` suffixes when the version equals the revision string
 - keep handler-focused API tests on ephemeral runtime helpers and shared local fixtures so test speed improves without weakening dedicated persistence coverage

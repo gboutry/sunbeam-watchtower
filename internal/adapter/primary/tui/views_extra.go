@@ -105,13 +105,14 @@ type reviewsFilters struct {
 }
 
 type reviewsModel struct {
-	filters  reviewsFilters
-	rows     []forge.MergeRequest
-	index    int
-	detail   *forge.MergeRequest
-	warnings []string
-	loaded   bool
-	err      string
+	filters   reviewsFilters
+	rows      []forge.MergeRequest
+	index     int
+	detail    *forge.MergeRequest
+	detailErr string
+	warnings  []string
+	loaded    bool
+	err       string
 }
 
 type commitsFilters struct {
@@ -790,7 +791,7 @@ func renderReviews(theme theme, width int, model reviewsModel) string {
 		header += "\n\n" + warnings
 	}
 	list := renderReviewRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth))
-	detail := renderReviewPane(theme, model.detail, innerPanelWidth(theme.panel, detailWidth))
+	detail := renderReviewPane(theme, model.detail, model.detailErr, innerPanelWidth(theme.panel, detailWidth))
 	if width >= 120 {
 		left := renderPanel(theme.panel, listWidth, theme.panelTitle.Render("Reviews"), header+"\n\n"+list)
 		right := renderPanel(theme.panel, detailWidth, theme.panelTitle.Render("Detail"), detail)
@@ -984,7 +985,10 @@ func renderReviewRows(t theme, rows []forge.MergeRequest, selected int, width in
 	return strings.Join(lines, "\n")
 }
 
-func renderReviewPane(t theme, mr *forge.MergeRequest, width int) string {
+func renderReviewPane(t theme, mr *forge.MergeRequest, detailErr string, width int) string {
+	if detailErr != "" {
+		return t.errorText.Render(fitLine(detailErr, width))
+	}
 	if mr == nil {
 		return t.subtle.Render("Select a review to load its details.")
 	}
@@ -1010,6 +1014,31 @@ func renderReviewPane(t theme, mr *forge.MergeRequest, width int) string {
 	}
 	if mr.Description != "" {
 		lines = append(lines, "", "Description:", mr.Description)
+	}
+	if len(mr.Comments) > 0 {
+		lines = append(lines, "", "Comments:")
+		for _, comment := range mr.Comments {
+			header := fmt.Sprintf("- [%s] %s", comment.Kind, emptyAsDash(comment.Author))
+			if comment.File != "" {
+				header += " " + comment.File
+				if comment.Line > 0 {
+					header += fmt.Sprintf(":%d", comment.Line)
+				}
+			}
+			lines = append(lines, header)
+			if comment.Body != "" {
+				lines = append(lines, "  "+strings.ReplaceAll(comment.Body, "\n", "\n  "))
+			}
+		}
+	}
+	if len(mr.Files) > 0 {
+		lines = append(lines, "", "Files:")
+		for _, file := range mr.Files {
+			lines = append(lines, fmt.Sprintf("- %s  %s  +%d -%d", file.Path, emptyAsDash(file.Status), file.Additions, file.Deletions))
+		}
+	}
+	if mr.DiffText != "" {
+		lines = append(lines, "", "Diff:", mr.DiffText)
 	}
 	return fitBlock(strings.Join(lines, "\n"), width)
 }

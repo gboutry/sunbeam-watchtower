@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -127,5 +128,36 @@ func TestCacheSyncReleases_WithConfiguredPublicationReturns200(t *testing.T) {
 	}
 	if body.Status != "ok" || body.Discovered != 0 || body.Synced != 0 || body.Skipped != 0 {
 		t.Fatalf("body = %+v, want zero-count ok result", body)
+	}
+}
+
+func TestCacheSyncReviews_EmptyConfigReturnsZeroCounts(t *testing.T) {
+	srv, base := startTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	application := newEphemeralTestApp(t, &config.Config{})
+	RegisterCacheAPI(srv.API(), application)
+
+	resp, err := http.Post(base+"/api/v1/cache/sync/reviews", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		ProjectsSynced  int      `json:"projects_synced"`
+		SummariesSynced int      `json:"summaries_synced"`
+		DetailsSynced   int      `json:"details_synced"`
+		Warnings        []string `json:"warnings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.ProjectsSynced != 0 || body.SummariesSynced != 0 || body.DetailsSynced != 0 {
+		t.Fatalf("body = %+v, want zero-count review sync result", body)
 	}
 }

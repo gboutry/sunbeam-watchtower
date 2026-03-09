@@ -472,6 +472,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.reviews.rows = msg.rows
 			m.reviews.warnings = msg.warnings
+			m.reviews.detailErr = ""
 			m.reviews.index = clampIndex(m.reviews.index, len(m.reviews.rows))
 			if mr := selectedReview(m.reviews.rows, m.reviews.index); mr != nil {
 				m.lastRefresh = time.Now()
@@ -481,8 +482,13 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastRefresh = time.Now()
 		}
 	case reviewDetailLoadedMsg:
-		if msg.err == nil && msg.key == m.reviewDetailKey() {
-			m.reviews.detail = msg.detail
+		if msg.key == m.reviewDetailKey() {
+			m.reviews.detailErr = errString(msg.err)
+			if msg.err == nil {
+				m.reviews.detail = msg.detail
+			} else {
+				m.reviews.detail = nil
+			}
 		}
 	case commitsLoadedMsg:
 		m.commits.loaded = msg.err == nil
@@ -1542,6 +1548,7 @@ func (m rootModel) renderCacheModal() string {
 			fmt.Sprintf("Bug entries: %d", len(m.cache.status.Bugs.Entries)),
 			fmt.Sprintf("Excuses entries: %d", len(m.cache.status.Excuses.Entries)),
 			fmt.Sprintf("Release entries: %d", len(m.cache.status.Releases.Entries)),
+			fmt.Sprintf("Review entries: %d", len(m.cache.status.Reviews.Entries)),
 		)
 	}
 	lines = append(lines, "", "[Esc] close")

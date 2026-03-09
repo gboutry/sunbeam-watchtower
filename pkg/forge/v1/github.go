@@ -6,6 +6,7 @@ package v1
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -93,7 +94,26 @@ func (g *GitHubForge) GetMergeRequest(ctx context.Context, repo string, id strin
 	reviews, _, err := g.client.PullRequests.ListReviews(ctx, owner, repoName, num, &github.ListOptions{PerPage: 100})
 	if err == nil {
 		mr.ReviewState = ghReviewState(reviews)
+		mr.Comments = append(mr.Comments, ghReviewSubmissionComments(reviews)...)
 	}
+
+	if comments, err := g.listIssueComments(ctx, owner, repoName, num); err == nil {
+		mr.Comments = append(mr.Comments, comments...)
+	}
+	if comments, err := g.listPRReviewComments(ctx, owner, repoName, num); err == nil {
+		mr.Comments = append(mr.Comments, comments...)
+	}
+	if files, err := g.listPRFiles(ctx, owner, repoName, num); err == nil {
+		mr.Files = files
+	}
+	sort.Slice(mr.Comments, func(i, j int) bool {
+		left := mr.Comments[i].CreatedAt
+		right := mr.Comments[j].CreatedAt
+		if left.Equal(right) {
+			return mr.Comments[i].UpdatedAt.Before(mr.Comments[j].UpdatedAt)
+		}
+		return left.Before(right)
+	})
 
 	return &mr, nil
 }
@@ -243,4 +263,121 @@ func ghReviewState(reviews []*github.PullRequestReview) ReviewState {
 		return ReviewStateApproved
 	}
 	return ReviewStatePending
+}
+
+func (g *GitHubForge) listIssueComments(ctx context.Context, owner, repo string, number int) ([]ReviewComment, error) {
+	opts := &github.IssueListCommentsOptions{ListOptions: github.ListOptions{PerPage: 100}}
+	var out []ReviewComment
+	for {
+		comments, resp, err := g.client.Issues.ListComments(ctx, owner, repo, number, opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, comment := range comments {
+			if comment == nil {
+				continue
+			}
+			out = append(out, ReviewComment{
+				Kind:      ReviewCommentGeneral,
+				Author:    ghCommentUser(comment.User),
+				Body:      comment.GetBody(),
+				URL:       comment.GetHTMLURL(),
+				CreatedAt: comment.GetCreatedAt().Time,
+				UpdatedAt: comment.GetUpdatedAt().Time,
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return out, nil
+}
+
+func (g *GitHubForge) listPRReviewComments(ctx context.Context, owner, repo string, number int) ([]ReviewComment, error) {
+	opts := &github.PullRequestListCommentsOptions{ListOptions: github.ListOptions{PerPage: 100}}
+	var out []ReviewComment
+	for {
+		comments, resp, err := g.client.PullRequests.ListComments(ctx, owner, repo, number, opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, comment := range comments {
+			if comment == nil {
+				continue
+			}
+			out = append(out, ReviewComment{
+				Kind:      ReviewCommentInline,
+				Author:    ghCommentUser(comment.User),
+				Body:      comment.GetBody(),
+				URL:       comment.GetHTMLURL(),
+				File:      comment.GetPath(),
+				Line:      comment.GetLine(),
+				CreatedAt: comment.GetCreatedAt().Time,
+				UpdatedAt: comment.GetUpdatedAt().Time,
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return out, nil
+}
+
+func (g *GitHubForge) listPRFiles(ctx context.Context, owner, repo string, number int) ([]ReviewFile, error) {
+	opts := &github.ListOptions{PerPage: 100}
+	var out []ReviewFile
+	for {
+		files, resp, err := g.client.PullRequests.ListFiles(ctx, owner, repo, number, opts)
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range files {
+			if file == nil {
+				continue
+			}
+			out = append(out, ReviewFile{
+				Path:      file.GetFilename(),
+				Status:    file.GetStatus(),
+				Additions: file.GetAdditions(),
+				Deletions: file.GetDeletions(),
+				Patch:     file.GetPatch(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return out, nil
+}
+
+func ghReviewSubmissionComments(reviews []*github.PullRequestReview) []ReviewComment {
+	out := make([]ReviewComment, 0, len(reviews))
+	for _, review := range reviews {
+		if review == nil {
+			continue
+		}
+		body := strings.TrimSpace(review.GetBody())
+		if body == "" {
+			continue
+		}
+		out = append(out, ReviewComment{
+			Kind:      ReviewCommentSystem,
+			Author:    ghCommentUser(review.User),
+			Body:      body,
+			URL:       review.GetHTMLURL(),
+			CreatedAt: review.GetSubmittedAt().Time,
+			UpdatedAt: review.GetSubmittedAt().Time,
+		})
+	}
+	return out
+}
+
+func ghCommentUser(user *github.User) string {
+	if user == nil {
+		return ""
+	}
+	return user.GetLogin()
 }

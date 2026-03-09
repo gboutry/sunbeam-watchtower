@@ -79,6 +79,8 @@ func cacheSyncActionID(args []string) frontend.ActionID {
 		return frontend.ActionCacheSyncExcuses
 	case cacheTypeReleases:
 		return frontend.ActionCacheSyncReleases
+	case cacheTypeReviews:
+		return frontend.ActionCacheSyncReviews
 	default:
 		return frontend.ActionCacheSync
 	}
