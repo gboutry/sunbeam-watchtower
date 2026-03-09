@@ -192,12 +192,7 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 			switch b.Forge {
 			case "launchpad":
 				if lpBugTracker == nil {
-					lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
-					if lpClient == nil {
-						a.Logger.Warn("skipping Launchpad bug tracker (no auth configured)", "project", proj.Name)
-						continue
-					}
-					lpBugTracker = forge.NewLaunchpadBugTracker(lpClient)
+					lpBugTracker = a.newLaunchpadBugTrackerForReads(proj.Name)
 				}
 
 				key := "launchpad:" + b.Project
@@ -219,5 +214,41 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 		}
 	}
 
+	if len(trackers) == 0 && cache != nil {
+		statuses, err := cache.Status(context.Background())
+		if err != nil {
+			return nil, nil, fmt.Errorf("listing bug cache status: %w", err)
+		}
+		if len(statuses) > 0 {
+			a.Logger.Info("using cached bug tracker metadata because no bug trackers are configured", "entries", len(statuses))
+		}
+		for _, status := range statuses {
+			if status.ForgeType != forge.ForgeLaunchpad.String() {
+				continue
+			}
+			if lpBugTracker == nil {
+				lpBugTracker = a.newLaunchpadBugTrackerForReads(status.Project)
+			}
+			key := "launchpad:" + status.Project
+			if _, ok := trackers[key]; ok {
+				continue
+			}
+			trackers[key] = bug.ProjectBugTracker{
+				Tracker:   bugcache.NewCachedBugTracker(lpBugTracker, cache, status.Project, a.Logger),
+				ProjectID: status.Project,
+			}
+			projectMap[key] = []string{status.Project}
+		}
+	}
+
 	return trackers, projectMap, nil
+}
+
+func (a *App) newLaunchpadBugTrackerForReads(projectName string) *forge.LaunchpadBugTracker {
+	lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
+	if lpClient == nil {
+		a.Logger.Info("using unauthenticated Launchpad client for bug tracker reads", "project", projectName)
+		lpClient = lp.NewClient(nil, a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
+	}
+	return forge.NewLaunchpadBugTracker(lpClient)
 }

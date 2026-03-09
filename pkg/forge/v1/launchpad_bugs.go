@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
@@ -77,7 +78,7 @@ func (l *LaunchpadBugTracker) ListBugTasks(ctx context.Context, project string, 
 		lpOpts.Assignee = "https://api.launchpad.net/devel/~" + opts.Assignee
 	}
 
-	tasks, err := l.client.SearchBugTasks(ctx, project, lpOpts)
+	tasks, err := l.searchBugTasks(ctx, project, lpOpts)
 	if err != nil {
 		return nil, fmt.Errorf("searching LP bug tasks for %s: %w", project, err)
 	}
@@ -85,6 +86,40 @@ func (l *LaunchpadBugTracker) ListBugTasks(ctx context.Context, project string, 
 	result := make([]BugTask, 0, len(tasks))
 	for _, t := range tasks {
 		result = append(result, lpBugTaskToBugTask(&t))
+	}
+	return result, nil
+}
+
+func (l *LaunchpadBugTracker) searchBugTasks(ctx context.Context, project string, opts lp.BugTaskSearchOpts) ([]lp.BugTask, error) {
+	if opts.CreatedSince == "" || opts.ModifiedSince == "" {
+		return l.client.SearchBugTasks(ctx, project, opts)
+	}
+
+	createdOnly := opts
+	createdOnly.ModifiedSince = ""
+	createdTasks, err := l.client.SearchBugTasks(ctx, project, createdOnly)
+	if err != nil {
+		return nil, err
+	}
+
+	modifiedOnly := opts
+	modifiedOnly.CreatedSince = ""
+	modifiedTasks, err := l.client.SearchBugTasks(ctx, project, modifiedOnly)
+	if err != nil {
+		return nil, err
+	}
+
+	merged := make(map[string]lp.BugTask, len(createdTasks)+len(modifiedTasks))
+	for _, task := range createdTasks {
+		merged[task.SelfLink] = task
+	}
+	for _, task := range modifiedTasks {
+		merged[task.SelfLink] = task
+	}
+
+	result := make([]lp.BugTask, 0, len(merged))
+	for _, task := range merged {
+		result = append(result, task)
 	}
 	return result, nil
 }
@@ -140,12 +175,37 @@ func lpBugTaskToBugTask(t *lp.BugTask) BugTask {
 	if t.DateCreated != nil {
 		bt.CreatedAt = t.DateCreated.Time
 	}
-	// LP BugTask doesn't have a direct "updated" field; use DateCreated as fallback.
-	// The title field contains bug info but the last-updated comes from the bug itself.
-	if t.DateCreated != nil {
-		bt.UpdatedAt = t.DateCreated.Time
-	}
+	bt.UpdatedAt = lpBugTaskUpdatedAt(t)
 	return bt
+}
+
+func lpBugTaskUpdatedAt(t *lp.BugTask) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	candidates := []*lp.Time{
+		t.DateCreated,
+		t.DateAssigned,
+		t.DateClosed,
+		t.DateConfirmed,
+		t.DateFixCommitted,
+		t.DateFixReleased,
+		t.DateInProgress,
+		t.DateIncomplete,
+		t.DateTriaged,
+		t.DateLeftNew,
+		t.DateLeftClosed,
+	}
+	var latest time.Time
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		if candidate.After(latest) {
+			latest = candidate.Time
+		}
+	}
+	return latest
 }
 
 // lpExtractBugID extracts the bug ID from a bug link.

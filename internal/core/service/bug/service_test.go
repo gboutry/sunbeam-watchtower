@@ -14,6 +14,7 @@ type mockBugTracker struct {
 	tasks     []forge.BugTask
 	bug       *forge.Bug
 	err       error
+	lastOpts  forge.ListBugTasksOpts
 }
 
 func (m *mockBugTracker) Type() forge.ForgeType { return m.forgeType }
@@ -28,7 +29,8 @@ func (m *mockBugTracker) GetBug(_ context.Context, id string) (*forge.Bug, error
 	return nil, fmt.Errorf("bug %s not found", id)
 }
 
-func (m *mockBugTracker) ListBugTasks(_ context.Context, _ string, _ forge.ListBugTasksOpts) ([]forge.BugTask, error) {
+func (m *mockBugTracker) ListBugTasks(_ context.Context, _ string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error) {
+	m.lastOpts = opts
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -112,6 +114,30 @@ func TestService_List_FilterByProject(t *testing.T) {
 	}
 	if len(tasks) > 0 && tasks[0].Project != "sunbeam" {
 		t.Errorf("expected project=sunbeam, got %s", tasks[0].Project)
+	}
+}
+
+func TestService_List_PassesSinceToCreatedAndModifiedFilters(t *testing.T) {
+	tracker := &mockBugTracker{
+		forgeType: forge.ForgeLaunchpad,
+		tasks:     []forge.BugTask{{BugID: "1", Title: "Bug 1"}},
+	}
+
+	svc := NewService(
+		map[string]ProjectBugTracker{
+			"launchpad:snap-openstack": {Tracker: tracker, ProjectID: "snap-openstack"},
+		},
+		map[string][]string{
+			"launchpad:snap-openstack": {"sunbeam"},
+		},
+		nil)
+
+	_, _, err := svc.List(context.Background(), ListOptions{Since: "2026-03-08T00:00:00Z"})
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if tracker.lastOpts.CreatedSince != "2026-03-08T00:00:00Z" || tracker.lastOpts.ModifiedSince != "2026-03-08T00:00:00Z" {
+		t.Fatalf("tracker opts = %+v, want both created/modified since set", tracker.lastOpts)
 	}
 }
 

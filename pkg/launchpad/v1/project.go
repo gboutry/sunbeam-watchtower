@@ -79,9 +79,27 @@ type BugTaskSearchOpts struct {
 	OmitDuplicates bool
 }
 
+var allBugTaskStatuses = []string{
+	"New",
+	"Incomplete",
+	"Opinion",
+	"Invalid",
+	"Won't Fix",
+	"Expired",
+	"Confirmed",
+	"Triaged",
+	"In Progress",
+	"Fix Committed",
+	"Fix Released",
+}
+
 func (o BugTaskSearchOpts) values() url.Values {
 	v := url.Values{}
-	for _, s := range o.Status {
+	statuses := o.Status
+	if len(statuses) == 0 {
+		statuses = allBugTaskStatuses
+	}
+	for _, s := range statuses {
 		v.Add("status", s)
 	}
 	for _, s := range o.Importance {
