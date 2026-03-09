@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -92,11 +93,13 @@ type buildsModel struct {
 }
 
 type releasesFilters struct {
-	project      string
-	artifactType string
-	risk         string
-	track        string
-	branch       string
+	project       string
+	artifactType  string
+	risk          string
+	track         string
+	branch        string
+	targetProfile string
+	allTargets    bool
 }
 
 type releasesModel struct {
@@ -110,12 +113,14 @@ type releasesModel struct {
 }
 
 type releaseArtifactSummary struct {
-	Project       string
-	Name          string
-	ArtifactType  dto.ArtifactType
-	ReleasedAt    time.Time
-	ChannelCount  int
-	ResourceCount int
+	Project             string
+	Name                string
+	ArtifactType        dto.ArtifactType
+	ReleasedAt          time.Time
+	ChannelCount        int
+	ResourceCount       int
+	LatestVisibleTarget string
+	VisibleTargetCount  int
 }
 
 type operationsDrawerModel struct {
@@ -160,11 +165,12 @@ type promptModel struct {
 }
 
 type releaseFilterOptions struct {
-	projects      []string
-	artifactTypes []string
-	risks         []string
-	tracks        []string
-	branches      []string
+	projects       []string
+	artifactTypes  []string
+	risks          []string
+	tracks         []string
+	branches       []string
+	targetProfiles []string
 }
 
 type dashboardLoadedMsg struct {
@@ -350,7 +356,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.lastRefresh = time.Now()
 			if artifact := m.selectedReleaseArtifact(); artifact != nil {
-				return m, loadReleaseDetailCmd(m.session, *artifact)
+				return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 			}
 		}
 	case releaseDetailLoadedMsg:
@@ -572,7 +578,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.releases.index > 0 {
 				m.releases.index--
 				if artifact := m.selectedReleaseArtifact(); artifact != nil {
-					return m, loadReleaseDetailCmd(m.session, *artifact)
+					return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 				}
 			}
 		}
@@ -590,7 +596,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.releases.index < len(m.releases.artifacts)-1 {
 				m.releases.index++
 				if artifact := m.selectedReleaseArtifact(); artifact != nil {
-					return m, loadReleaseDetailCmd(m.session, *artifact)
+					return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 				}
 			}
 		}
@@ -613,7 +619,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case viewReleases:
 			if artifact := m.selectedReleaseArtifact(); artifact != nil {
-				return m, loadReleaseDetailCmd(m.session, *artifact)
+				return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 			}
 		}
 	case "t":
@@ -1218,7 +1224,7 @@ func (m rootModel) refreshActiveView() tea.Cmd {
 	case viewReleases:
 		return tea.Batch(
 			loadReleasesCmd(m.session, m.releases.filters),
-			loadReleaseDetailCmdIfSelected(m.session, m.selectedReleaseArtifact()),
+			loadReleaseDetailCmdIfSelected(m.session, m.selectedReleaseArtifact(), m.releases.filters),
 		)
 	default:
 		return nil
@@ -1238,7 +1244,7 @@ func (m rootModel) jumpActiveTop() (tea.Model, tea.Cmd) {
 		}
 		m.releases.index = 0
 		if artifact := m.selectedReleaseArtifact(); artifact != nil {
-			return m, loadReleaseDetailCmd(m.session, *artifact)
+			return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 		}
 	}
 	return m, nil
@@ -1259,7 +1265,7 @@ func (m rootModel) jumpActiveBottom() (tea.Model, tea.Cmd) {
 		}
 		m.releases.index = len(m.releases.artifacts) - 1
 		if artifact := m.selectedReleaseArtifact(); artifact != nil {
-			return m, loadReleaseDetailCmd(m.session, *artifact)
+			return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 		}
 	}
 	return m, nil
@@ -1299,12 +1305,19 @@ func (m rootModel) updateBuildFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m rootModel) updateReleaseFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	cmd := updateFormModal(msg, &m.releaseFilterForm, func(values []string) tea.Cmd {
+		allTargets, err := strconv.ParseBool(strings.TrimSpace(values[6]))
+		if err != nil {
+			m.releaseFilterForm.errorMsg = "all targets must be true or false"
+			return nil
+		}
 		m.releases.filters = releasesFilters{
-			project:      strings.TrimSpace(values[0]),
-			artifactType: strings.TrimSpace(values[1]),
-			risk:         strings.TrimSpace(values[2]),
-			track:        strings.TrimSpace(values[3]),
-			branch:       strings.TrimSpace(values[4]),
+			project:       strings.TrimSpace(values[0]),
+			artifactType:  strings.TrimSpace(values[1]),
+			risk:          strings.TrimSpace(values[2]),
+			track:         strings.TrimSpace(values[3]),
+			branch:        strings.TrimSpace(values[4]),
+			targetProfile: strings.TrimSpace(values[5]),
+			allTargets:    allTargets,
 		}
 		m.overlay = overlayNone
 		return loadReleasesCmd(m.session, m.releases.filters)
@@ -1386,29 +1399,33 @@ func loadBuildsCmd(session *runtimeadapter.Session, filters buildsFilters) tea.C
 func loadReleasesCmd(session *runtimeadapter.Session, filters releasesFilters) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionReleasesRefresh, func() tea.Msg {
 		rows, err := session.Frontend.Releases().List(context.Background(), frontend.ReleasesListRequest{
-			Projects:     firstNonEmptySlice(filters.project),
-			ArtifactType: filters.artifactType,
-			Risks:        firstNonEmptySlice(filters.risk),
-			Tracks:       firstNonEmptySlice(filters.track),
-			Branches:     firstNonEmptySlice(filters.branch),
+			Projects:      firstNonEmptySlice(filters.project),
+			ArtifactType:  filters.artifactType,
+			Risks:         firstNonEmptySlice(filters.risk),
+			Tracks:        firstNonEmptySlice(filters.track),
+			Branches:      firstNonEmptySlice(filters.branch),
+			TargetProfile: filters.targetProfile,
+			AllTargets:    filters.allTargets,
 		})
 		return releasesLoadedMsg{rows: rows, err: err}
 	})
 }
 
-func loadReleaseDetailCmdIfSelected(session *runtimeadapter.Session, artifact *releaseArtifactSummary) tea.Cmd {
+func loadReleaseDetailCmdIfSelected(session *runtimeadapter.Session, artifact *releaseArtifactSummary, filters releasesFilters) tea.Cmd {
 	if artifact == nil {
 		return nil
 	}
-	return loadReleaseDetailCmd(session, *artifact)
+	return loadReleaseDetailCmd(session, *artifact, filters)
 }
 
-func loadReleaseDetailCmd(session *runtimeadapter.Session, artifact releaseArtifactSummary) tea.Cmd {
+func loadReleaseDetailCmd(session *runtimeadapter.Session, artifact releaseArtifactSummary, filters releasesFilters) tea.Cmd {
 	key := fmt.Sprintf("%s|%s|%s", artifact.Project, artifact.Name, artifact.ArtifactType.String())
 	return guardSessionAction(session, frontend.ActionReleaseDetailRefresh, func() tea.Msg {
 		detail, err := session.Frontend.Releases().Show(context.Background(), frontend.ReleasesShowRequest{
-			Name:         artifact.Name,
-			ArtifactType: artifact.ArtifactType.String(),
+			Name:          artifact.Name,
+			ArtifactType:  artifact.ArtifactType.String(),
+			TargetProfile: filters.targetProfile,
+			AllTargets:    filters.allTargets,
 		})
 		return releaseDetailLoadedMsg{key: key, detail: detail, err: err}
 	})
@@ -1525,6 +1542,8 @@ func newReleaseFilterForm(session *runtimeadapter.Session, releases releasesMode
 		{placeholder: "risk", value: releases.filters.risk, suggestions: suggestions.risks},
 		{placeholder: "track", value: releases.filters.track, suggestions: suggestions.tracks},
 		{placeholder: "branch", value: releases.filters.branch, suggestions: suggestions.branches},
+		{placeholder: "target profile", value: releases.filters.targetProfile, suggestions: suggestions.targetProfiles},
+		{placeholder: "all targets (true/false)", value: fmt.Sprintf("%t", releases.filters.allTargets), suggestions: []string{"false", "true"}},
 	})
 }
 
@@ -1543,10 +1562,15 @@ func newBuildTriggerForm(session *runtimeadapter.Session) formModalModel {
 
 func releaseFilterSuggestions(session *runtimeadapter.Session, releases releasesModel) releaseFilterOptions {
 	projects := []string{}
+	targetProfiles := []string{}
 	if session != nil {
 		projects = make([]string, 0, len(session.Config.Projects))
 		for _, project := range session.Config.Projects {
 			projects = append(projects, project.Name)
+		}
+		targetProfiles = make([]string, 0, len(session.Config.Releases.TargetProfiles))
+		for name := range session.Config.Releases.TargetProfiles {
+			targetProfiles = append(targetProfiles, name)
 		}
 	}
 	artifactTypes := make([]string, 0, 3+len(releases.rows)+1)
@@ -1573,12 +1597,14 @@ func releaseFilterSuggestions(session *runtimeadapter.Session, releases releases
 	risks = append(risks, releases.filters.risk)
 	tracks = append(tracks, releases.filters.track)
 	branches = append(branches, releases.filters.branch)
+	targetProfiles = append(targetProfiles, releases.filters.targetProfile)
 	return releaseFilterOptions{
-		projects:      uniqueSortedStrings(projects...),
-		artifactTypes: uniqueSortedStrings(artifactTypes...),
-		risks:         orderedReleaseRiskSuggestions(risks...),
-		tracks:        uniqueSortedStrings(tracks...),
-		branches:      uniqueSortedStrings(branches...),
+		projects:       uniqueSortedStrings(projects...),
+		artifactTypes:  uniqueSortedStrings(artifactTypes...),
+		risks:          orderedReleaseRiskSuggestions(risks...),
+		tracks:         uniqueSortedStrings(tracks...),
+		branches:       uniqueSortedStrings(branches...),
+		targetProfiles: uniqueSortedStrings(targetProfiles...),
 	}
 }
 
@@ -1728,14 +1754,15 @@ func renderReleaseArtifacts(t theme, artifacts []releaseArtifactSummary, selecte
 		return t.subtle.Render("No artifacts.")
 	}
 	const (
-		gapWidth     = 2
-		typeColWidth = 5
-		dateColWidth = 16
-		minNameWidth = 10
-		maxNameWidth = 32
+		gapWidth       = 2
+		typeColWidth   = 5
+		targetColWidth = 28
+		dateColWidth   = 16
+		minNameWidth   = 10
+		maxNameWidth   = 28
 	)
 	lines := make([]string, 0, len(artifacts))
-	nameColWidth := width - typeColWidth - dateColWidth - (gapWidth * 2)
+	nameColWidth := width - typeColWidth - targetColWidth - dateColWidth - (gapWidth * 3)
 	if nameColWidth < minNameWidth {
 		nameColWidth = minNameWidth
 	}
@@ -1744,9 +1771,12 @@ func renderReleaseArtifacts(t theme, artifacts []releaseArtifactSummary, selecte
 	}
 	for i, artifact := range artifacts {
 		released := formatListTime(artifact.ReleasedAt)
+		latestTarget := emptyAsDash(artifact.LatestVisibleTarget)
 		line := padRight(truncateToWidth(artifact.Name, nameColWidth), nameColWidth) +
 			spacer(gapWidth) +
 			padRight(artifact.ArtifactType.String(), typeColWidth) +
+			spacer(gapWidth) +
+			padRight(truncateToWidth(latestTarget, targetColWidth), targetColWidth) +
 			spacer(gapWidth) +
 			padRight(released, dateColWidth)
 		if i == selected {
@@ -1818,6 +1848,7 @@ func summarizeReleaseArtifacts(rows []dto.ReleaseListEntry) []releaseArtifactSum
 		kind    dto.ArtifactType
 	}
 	grouped := make(map[key]releaseArtifactSummary, len(rows))
+	latestTargetAt := make(map[key]time.Time, len(rows))
 	for _, row := range rows {
 		k := key{project: row.Project, name: row.Name, kind: row.ArtifactType}
 		summary := grouped[k]
@@ -1828,6 +1859,13 @@ func summarizeReleaseArtifacts(rows []dto.ReleaseListEntry) []releaseArtifactSum
 		summary.ResourceCount += len(row.Resources)
 		if row.ReleasedAt.After(summary.ReleasedAt) {
 			summary.ReleasedAt = row.ReleasedAt
+		}
+		summary.VisibleTargetCount += len(row.Targets)
+		for _, target := range row.Targets {
+			if target.ReleasedAt.After(latestTargetAt[k]) || summary.LatestVisibleTarget == "" {
+				latestTargetAt[k] = target.ReleasedAt
+				summary.LatestVisibleTarget = frontend.FormatReleaseTargetCompact(target)
+			}
 		}
 		grouped[k] = summary
 	}
@@ -1871,35 +1909,7 @@ func latestChannelReleaseTime(channel dto.ReleaseChannelSnapshot) time.Time {
 }
 
 func formatReleaseTargets(targets []dto.ReleaseTargetSnapshot) string {
-	if len(targets) == 0 {
-		return "-"
-	}
-	parts := make([]string, 0, len(targets))
-	for _, target := range targets {
-		label := target.Architecture
-		if label == "" {
-			label = target.Base.Architecture
-		}
-		if label == "" {
-			label = "default"
-		}
-		revision := ""
-		if target.Revision > 0 {
-			revision = fmt.Sprintf("r%d", target.Revision)
-		}
-		version := target.Version
-		switch {
-		case version != "" && revision != "":
-			parts = append(parts, fmt.Sprintf("%s:%s/%s", label, revision, version))
-		case revision != "":
-			parts = append(parts, fmt.Sprintf("%s:%s", label, revision))
-		case version != "":
-			parts = append(parts, fmt.Sprintf("%s:%s", label, version))
-		default:
-			parts = append(parts, label)
-		}
-	}
-	return strings.Join(parts, ", ")
+	return frontend.FormatReleaseTargets(targets)
 }
 
 func formatReleaseResources(resources []dto.ReleaseResourceSnapshot) string {

@@ -50,6 +50,10 @@ func configToDTO(cfg *config.Config) *dto.Config {
 			TimeoutMinutes: cfg.Build.TimeoutMinutes,
 			ArtifactsDir:   cfg.Build.ArtifactsDir,
 		},
+		Releases: dto.ReleasesConfig{
+			DefaultTargetProfile: cfg.Releases.DefaultTargetProfile,
+			TargetProfiles:       make(map[string]dto.ReleaseTargetProfileConfig, len(cfg.Releases.TargetProfiles)),
+		},
 		OTel: dto.OTelConfig{
 			ServiceName:        cfg.OTel.ServiceName,
 			ServiceNamespace:   cfg.OTel.ServiceNamespace,
@@ -135,6 +139,10 @@ func configToDTO(cfg *config.Config) *dto.Config {
 				TrackMap:      make(map[string]string, len(project.Release.TrackMap)),
 				Branches:      make([]dto.ProjectReleaseBranchConfig, len(project.Release.Branches)),
 				SkipArtifacts: append([]string(nil), project.Release.SkipArtifacts...),
+				TargetProfile: project.Release.TargetProfile,
+			}
+			if project.Release.TargetProfileOverrides != nil {
+				outProject.Release.TargetProfileOverrides = profileConfigToDTO(project.Release.TargetProfileOverrides)
 			}
 			for series, track := range project.Release.TrackMap {
 				outProject.Release.TrackMap[series] = track
@@ -150,6 +158,10 @@ func configToDTO(cfg *config.Config) *dto.Config {
 		}
 
 		out.Projects[i] = outProject
+	}
+
+	for name, profile := range cfg.Releases.TargetProfiles {
+		out.Releases.TargetProfiles[name] = *profileConfigToDTO(&profile)
 	}
 
 	if len(cfg.Packages.Distros) > 0 {
@@ -210,6 +222,32 @@ func configToDTO(cfg *config.Config) *dto.Config {
 	}
 
 	return out
+}
+
+func profileConfigToDTO(profile *config.ReleaseTargetProfileConfig) *dto.ReleaseTargetProfileConfig {
+	if profile == nil {
+		return nil
+	}
+	out := &dto.ReleaseTargetProfileConfig{
+		Include: make([]dto.ReleaseTargetMatcherConfig, len(profile.Include)),
+		Exclude: make([]dto.ReleaseTargetMatcherConfig, len(profile.Exclude)),
+	}
+	for i, matcher := range profile.Include {
+		out.Include[i] = matcherConfigToDTO(matcher)
+	}
+	for i, matcher := range profile.Exclude {
+		out.Exclude[i] = matcherConfigToDTO(matcher)
+	}
+	return out
+}
+
+func matcherConfigToDTO(matcher config.ReleaseTargetMatcherConfig) dto.ReleaseTargetMatcherConfig {
+	return dto.ReleaseTargetMatcherConfig{
+		BaseNames:      append([]string(nil), matcher.BaseNames...),
+		BaseChannels:   append([]string(nil), matcher.BaseChannels...),
+		MinBaseChannel: matcher.MinBaseChannel,
+		Architectures:  append([]string(nil), matcher.Architectures...),
+	}
 }
 
 func copyStringMap(src map[string]string) map[string]string {

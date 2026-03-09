@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -69,10 +71,32 @@ type ProjectReleaseBranchConfig struct {
 
 // ProjectReleaseConfig holds per-project release tracking overrides.
 type ProjectReleaseConfig struct {
-	Tracks        []string                     `mapstructure:"tracks" yaml:"tracks,omitempty"`
-	TrackMap      map[string]string            `mapstructure:"track_map" yaml:"track_map,omitempty"`
-	Branches      []ProjectReleaseBranchConfig `mapstructure:"branches" yaml:"branches,omitempty"`
-	SkipArtifacts []string                     `mapstructure:"skip_artifacts" yaml:"skip_artifacts,omitempty"`
+	Tracks                 []string                     `mapstructure:"tracks" yaml:"tracks,omitempty"`
+	TrackMap               map[string]string            `mapstructure:"track_map" yaml:"track_map,omitempty"`
+	Branches               []ProjectReleaseBranchConfig `mapstructure:"branches" yaml:"branches,omitempty"`
+	SkipArtifacts          []string                     `mapstructure:"skip_artifacts" yaml:"skip_artifacts,omitempty"`
+	TargetProfile          string                       `mapstructure:"target_profile" yaml:"target_profile,omitempty"`
+	TargetProfileOverrides *ReleaseTargetProfileConfig  `mapstructure:"target_profile_overrides" yaml:"target_profile_overrides,omitempty"`
+}
+
+// ReleaseTargetMatcherConfig defines one release target visibility matcher.
+type ReleaseTargetMatcherConfig struct {
+	BaseNames      []string `mapstructure:"base_names" yaml:"base_names,omitempty"`
+	BaseChannels   []string `mapstructure:"base_channels" yaml:"base_channels,omitempty"`
+	MinBaseChannel string   `mapstructure:"min_base_channel" yaml:"min_base_channel,omitempty"`
+	Architectures  []string `mapstructure:"architectures" yaml:"architectures,omitempty"`
+}
+
+// ReleaseTargetProfileConfig defines include/exclude rules for release targets.
+type ReleaseTargetProfileConfig struct {
+	Include []ReleaseTargetMatcherConfig `mapstructure:"include" yaml:"include,omitempty"`
+	Exclude []ReleaseTargetMatcherConfig `mapstructure:"exclude" yaml:"exclude,omitempty"`
+}
+
+// ReleasesConfig holds frontend-side release presentation defaults.
+type ReleasesConfig struct {
+	DefaultTargetProfile string                                `mapstructure:"default_target_profile" yaml:"default_target_profile,omitempty"`
+	TargetProfiles       map[string]ReleaseTargetProfileConfig `mapstructure:"target_profiles" yaml:"target_profiles,omitempty"`
 }
 
 // ProjectConfig defines a project tracked across forges.
@@ -243,6 +267,7 @@ type Config struct {
 	Gerrit    GerritConfig    `mapstructure:"gerrit" yaml:"gerrit"`
 	Projects  []ProjectConfig `mapstructure:"projects" yaml:"projects"`
 	Build     BuildConfig     `mapstructure:"build" yaml:"build"`
+	Releases  ReleasesConfig  `mapstructure:"releases" yaml:"releases,omitempty"`
 	Packages  PackagesConfig  `mapstructure:"packages" yaml:"packages,omitempty"`
 	OTel      OTelConfig      `mapstructure:"otel" yaml:"otel,omitempty"`
 }
@@ -316,6 +341,19 @@ func (c *Config) Validate() error {
 		}
 		if !found {
 			return fmt.Errorf("launchpad: development_focus %q must be one of the declared series", c.Launchpad.DevelopmentFocus)
+		}
+	}
+	if c.Releases.DefaultTargetProfile != "" {
+		if _, ok := c.Releases.TargetProfiles[c.Releases.DefaultTargetProfile]; !ok {
+			return fmt.Errorf("releases.default_target_profile %q must match a configured releases.target_profiles entry", c.Releases.DefaultTargetProfile)
+		}
+	}
+	for name, profile := range c.Releases.TargetProfiles {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("releases.target_profiles cannot contain an empty profile name")
+		}
+		if err := validateReleaseTargetProfileConfig(fmt.Sprintf("releases.target_profiles.%s", name), profile); err != nil {
+			return err
 		}
 	}
 	for i, p := range c.Projects {
@@ -426,6 +464,16 @@ func (c *Config) Validate() error {
 					seenRisks[risk] = true
 				}
 			}
+			if p.Release.TargetProfile != "" {
+				if _, ok := c.Releases.TargetProfiles[p.Release.TargetProfile]; !ok {
+					return fmt.Errorf("projects[%d] (%s): release.target_profile %q must match a configured releases.target_profiles entry", i, p.Name, p.Release.TargetProfile)
+				}
+			}
+			if p.Release.TargetProfileOverrides != nil {
+				if err := validateReleaseTargetProfileConfig(fmt.Sprintf("projects[%d] (%s): release.target_profile_overrides", i, p.Name), *p.Release.TargetProfileOverrides); err != nil {
+					return err
+				}
+			}
 		}
 
 		if p.DevelopmentFocus != "" && len(p.Series) > 0 {
@@ -461,6 +509,55 @@ func (c *Config) Validate() error {
 		return err
 	}
 	return nil
+}
+
+func validateReleaseTargetProfileConfig(prefix string, profile ReleaseTargetProfileConfig) error {
+	for idx, matcher := range profile.Include {
+		if err := validateReleaseTargetMatcherConfig(fmt.Sprintf("%s.include[%d]", prefix, idx), matcher); err != nil {
+			return err
+		}
+	}
+	for idx, matcher := range profile.Exclude {
+		if err := validateReleaseTargetMatcherConfig(fmt.Sprintf("%s.exclude[%d]", prefix, idx), matcher); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateReleaseTargetMatcherConfig(prefix string, matcher ReleaseTargetMatcherConfig) error {
+	if len(matcher.BaseNames) == 0 && len(matcher.BaseChannels) == 0 && matcher.MinBaseChannel == "" && len(matcher.Architectures) == 0 {
+		return fmt.Errorf("%s must set at least one of base_names, base_channels, min_base_channel, or architectures", prefix)
+	}
+	if matcher.MinBaseChannel != "" {
+		if _, err := parseReleaseBaseChannelVersion(matcher.MinBaseChannel); err != nil {
+			return fmt.Errorf("%s.min_base_channel: %w", prefix, err)
+		}
+	}
+	return nil
+}
+
+func parseReleaseBaseChannelVersion(raw string) ([]int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("value cannot be empty")
+	}
+	parts := strings.Split(raw, ".")
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("invalid dotted numeric version %q", raw)
+	}
+	values := make([]int, 0, len(parts))
+	for _, part := range parts {
+		if part == "" {
+			return nil, fmt.Errorf("invalid dotted numeric version %q", raw)
+		}
+		value, err := strconv.Atoi(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid dotted numeric version %q", raw)
+		}
+		values = append(values, value)
+	}
+	return values, nil
 }
 
 func validateOTelConfig(cfg OTelConfig) error {

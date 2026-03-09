@@ -57,6 +57,7 @@ The following are implemented and should be treated as the current baseline:
 - shared action access catalog and runtime access mode plumbing for CLI, TUI, and future MCP surfaces
 - backend-neutral prepared-build contract using canonical `target_ref`, `repository_ref`, and `recipes` fields
 - narrower internal/app build/runtime factory helpers for recipe builders, repo managers, auth-flow stores, and operation stores
+- shared release target presentation/filtering for CLI and TUI, including base-aware revision formatting and config-driven visibility profiles
 - local daemon lifecycle commands and explicit runtime resolution order
 - Launchpad auth flows with durable server-side coordination
 - durable operations surface for async workflows
@@ -85,6 +86,7 @@ These are the main known gaps that still matter:
 
 - keep future frontends such as MCP on the same frontend/runtime seams now shared by CLI and TUI
 - keep the shared operation access catalog authoritative so future MCP surfaces can expose read-only actions by default and require explicit override for writes
+- keep release target filtering and target-aware release rendering in the shared frontend layer so CLI, TUI, and future MCP surfaces stay aligned
 
 ### TUI
 

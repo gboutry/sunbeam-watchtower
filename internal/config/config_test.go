@@ -745,3 +745,79 @@ func TestValidate_OTelSelfLiveSystemsRejected(t *testing.T) {
 		t.Fatal("Validate() expected error for self live_systems")
 	}
 }
+
+func TestValidate_ReleasesTargetProfiles(t *testing.T) {
+	cfg := &Config{
+		Releases: ReleasesConfig{
+			DefaultTargetProfile: "noble-and-newer",
+			TargetProfiles: map[string]ReleaseTargetProfileConfig{
+				"noble-and-newer": {
+					Include: []ReleaseTargetMatcherConfig{{
+						BaseNames:      []string{"ubuntu"},
+						MinBaseChannel: "24.04",
+					}},
+				},
+			},
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() should accept valid release target profiles: %v", err)
+	}
+}
+
+func TestValidate_ReleasesTargetProfileRejectsInvalidMinBaseChannel(t *testing.T) {
+	cfg := &Config{
+		Releases: ReleasesConfig{
+			TargetProfiles: map[string]ReleaseTargetProfileConfig{
+				"broken": {
+					Include: []ReleaseTargetMatcherConfig{{
+						MinBaseChannel: "noble",
+					}},
+				},
+			},
+		},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject invalid min_base_channel")
+	}
+}
+
+func TestValidate_ProjectReleaseTargetProfileMustExist(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "openstack",
+			ArtifactType: "snap",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			Release: &ProjectReleaseConfig{
+				TargetProfile: "missing",
+			},
+		}},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject unknown release.target_profile")
+	}
+}
+
+func TestValidate_ProjectReleaseTargetProfileOverrides(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "openstack",
+			ArtifactType: "snap",
+			Code:         CodeConfig{Forge: "github", Owner: "canonical", Project: "snap-openstack"},
+			Release: &ProjectReleaseConfig{
+				TargetProfileOverrides: &ReleaseTargetProfileConfig{
+					Exclude: []ReleaseTargetMatcherConfig{{
+						Architectures: []string{"s390x"},
+					}},
+				},
+			},
+		}},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() should accept release.target_profile_overrides without a named profile: %v", err)
+	}
+}

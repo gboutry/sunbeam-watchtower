@@ -328,7 +328,64 @@ Rules:
 - `release.skip_artifacts` excludes discovered artifacts that exist in a mono repo but are not meant to be published or tracked
 - branch channels are additive; Watchtower does not try to auto-discover arbitrary store branches as managed release lines
 
+### Release target visibility profiles
+
+Release tracking always stores and serves the full target matrix. Target filtering is a frontend-side presentation feature for `watchtower releases` and the TUI.
+
+Use top-level reusable profiles plus optional per-project defaults and overrides:
+
+```yaml
+releases:
+  default_target_profile: noble-and-newer
+  target_profiles:
+    noble-and-newer:
+      include:
+        - base_names: [ubuntu]
+          min_base_channel: "24.04"
+
+projects:
+  - name: openstack
+    artifact_type: charm
+    code:
+      forge: gerrit
+      host: https://review.opendev.org
+      project: openstack/sunbeam-charms
+    release:
+      target_profile: noble-and-newer
+      target_profile_overrides:
+        exclude:
+          - architectures: [s390x]
+```
+
+Rules:
+
+- `releases.default_target_profile` sets the default frontend filter when no project-specific or per-invocation profile is chosen
+- `releases.target_profiles` defines named include/exclude rules for release targets
+- `release.target_profile` selects the default named profile for one project
+- `release.target_profile_overrides` merges on top of the selected profile for that project
+- `min_base_channel` accepts dotted numeric version channels only, such as `22.04` or `24.04`
+- `--all-targets` bypasses all local filtering for that command or TUI session state
+- filtering affects rendered output only; server state and API payloads remain unchanged
+
 ## Commands
+
+### `watchtower releases`
+
+Inspect cached snap and charm release matrices with target-aware revision output.
+
+```bash
+# List cached release rows with target-qualified revisions
+watchtower releases list openstack
+
+# Filter locally to a named target profile
+watchtower releases list openstack --target-profile noble-and-newer
+
+# Show the full matrix for one artifact
+watchtower releases show openstack --type snap
+
+# Bypass local filtering and show every tracked target
+watchtower releases show openstack --type snap --all-targets
+```
 
 ### `watchtower packages`
 

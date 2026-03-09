@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 	"gopkg.in/yaml.v3"
@@ -621,34 +622,7 @@ func renderReleaseShow(w io.Writer, format string, styler *outputStyler, release
 }
 
 func formatReleaseTargets(targets []dto.ReleaseTargetSnapshot) string {
-	if len(targets) == 0 {
-		return "-"
-	}
-	parts := make([]string, 0, len(targets))
-	for _, target := range targets {
-		label := target.Architecture
-		if label == "" {
-			label = target.Base.Architecture
-		}
-		if label == "" {
-			label = "default"
-		}
-		revision := ""
-		if target.Revision > 0 {
-			revision = fmt.Sprintf("r%d", target.Revision)
-		}
-		version := target.Version
-		if version != "" && revision != "" {
-			parts = append(parts, fmt.Sprintf("%s:%s/%s", label, revision, version))
-		} else if revision != "" {
-			parts = append(parts, fmt.Sprintf("%s:%s", label, revision))
-		} else if version != "" {
-			parts = append(parts, fmt.Sprintf("%s:%s", label, version))
-		} else {
-			parts = append(parts, label)
-		}
-	}
-	return strings.Join(parts, ", ")
+	return frontend.FormatReleaseTargets(targets)
 }
 
 func formatReleaseResources(resources []dto.ReleaseResourceSnapshot) string {
