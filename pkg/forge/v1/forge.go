@@ -118,22 +118,58 @@ type Check struct {
 	URL   string     `json:"url" yaml:"url"`
 }
 
+// ReviewCommentKind classifies one review discussion entry.
+type ReviewCommentKind string
+
+const (
+	ReviewCommentGeneral ReviewCommentKind = "general"
+	ReviewCommentInline  ReviewCommentKind = "inline"
+	ReviewCommentSystem  ReviewCommentKind = "system"
+)
+
+// ReviewComment normalizes one review discussion entry across forges.
+type ReviewComment struct {
+	Kind      ReviewCommentKind `json:"kind" yaml:"kind"`
+	Author    string            `json:"author,omitempty" yaml:"author,omitempty"`
+	Body      string            `json:"body,omitempty" yaml:"body,omitempty"`
+	URL       string            `json:"url,omitempty" yaml:"url,omitempty"`
+	File      string            `json:"file,omitempty" yaml:"file,omitempty"`
+	Line      int               `json:"line,omitempty" yaml:"line,omitempty"`
+	CreatedAt time.Time         `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	UpdatedAt time.Time         `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+}
+
+// ReviewFile normalizes one changed file entry across forges.
+type ReviewFile struct {
+	Path         string `json:"path" yaml:"path"`
+	PreviousPath string `json:"previous_path,omitempty" yaml:"previous_path,omitempty"`
+	Status       string `json:"status,omitempty" yaml:"status,omitempty"`
+	Additions    int    `json:"additions,omitempty" yaml:"additions,omitempty"`
+	Deletions    int    `json:"deletions,omitempty" yaml:"deletions,omitempty"`
+	Patch        string `json:"patch,omitempty" yaml:"patch,omitempty"`
+	Binary       bool   `json:"binary,omitempty" yaml:"binary,omitempty"`
+	Truncated    bool   `json:"truncated,omitempty" yaml:"truncated,omitempty"`
+}
+
 // MergeRequest unifies GitHub PRs, Launchpad merge proposals, and Gerrit changes.
 type MergeRequest struct {
-	Forge        ForgeType   `json:"forge" yaml:"forge"`
-	Repo         string      `json:"repo" yaml:"repo"`
-	ID           string      `json:"id" yaml:"id"`
-	Title        string      `json:"title" yaml:"title"`
-	Description  string      `json:"description,omitempty" yaml:"description,omitempty"`
-	Author       string      `json:"author" yaml:"author"`
-	SourceBranch string      `json:"source_branch" yaml:"source_branch"`
-	TargetBranch string      `json:"target_branch" yaml:"target_branch"`
-	State        MergeState  `json:"state" yaml:"state"`
-	ReviewState  ReviewState `json:"review_state" yaml:"review_state"`
-	Checks       []Check     `json:"checks,omitempty" yaml:"checks,omitempty"`
-	URL          string      `json:"url" yaml:"url"`
-	CreatedAt    time.Time   `json:"created_at" yaml:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at" yaml:"updated_at"`
+	Forge        ForgeType       `json:"forge" yaml:"forge"`
+	Repo         string          `json:"repo" yaml:"repo"`
+	ID           string          `json:"id" yaml:"id"`
+	Title        string          `json:"title" yaml:"title"`
+	Description  string          `json:"description,omitempty" yaml:"description,omitempty"`
+	Author       string          `json:"author" yaml:"author"`
+	SourceBranch string          `json:"source_branch" yaml:"source_branch"`
+	TargetBranch string          `json:"target_branch" yaml:"target_branch"`
+	State        MergeState      `json:"state" yaml:"state"`
+	ReviewState  ReviewState     `json:"review_state" yaml:"review_state"`
+	Checks       []Check         `json:"checks,omitempty" yaml:"checks,omitempty"`
+	Comments     []ReviewComment `json:"comments,omitempty" yaml:"comments,omitempty"`
+	Files        []ReviewFile    `json:"files,omitempty" yaml:"files,omitempty"`
+	DiffText     string          `json:"diff_text,omitempty" yaml:"diff_text,omitempty"`
+	URL          string          `json:"url" yaml:"url"`
+	CreatedAt    time.Time       `json:"created_at" yaml:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at" yaml:"updated_at"`
 }
 
 // CommitMergeRequest annotates a commit with its associated merge request info.

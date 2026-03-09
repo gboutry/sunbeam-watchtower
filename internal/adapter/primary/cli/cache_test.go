@@ -53,3 +53,40 @@ func TestCacheSyncReleasesRendersCountsAndWarnings(t *testing.T) {
 		t.Fatalf("stderr = %q, want release skip warning", got)
 	}
 }
+
+func TestCacheSyncReviewsRendersCountsAndWarnings(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/cache/sync/reviews" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		_ = json.NewEncoder(w).Encode(client.CacheSyncReviewsResult{
+			ProjectsSynced:  1,
+			SummariesSynced: 5,
+			DetailsSynced:   3,
+			Warnings:        []string{"snap-openstack:#42: detail fetch failed"},
+		})
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &errOut,
+		Output: "table",
+		Client: client.NewClient(server.URL),
+		Logger: discardTestLogger(),
+	}
+
+	cmd := newCacheCmd(opts)
+	cmd.SetArgs([]string{"sync", "reviews"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "1 projects, 5 summaries, 3 details") {
+		t.Fatalf("stdout = %q, want counted review sync summary", got)
+	}
+	if got := errOut.String(); !strings.Contains(got, "warning: snap-openstack:#42") {
+		t.Fatalf("stderr = %q, want review warning", got)
+	}
+}

@@ -63,6 +63,7 @@ const (
 	ActionCacheSyncBugs         ActionID = "cache.sync.bugs"
 	ActionCacheSyncExcuses      ActionID = "cache.sync.excuses"
 	ActionCacheSyncReleases     ActionID = "cache.sync.releases"
+	ActionCacheSyncReviews      ActionID = "cache.sync.reviews"
 	ActionCacheClear            ActionID = "cache.clear"
 	ActionCommitLog             ActionID = "commit.log"
 	ActionCommitTrack           ActionID = "commit.track"
@@ -136,6 +137,7 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionCacheSyncBugs:         descriptor(ActionCacheSyncBugs, "cache", "cache", MutabilityWrite, LocalEffectRead, RuntimeEmbeddedOK, ExportPolicyAllowed, "Synchronize bug caches."),
 	ActionCacheSyncExcuses:      descriptor(ActionCacheSyncExcuses, "cache", "cache", MutabilityWrite, LocalEffectRead, RuntimeEmbeddedOK, ExportPolicyAllowed, "Synchronize excuses caches."),
 	ActionCacheSyncReleases:     descriptor(ActionCacheSyncReleases, "cache", "cache", MutabilityWrite, LocalEffectRead, RuntimeEmbeddedOK, ExportPolicyAllowed, "Synchronize release caches."),
+	ActionCacheSyncReviews:      descriptor(ActionCacheSyncReviews, "cache", "cache", MutabilityWrite, LocalEffectRead, RuntimeEmbeddedOK, ExportPolicyAllowed, "Synchronize review caches."),
 	ActionCacheClear:            descriptor(ActionCacheClear, "cache", "cache", MutabilityWrite, LocalEffectWrite, RuntimeEmbeddedOK, ExportPolicyAllowed, "Clear cached data."),
 	ActionCommitLog:             descriptor(ActionCommitLog, "commit", "commit", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List commits."),
 	ActionCommitTrack:           descriptor(ActionCommitTrack, "commit", "commit", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Track commits related to a bug."),

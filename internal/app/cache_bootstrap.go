@@ -14,6 +14,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/distrocache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/excusescache"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/gitcache"
+	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/reviewcache"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
@@ -78,6 +79,19 @@ func (a *App) BugCache() (*bugcache.Cache, error) {
 		a.bugCache, a.bugCacheErr = bugcache.NewCache(path, a.Logger)
 	})
 	return a.bugCache, a.bugCacheErr
+}
+
+// ReviewCache returns a lazy-initialized review cache singleton.
+func (a *App) ReviewCache() (*reviewcache.Cache, error) {
+	a.reviewCacheOnce.Do(func() {
+		path, err := cacheSubdir("reviews")
+		if err != nil {
+			a.reviewCacheErr = err
+			return
+		}
+		a.reviewCache, a.reviewCacheErr = reviewcache.NewCache(path)
+	})
+	return a.reviewCache, a.reviewCacheErr
 }
 
 // ExcusesCache returns a lazy-initialized excuses cache singleton.

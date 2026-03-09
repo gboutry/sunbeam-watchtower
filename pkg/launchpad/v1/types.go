@@ -268,6 +268,25 @@ type MergeProposal struct {
 	PreviewDiffsCollectionLink string `json:"preview_diffs_collection_link"`
 }
 
+// CodeReviewComment links one merge proposal discussion entry to a message.
+type CodeReviewComment struct {
+	SelfLink       string `json:"self_link"`
+	WebLink        string `json:"web_link"`
+	Content        string `json:"content"`
+	AuthorLink     string `json:"author_link"`
+	DateCreated    *Time  `json:"date_created,omitempty"`
+	DateLastEdited *Time  `json:"date_last_edited,omitempty"`
+	Subject        string `json:"subject"`
+}
+
+// PreviewDiff is Launchpad's rendered merge proposal diff.
+type PreviewDiff struct {
+	SelfLink       string `json:"self_link"`
+	DiffTextLink   string `json:"diff_text_link"`
+	Diffstat       string `json:"diffstat"`
+	DiffLinesCount int    `json:"diff_lines_count"`
+}
+
 // Archive represents a Launchpad archive (PPA or distribution archive).
 type Archive struct {
 	Name                              string `json:"name"`

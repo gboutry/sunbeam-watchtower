@@ -5,8 +5,12 @@ package v1
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/andygrunwald/go-gerrit"
 )
@@ -68,6 +72,23 @@ func (g *GerritForge) GetMergeRequest(ctx context.Context, repo string, id strin
 	}
 
 	mr := g.changeToMergeRequest(repo, change)
+	revisionID := change.CurrentRevision
+	if revisionID == "" && len(change.Revisions) == 1 {
+		for sha := range change.Revisions {
+			revisionID = sha
+		}
+	}
+	if comments, err := g.listChangeComments(ctx, id, change); err == nil {
+		mr.Comments = comments
+	}
+	if revisionID != "" {
+		if files, err := g.listRevisionFiles(ctx, id, revisionID); err == nil {
+			mr.Files = files
+		}
+		if diffText, err := g.getRevisionPatch(ctx, id, revisionID); err == nil {
+			mr.DiffText = diffText
+		}
+	}
 	return &mr, nil
 }
 
@@ -215,6 +236,99 @@ func gerritReviewState(c *gerrit.ChangeInfo) ReviewState {
 	}
 
 	return ReviewStatePending
+}
+
+func (g *GerritForge) listChangeComments(ctx context.Context, changeID string, change *gerrit.ChangeInfo) ([]ReviewComment, error) {
+	var out []ReviewComment
+	for _, message := range change.Messages {
+		body := strings.TrimSpace(message.Message)
+		if body == "" {
+			continue
+		}
+		out = append(out, ReviewComment{
+			Kind:      ReviewCommentSystem,
+			Author:    gerritOwnerName(&message.Author),
+			Body:      body,
+			CreatedAt: message.Date.Time,
+			UpdatedAt: message.Date.Time,
+		})
+	}
+	commentMap, _, err := g.client.Changes.ListChangeComments(ctx, changeID)
+	if err != nil {
+		sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+		return out, err
+	}
+	for path, comments := range *commentMap {
+		for _, comment := range comments {
+			out = append(out, ReviewComment{
+				Kind:      ReviewCommentInline,
+				Author:    gerritOwnerName(&comment.Author),
+				Body:      strings.TrimSpace(comment.Message),
+				File:      firstNonEmpty(comment.Path, path),
+				Line:      comment.Line,
+				CreatedAt: gerritTimestamp(comment.Updated),
+				UpdatedAt: gerritTimestamp(comment.Updated),
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].Body < out[j].Body
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (g *GerritForge) listRevisionFiles(ctx context.Context, changeID, revisionID string) ([]ReviewFile, error) {
+	files, _, err := g.client.Changes.ListFiles(ctx, changeID, revisionID, &gerrit.FilesOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReviewFile, 0, len(files))
+	for path, file := range files {
+		if path == "/COMMIT_MSG" {
+			continue
+		}
+		out = append(out, ReviewFile{
+			Path:         path,
+			PreviousPath: file.OldPath,
+			Status:       file.Status,
+			Additions:    file.LinesInserted,
+			Deletions:    file.LinesDeleted,
+			Binary:       file.Binary,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out, nil
+}
+
+func (g *GerritForge) getRevisionPatch(ctx context.Context, changeID, revisionID string) (string, error) {
+	encoded, _, err := g.client.Changes.GetPatch(ctx, changeID, revisionID, &gerrit.PatchOptions{})
+	if err != nil || encoded == nil || *encoded == "" {
+		return "", err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(*encoded)
+	if err != nil {
+		return "", err
+	}
+	return string(decoded), nil
+}
+
+func gerritTimestamp(ts *gerrit.Timestamp) time.Time {
+	if ts == nil {
+		return time.Time{}
+	}
+	return ts.Time
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // gerritStatusQuery converts our MergeState to a Gerrit query status filter.

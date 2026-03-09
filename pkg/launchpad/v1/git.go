@@ -97,6 +97,42 @@ func (c *Client) GetMergeProposal(ctx context.Context, selfLink string) (MergePr
 	return mp, nil
 }
 
+// GetMergeProposalComments fetches all discussion comments for a merge proposal.
+func (c *Client) GetMergeProposalComments(ctx context.Context, collectionLink string) ([]CodeReviewComment, error) {
+	if collectionLink == "" {
+		return nil, nil
+	}
+	comments, err := GetAllPages[CodeReviewComment](ctx, c, collectionLink)
+	if err != nil {
+		return nil, fmt.Errorf("fetching merge proposal comments: %w", err)
+	}
+	return comments, nil
+}
+
+// GetPreviewDiff fetches one merge proposal preview diff descriptor.
+func (c *Client) GetPreviewDiff(ctx context.Context, selfLink string) (PreviewDiff, error) {
+	var diff PreviewDiff
+	if selfLink == "" {
+		return diff, nil
+	}
+	if err := c.GetJSON(ctx, selfLink, &diff); err != nil {
+		return PreviewDiff{}, fmt.Errorf("fetching preview diff: %w", err)
+	}
+	return diff, nil
+}
+
+// GetPreviewDiffText fetches the plain text content of a preview diff.
+func (c *Client) GetPreviewDiffText(ctx context.Context, diffTextLink string) (string, error) {
+	if diffTextLink == "" {
+		return "", nil
+	}
+	data, err := c.Get(ctx, diffTextLink)
+	if err != nil {
+		return "", fmt.Errorf("fetching preview diff text: %w", err)
+	}
+	return string(data), nil
+}
+
 // GetDefaultRepository returns the default git repository for a Launchpad project.
 // It calls the getDefaultRepository operation on the /+git endpoint.
 func (c *Client) GetDefaultRepository(ctx context.Context, projectSelfLink string) (GitRepository, error) {

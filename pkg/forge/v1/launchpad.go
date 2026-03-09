@@ -6,6 +6,9 @@ package v1
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
+	"time"
 
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
@@ -52,6 +55,30 @@ func (l *LaunchpadForge) GetMergeRequest(ctx context.Context, repo string, id st
 	}
 
 	mr := lpMPToMergeRequest(repo, &mp)
+	if comments, err := l.client.GetMergeProposalComments(ctx, mp.AllCommentsCollectionLink); err == nil {
+		for _, comment := range comments {
+			body := strings.TrimSpace(comment.Content)
+			if body == "" {
+				continue
+			}
+			mr.Comments = append(mr.Comments, ReviewComment{
+				Kind:      ReviewCommentGeneral,
+				Author:    lpExtractName(comment.AuthorLink),
+				Body:      body,
+				URL:       comment.WebLink,
+				CreatedAt: lpTime(comment.DateCreated),
+				UpdatedAt: lpTime(comment.DateLastEdited),
+			})
+		}
+	}
+	if diff, err := l.client.GetPreviewDiff(ctx, mp.PreviewDiffLink); err == nil {
+		if diffText, err := l.client.GetPreviewDiffText(ctx, diff.DiffTextLink); err == nil {
+			mr.DiffText = diffText
+		}
+	}
+	sort.Slice(mr.Comments, func(i, j int) bool {
+		return mr.Comments[i].CreatedAt.Before(mr.Comments[j].CreatedAt)
+	})
 	return &mr, nil
 }
 
@@ -156,6 +183,13 @@ func lpExtractName(link string) string {
 		}
 	}
 	return link
+}
+
+func lpTime(value *lp.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return value.Time
 }
 
 // lpMergeState converts a LP queue_status to our MergeState.

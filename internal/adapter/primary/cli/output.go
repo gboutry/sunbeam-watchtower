@@ -109,6 +109,59 @@ func renderMergeRequestDetailTable(w io.Writer, styler *outputStyler, mr *forge.
 		}
 		fmt.Fprintln(w, mr.Description)
 	}
+	if len(mr.Comments) > 0 {
+		fmt.Fprintln(w)
+		if err := writeSectionTitle(w, styler, "Comments:"); err != nil {
+			return err
+		}
+		for _, comment := range mr.Comments {
+			anchor := comment.File
+			if comment.Line > 0 {
+				anchor = fmt.Sprintf("%s:%d", emptyDash(comment.File), comment.Line)
+			}
+			if anchor == "" {
+				anchor = "-"
+			}
+			fmt.Fprintf(w, "  [%s] %s  %s  %s\n", comment.Kind, emptyDash(comment.Author), emptyDash(anchor), formatTimestamp(comment.CreatedAt))
+			if comment.Body != "" {
+				fmt.Fprintf(w, "    %s\n", strings.ReplaceAll(comment.Body, "\n", "\n    "))
+			}
+		}
+	}
+	if len(mr.Files) > 0 {
+		fmt.Fprintln(w)
+		if err := writeSectionTitle(w, styler, "Files:"); err != nil {
+			return err
+		}
+		headers := []string{"PATH", "STATUS", "+", "-", "PATCH"}
+		rows := make([][]string, 0, len(mr.Files))
+		for _, file := range mr.Files {
+			patch := file.Patch
+			if patch == "" {
+				switch {
+				case file.Binary:
+					patch = "(binary)"
+				case file.Truncated:
+					patch = "(truncated)"
+				default:
+					patch = "-"
+				}
+			} else if len(patch) > 50 {
+				patch = patch[:47] + "..."
+			}
+			rows = append(rows, []string{file.Path, emptyDash(file.Status), fmt.Sprintf("%d", file.Additions), fmt.Sprintf("%d", file.Deletions), patch})
+		}
+		if err := renderStyledTable(w, styler, headers, rows); err != nil {
+			return err
+		}
+	}
+	if mr.DiffText != "" {
+		fmt.Fprintln(w)
+		if err := writeSectionTitle(w, styler, "Diff:"); err != nil {
+			return err
+		}
+		fmt.Fprintln(w, mr.DiffText)
+	}
 	return nil
 }
 
@@ -681,6 +734,11 @@ type cacheFullStatus struct {
 		Entries   []dto.ReleaseCacheStatus `json:"entries" yaml:"entries"`
 		Error     string                   `json:"error,omitempty" yaml:"error,omitempty"`
 	} `json:"releases" yaml:"releases"`
+	Reviews struct {
+		Directory string                  `json:"directory" yaml:"directory"`
+		Entries   []dto.ReviewCacheStatus `json:"entries" yaml:"entries"`
+		Error     string                  `json:"error,omitempty" yaml:"error,omitempty"`
+	} `json:"reviews" yaml:"reviews"`
 }
 
 func renderCacheFullStatus(w io.Writer, format string, styler *outputStyler, status *cacheFullStatus) error {
@@ -814,6 +872,38 @@ func renderCacheFullStatusTable(w io.Writer, styler *outputStyler, status *cache
 				fmt.Sprintf("%d", entry.TrackCount),
 				fmt.Sprintf("%d", entry.ChannelCount),
 				lastUpdated,
+			})
+		}
+		if err := renderStyledTable(w, styler, headers, rows); err != nil {
+			return err
+		}
+	}
+
+	fmt.Fprintln(w)
+	if err := writeSectionTitle(w, styler, "=== Reviews ==="); err != nil {
+		return err
+	}
+	if status.Reviews.Error != "" {
+		fmt.Fprintf(w, "  %s\n", styler.Error("(unavailable: "+status.Reviews.Error+")"))
+	} else if len(status.Reviews.Entries) == 0 {
+		fmt.Fprintln(w, " ", styler.Placeholder("(none)"))
+	} else {
+		if err := writeKeyValue(w, styler, "directory", status.Reviews.Directory); err != nil {
+			return err
+		}
+		headers := []string{"PROJECT", "FORGE", "SUMMARIES", "DETAILS", "LAST SYNC"}
+		rows := make([][]string, 0, len(status.Reviews.Entries))
+		for _, entry := range status.Reviews.Entries {
+			lastSync := "never"
+			if !entry.LastSync.IsZero() {
+				lastSync = entry.LastSync.Format("2006-01-02 15:04:05")
+			}
+			rows = append(rows, []string{
+				entry.Project,
+				entry.ForgeType,
+				fmt.Sprintf("%d", entry.SummaryCount),
+				fmt.Sprintf("%d", entry.DetailCount),
+				lastSync,
 			})
 		}
 		if err := renderStyledTable(w, styler, headers, rows); err != nil {
