@@ -62,6 +62,9 @@ func Login(consumerKey string, promptFn func(authorizeURL string) error, logger 
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	if promptFn == nil {
+		return nil, nil, fmt.Errorf("promptFn is required")
+	}
 
 	logger.Info("starting Launchpad OAuth flow")
 
@@ -72,12 +75,8 @@ func Login(consumerKey string, promptFn func(authorizeURL string) error, logger 
 
 	authURL := rt.AuthorizeURL()
 
-	if promptFn != nil {
-		if err := promptFn(authURL); err != nil {
-			return nil, nil, fmt.Errorf("user prompt: %w", err)
-		}
-	} else {
-		return nil, nil, fmt.Errorf("promptFn is required")
+	if err := promptFn(authURL); err != nil {
+		return nil, nil, fmt.Errorf("user prompt: %w", err)
 	}
 
 	creds, err := ExchangeAccessToken(consumerKey, rt)

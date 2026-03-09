@@ -42,7 +42,9 @@ func jsonResponse(status int, body string) *http.Response {
 }
 
 func newAuthTestApp() *app.App {
-	return app.NewApp(&config.Config{}, discardLogger())
+	return app.NewAppWithOptions(&config.Config{}, discardLogger(), app.Options{
+		RuntimeMode: app.RuntimeModeEphemeral,
+	})
 }
 
 func postJSON(t *testing.T, baseURL, path string, body any) *http.Response {
@@ -75,7 +77,13 @@ func TestAuthStatusEndpoint_NotAuthenticated(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	RegisterAuthAPI(srv.API(), newAuthTestApp())
+	application := newAuthTestApp()
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+	RegisterAuthAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/auth/status")
 	if err != nil {
@@ -116,7 +124,13 @@ func TestAuthLaunchpadBeginAndFinalizeEndpoints(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	RegisterAuthAPI(srv.API(), newAuthTestApp())
+	application := newAuthTestApp()
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+	RegisterAuthAPI(srv.API(), application)
 
 	beginResp := postJSON(t, base, "/api/v1/auth/launchpad/begin", nil)
 	defer beginResp.Body.Close()
@@ -164,7 +178,13 @@ func TestAuthLaunchpadFinalizeEndpoint_UnknownFlow(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	RegisterAuthAPI(srv.API(), newAuthTestApp())
+	application := newAuthTestApp()
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+	RegisterAuthAPI(srv.API(), application)
 
 	resp := postJSON(t, base, "/api/v1/auth/launchpad/finalize", map[string]string{"flow_id": "missing"})
 	defer resp.Body.Close()
@@ -182,7 +202,13 @@ func TestAuthLaunchpadLogoutEndpoint_EnvironmentCredentials(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	RegisterAuthAPI(srv.API(), newAuthTestApp())
+	application := newAuthTestApp()
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+	RegisterAuthAPI(srv.API(), application)
 
 	resp := postJSON(t, base, "/api/v1/auth/launchpad/logout", nil)
 	defer resp.Body.Close()

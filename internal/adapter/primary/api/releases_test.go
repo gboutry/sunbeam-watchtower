@@ -11,14 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
 func TestReleasesListAndShowEndpoints(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	cache, err := application.ReleaseCache()
 	if err != nil {
 		t.Fatalf("ReleaseCache() error = %v", err)
@@ -65,7 +64,7 @@ func TestReleasesListAndShowEndpoints(t *testing.T) {
 
 func TestReleasesShowEndpointRequiresTypeWhenNameMatchesMultipleArtifactTypes(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	cache, err := application.ReleaseCache()
 	if err != nil {
 		t.Fatalf("ReleaseCache() error = %v", err)

@@ -5,10 +5,12 @@ package gitcache
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,64 +19,102 @@ import (
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
-// setupTestRepo creates a temporary bare repo with some commits and returns its URL.
+var (
+	testRepoOnce sync.Once
+	testRepoPath string
+	errTestRepo  error
+)
+
+// setupTestRepo creates a package-shared bare repo fixture with some commits.
 func setupTestRepo(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	workDir := filepath.Join(dir, "work")
-	bareDir := filepath.Join(dir, "bare.git")
+	testRepoOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "watchtower-gitcache-fixture-*")
+		if err != nil {
+			errTestRepo = err
+			return
+		}
+		workDir := filepath.Join(dir, "work")
+		bareDir := filepath.Join(dir, "bare.git")
 
-	// Create a working repo and add commits.
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Dir = workDir
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=Test Author",
-			"GIT_AUTHOR_EMAIL=test@example.com",
-			"GIT_COMMITTER_NAME=Test Author",
-			"GIT_COMMITTER_EMAIL=test@example.com",
-		)
+		run := func(args ...string) error {
+			cmd := exec.Command(args[0], args[1:]...)
+			cmd.Dir = workDir
+			cmd.Env = append(os.Environ(),
+				"GIT_AUTHOR_NAME=Test Author",
+				"GIT_AUTHOR_EMAIL=test@example.com",
+				"GIT_COMMITTER_NAME=Test Author",
+				"GIT_COMMITTER_EMAIL=test@example.com",
+			)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				return fmt.Errorf("command %v failed: %w\n%s", args, err, out)
+			}
+			return nil
+		}
+
+		if err := os.MkdirAll(workDir, 0o755); err != nil {
+			errTestRepo = err
+			return
+		}
+
+		if err := run("git", "init", "-b", "main"); err != nil {
+			errTestRepo = err
+			return
+		}
+		if err := run("git", "config", "user.email", "test@example.com"); err != nil {
+			errTestRepo = err
+			return
+		}
+		if err := run("git", "config", "user.name", "Test Author"); err != nil {
+			errTestRepo = err
+			return
+		}
+
+		if err := os.WriteFile(filepath.Join(workDir, "file1.txt"), []byte("hello"), 0o644); err != nil {
+			errTestRepo = err
+			return
+		}
+		if err := run("git", "add", "file1.txt"); err != nil {
+			errTestRepo = err
+			return
+		}
+		if err := run("git", "commit", "-m", "initial commit\n\nLP: #12345"); err != nil {
+			errTestRepo = err
+			return
+		}
+
+		if err := os.WriteFile(filepath.Join(workDir, "file2.txt"), []byte("world"), 0o644); err != nil {
+			errTestRepo = err
+			return
+		}
+		if err := run("git", "add", "file2.txt"); err != nil {
+			errTestRepo = err
+			return
+		}
+		if err := run("git", "commit", "-m", "second commit\n\nCloses-Bug: #67890"); err != nil {
+			errTestRepo = err
+			return
+		}
+
+		cmd := exec.Command("git", "clone", "--bare", workDir, bareDir)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Fatalf("command %v failed: %v\n%s", args, err, out)
+			errTestRepo = fmt.Errorf("bare clone failed: %w\n%s", err, out)
+			return
 		}
+
+		testRepoPath = bareDir
+	})
+	if errTestRepo != nil {
+		t.Fatalf("setupTestRepo() error: %v", errTestRepo)
 	}
-
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	run("git", "init", "-b", "main")
-	run("git", "config", "user.email", "test@example.com")
-	run("git", "config", "user.name", "Test Author")
-
-	// First commit.
-	if err := os.WriteFile(filepath.Join(workDir, "file1.txt"), []byte("hello"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	run("git", "add", "file1.txt")
-	run("git", "commit", "-m", "initial commit\n\nLP: #12345")
-
-	// Second commit.
-	if err := os.WriteFile(filepath.Join(workDir, "file2.txt"), []byte("world"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	run("git", "add", "file2.txt")
-	run("git", "commit", "-m", "second commit\n\nCloses-Bug: #67890")
-
-	// Clone to bare.
-	cmd := exec.Command("git", "clone", "--bare", workDir, bareDir)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("bare clone failed: %v\n%s", err, out)
-	}
-
-	return bareDir
+	return testRepoPath
 }
 
 func TestCache_EnsureRepo_CloneAndList(t *testing.T) {
+	t.Parallel()
 	bareRepo := setupTestRepo(t)
 	cacheDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -127,6 +167,7 @@ func TestCache_EnsureRepo_CloneAndList(t *testing.T) {
 }
 
 func TestCache_EnsureRepo_FetchExisting(t *testing.T) {
+	t.Parallel()
 	bareRepo := setupTestRepo(t)
 	cacheDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -152,6 +193,7 @@ func TestCache_EnsureRepo_FetchExisting(t *testing.T) {
 }
 
 func TestCache_ListCommits_SinceFilter(t *testing.T) {
+	t.Parallel()
 	bareRepo := setupTestRepo(t)
 	cacheDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -179,6 +221,7 @@ func TestCache_ListCommits_SinceFilter(t *testing.T) {
 }
 
 func TestCache_Remove(t *testing.T) {
+	t.Parallel()
 	bareRepo := setupTestRepo(t)
 	cacheDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -202,6 +245,7 @@ func TestCache_Remove(t *testing.T) {
 }
 
 func TestCache_RemoveAll(t *testing.T) {
+	t.Parallel()
 	bareRepo := setupTestRepo(t)
 	cacheDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -224,6 +268,7 @@ func TestCache_RemoveAll(t *testing.T) {
 }
 
 func TestCache_StoreMRMetadata_RoundTrip(t *testing.T) {
+	t.Parallel()
 	bareRepo := setupTestRepo(t)
 	cacheDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -265,6 +310,7 @@ func TestCache_StoreMRMetadata_RoundTrip(t *testing.T) {
 }
 
 func TestCache_LoadMRMetadata_NoFile(t *testing.T) {
+	t.Parallel()
 	bareRepo := setupTestRepo(t)
 	cacheDir := t.TempDir()
 
@@ -287,6 +333,7 @@ func TestCache_LoadMRMetadata_NoFile(t *testing.T) {
 }
 
 func TestCache_ListMRCommits(t *testing.T) {
+	t.Parallel()
 	bareRepo := setupTestRepo(t)
 	cacheDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -340,6 +387,7 @@ func TestCache_ListMRCommits(t *testing.T) {
 }
 
 func TestCache_repoPath(t *testing.T) {
+	t.Parallel()
 	cache := NewCache("/tmp/cache/repos", nil)
 
 	tests := []struct {

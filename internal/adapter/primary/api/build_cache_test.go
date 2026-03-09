@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 )
 
@@ -18,7 +17,7 @@ func TestBuildsList_EmptyConfigReturnsEmptyList(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterBuildsAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/builds")
@@ -46,7 +45,7 @@ func TestBuildsTrigger_InvalidTimeoutReturns422(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterBuildsAPI(srv.API(), application)
 
 	payload := []byte(`{"project":"demo","timeout":"definitely-not-a-duration"}`)
@@ -73,7 +72,7 @@ func TestCacheSyncExcuses_InvalidTrackerReturns400(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterCacheAPI(srv.API(), application)
 
 	payload := []byte(`{"trackers":["not-a-tracker"]}`)
@@ -94,7 +93,7 @@ func TestCacheStatus_IncludesExcusesSection(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{}, discardLogger())
+	application := newEphemeralTestApp(t, &config.Config{})
 	RegisterCacheAPI(srv.API(), application)
 
 	resp, err := http.Get(base + "/api/v1/cache/status")
@@ -132,13 +131,13 @@ func TestProjectsSync_AuthRequiredReturns422(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())
 
-	application := app.NewApp(&config.Config{
+	application := newEphemeralTestApp(t, &config.Config{
 		Projects: []config.ProjectConfig{{
 			Name: "demo",
 			Code: config.CodeConfig{Forge: "github", Owner: "canonical", Project: "demo"},
 			Bugs: []config.BugTrackerConfig{{Forge: "launchpad", Project: "demo-lp"}},
 		}},
-	}, discardLogger())
+	})
 	RegisterProjectsAPI(srv.API(), application)
 
 	resp, err := http.Post(base+"/api/v1/projects/sync", "application/json", bytes.NewReader([]byte(`{}`)))
