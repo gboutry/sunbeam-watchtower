@@ -36,7 +36,7 @@ func Run(ctx context.Context, opts Options) error {
 		Verbose:        opts.Verbose,
 		LogWriter:      logs,
 		ExecutablePath: opts.ExecutablePath,
-		TargetPolicy:   runtimeadapter.TargetPolicyPreferEmbedded,
+		TargetPolicy:   runtimeadapter.TargetPolicyPreferExistingDaemon,
 		AccessMode:     runtimeadapter.AccessModeFull,
 	})
 	if err != nil {

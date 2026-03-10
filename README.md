@@ -127,7 +127,7 @@ The shared runtime policies are:
 
 - CLI durable workflows use `require_persistent`
 - CLI ordinary API commands use `prefer_existing_daemon`
-- TUI startup uses `prefer_embedded` and upgrades interactively before durable actions
+- TUI startup uses `prefer_existing_daemon`, reuses the local persistent daemon when one is already running, and otherwise falls back to an embedded session that can still upgrade interactively before durable actions
 
 Stateless queries and one-shot commands can still run against the embedded server when no persistent target is configured.
 
