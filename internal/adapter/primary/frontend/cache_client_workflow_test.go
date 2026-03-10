@@ -32,15 +32,15 @@ func TestCacheClientWorkflowSyncGit(t *testing.T) {
 	defer ts.Close()
 
 	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
-	got, err := workflow.SyncGit(context.Background(), CacheSyncGitRequest{Project: "keystone"})
+	got, err := workflow.SyncGit(context.Background(), CacheSyncGitRequest{Projects: []string{"keystone", "glance"}})
 	if err != nil {
 		t.Fatalf("SyncGit() error = %v", err)
 	}
 	if got.Synced != 2 || len(got.Warnings) != 1 || got.Warnings[0] != "partial" {
 		t.Fatalf("SyncGit() = %+v, want synced result", got)
 	}
-	if gotBody.Project != "keystone" {
-		t.Fatalf("request body = %+v, want project keystone", gotBody)
+	if len(gotBody.Projects) != 2 || gotBody.Projects[0] != "keystone" || gotBody.Projects[1] != "glance" {
+		t.Fatalf("request body = %+v, want projects keystone/glance", gotBody)
 	}
 }
 
@@ -78,6 +78,33 @@ func TestCacheClientWorkflowSyncPackagesIndex(t *testing.T) {
 	}
 }
 
+func TestCacheClientWorkflowSyncBugs(t *testing.T) {
+	var gotBody client.CacheSyncBugsOptions
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/cache/sync/bugs" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(client.CacheSyncBugsResult{Synced: 3})
+	}))
+	defer ts.Close()
+
+	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
+	got, err := workflow.SyncBugs(context.Background(), CacheSyncBugsRequest{Projects: []string{"a", "b"}})
+	if err != nil {
+		t.Fatalf("SyncBugs() error = %v", err)
+	}
+	if got.Synced != 3 {
+		t.Fatalf("SyncBugs() = %+v, want synced result", got)
+	}
+	if len(gotBody.Projects) != 2 || gotBody.Projects[0] != "a" || gotBody.Projects[1] != "b" {
+		t.Fatalf("request body = %+v, want projects a/b", gotBody)
+	}
+}
+
 func TestCacheClientWorkflowClearExcuses(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/cache/excuses" {
@@ -96,6 +123,27 @@ func TestCacheClientWorkflowClearExcuses(t *testing.T) {
 		Trackers: []string{"ubuntu-devel", "ubuntu-updates"},
 	}); err != nil {
 		t.Fatalf("ClearExcuses() error = %v", err)
+	}
+}
+
+func TestCacheClientWorkflowClearGitWithMultipleProjects(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/cache/git" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if got := r.URL.Query()["project"]; len(got) != 2 || got[0] != "keystone" || got[1] != "glance" {
+			t.Fatalf("project query = %+v, want both projects", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
+	if err := workflow.Clear(context.Background(), CacheClearRequest{
+		Type:     "git",
+		Projects: []string{"keystone", "glance"},
+	}); err != nil {
+		t.Fatalf("ClearGit() error = %v", err)
 	}
 }
 
@@ -201,14 +249,14 @@ func TestCacheClientWorkflowSyncReviews(t *testing.T) {
 
 	workflow := NewCacheClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
 	got, err := workflow.SyncReviews(context.Background(), CacheSyncReviewsRequest{
-		Project: "snap-openstack",
-		Since:   "2025-01-01",
+		Projects: []string{"snap-openstack", "sunbeam-charms"},
+		Since:    "2025-01-01",
 	})
 	if err != nil {
 		t.Fatalf("SyncReviews() error = %v", err)
 	}
-	if gotBody.Project != "snap-openstack" || gotBody.Since != "2025-01-01T00:00:00Z" {
-		t.Fatalf("request body = %+v, want project and resolved since", gotBody)
+	if len(gotBody.Projects) != 2 || gotBody.Projects[0] != "snap-openstack" || gotBody.Projects[1] != "sunbeam-charms" || gotBody.Since != "2025-01-01T00:00:00Z" {
+		t.Fatalf("request body = %+v, want projects and resolved since", gotBody)
 	}
 	if got.ProjectsSynced != 1 || got.SummariesSynced != 5 || got.DetailsSynced != 3 || len(got.Warnings) != 1 {
 		t.Fatalf("SyncReviews() = %+v, want counted result", got)

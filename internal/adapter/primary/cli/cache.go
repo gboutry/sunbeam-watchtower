@@ -47,7 +47,7 @@ func newCacheCmd(opts *Options) *cobra.Command {
 }
 
 func newCacheSyncCmd(opts *Options) *cobra.Command {
-	var project string
+	var projects []string
 	var distros, releases, backports []string
 	var trackers []string
 	var since string
@@ -73,7 +73,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeGit) {
 				fmt.Fprintf(progressOut, "%s git caches...\n", styler.Action("syncing"))
-				result, err := workflow.SyncGit(cmd.Context(), frontend.CacheSyncGitRequest{Project: project})
+				result, err := workflow.SyncGit(cmd.Context(), frontend.CacheSyncGitRequest{Projects: projects})
 				if err != nil {
 					return err
 				}
@@ -108,7 +108,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeBugs) {
 				fmt.Fprintf(progressOut, "%s bug caches...\n", styler.Action("syncing"))
-				result, err := workflow.SyncBugs(cmd.Context(), frontend.CacheSyncBugsRequest{Project: project})
+				result, err := workflow.SyncBugs(cmd.Context(), frontend.CacheSyncBugsRequest{Projects: projects})
 				if err != nil {
 					return err
 				}
@@ -141,7 +141,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeReviews) {
 				fmt.Fprintf(progressOut, "%s review caches...\n", styler.Action("syncing"))
-				result, err := workflow.SyncReviews(cmd.Context(), frontend.CacheSyncReviewsRequest{Project: project, Since: since})
+				result, err := workflow.SyncReviews(cmd.Context(), frontend.CacheSyncReviewsRequest{Projects: projects, Since: since})
 				if err != nil {
 					return err
 				}
@@ -158,7 +158,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 		},
 	}, "cache.sync")
 
-	cmd.Flags().StringVar(&project, "project", "", "sync only this project (git only)")
+	cmd.Flags().StringSliceVar(&projects, "project", nil, "sync only these projects (repeat flag; git/bugs/reviews only)")
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to update (packages-index only, default: all configured)")
 	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to sync (packages-index only, default: all configured)")
 	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to sync (packages-index only, default: all)")
@@ -169,7 +169,7 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 }
 
 func newCacheClearCmd(opts *Options) *cobra.Command {
-	var project string
+	var projects []string
 	var trackers []string
 
 	cmd := withActionID(&cobra.Command{
@@ -192,7 +192,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeGit) {
 				fmt.Fprintf(progressOut, "%s git cache...\n", styler.Action("clearing"))
-				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "git", Project: project}); err != nil {
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "git", Projects: projects}); err != nil {
 					return err
 				}
 				fmt.Fprintf(progressOut, "git cache %s.\n", styler.Action("cleared"))
@@ -216,7 +216,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeBugs) {
 				fmt.Fprintf(progressOut, "%s bug cache...\n", styler.Action("clearing"))
-				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "bugs", Project: project}); err != nil {
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "bugs", Projects: projects}); err != nil {
 					return err
 				}
 				fmt.Fprintf(progressOut, "bug cache %s.\n", styler.Action("cleared"))
@@ -240,7 +240,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 
 			if wantCacheType(args, cacheTypeReviews) {
 				fmt.Fprintf(progressOut, "%s review cache...\n", styler.Action("clearing"))
-				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "reviews", Project: project}); err != nil {
+				if err := workflow.Clear(cmd.Context(), frontend.CacheClearRequest{Type: "reviews", Projects: projects}); err != nil {
 					return err
 				}
 				fmt.Fprintf(progressOut, "review cache %s.\n", styler.Action("cleared"))
@@ -250,7 +250,7 @@ func newCacheClearCmd(opts *Options) *cobra.Command {
 		},
 	}, frontend.ActionCacheClear)
 
-	cmd.Flags().StringVar(&project, "project", "", "clear only this project (git only)")
+	cmd.Flags().StringSliceVar(&projects, "project", nil, "clear only these projects (repeat flag; git/bugs/reviews only)")
 	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to clear (excuses only, default: all configured trackers)")
 	return cmd
 }

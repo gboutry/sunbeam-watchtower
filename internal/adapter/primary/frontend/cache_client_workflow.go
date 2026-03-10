@@ -13,7 +13,7 @@ import (
 
 // CacheSyncGitRequest describes one git-cache sync workflow.
 type CacheSyncGitRequest struct {
-	Project string
+	Projects []string
 }
 
 // CacheSyncGitResponse contains the outcome of one git-cache sync.
@@ -36,7 +36,7 @@ type CacheSyncUpstreamResponse struct {
 
 // CacheSyncBugsRequest describes one bug-cache sync workflow.
 type CacheSyncBugsRequest struct {
-	Project string
+	Projects []string
 }
 
 // CacheSyncBugsResponse contains the outcome of one bug-cache sync.
@@ -65,8 +65,8 @@ type CacheSyncReleasesResponse struct {
 
 // CacheSyncReviewsRequest describes one review-cache sync workflow.
 type CacheSyncReviewsRequest struct {
-	Project string
-	Since   string
+	Projects []string
+	Since    string
 }
 
 // CacheSyncReviewsResponse contains the outcome of one review-cache sync.
@@ -80,7 +80,7 @@ type CacheSyncReviewsResponse struct {
 // CacheClearRequest describes one cache-clear workflow.
 type CacheClearRequest struct {
 	Type     string
-	Project  string
+	Projects []string
 	Trackers []string
 }
 
@@ -143,7 +143,7 @@ func (w *CacheClientWorkflow) SyncGit(ctx context.Context, req CacheSyncGitReque
 	if err != nil {
 		return nil, err
 	}
-	result, err := apiClient.CacheSyncGit(ctx, client.CacheSyncGitOptions{Project: req.Project})
+	result, err := apiClient.CacheSyncGit(ctx, client.CacheSyncGitOptions{Projects: req.Projects})
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (w *CacheClientWorkflow) SyncBugs(ctx context.Context, req CacheSyncBugsReq
 	if err != nil {
 		return nil, err
 	}
-	result, err := apiClient.CacheSyncBugs(ctx, client.CacheSyncBugsOptions{Project: req.Project})
+	result, err := apiClient.CacheSyncBugs(ctx, client.CacheSyncBugsOptions{Projects: req.Projects})
 	if err != nil {
 		return nil, err
 	}
@@ -235,8 +235,8 @@ func (w *CacheClientWorkflow) SyncReviews(ctx context.Context, req CacheSyncRevi
 		return nil, err
 	}
 	result, err := apiClient.CacheSyncReviews(ctx, client.CacheSyncReviewsOptions{
-		Project: req.Project,
-		Since:   resolvedSince,
+		Projects: req.Projects,
+		Since:    resolvedSince,
 	})
 	if err != nil {
 		return nil, err
@@ -256,9 +256,9 @@ func (w *CacheClientWorkflow) Clear(ctx context.Context, req CacheClearRequest) 
 		return err
 	}
 	if len(req.Trackers) > 0 {
-		return apiClient.CacheDeleteWithTrackers(ctx, req.Type, req.Project, req.Trackers)
+		return apiClient.CacheDeleteWithTrackers(ctx, req.Type, req.Projects, req.Trackers)
 	}
-	return apiClient.CacheDelete(ctx, req.Type, req.Project)
+	return apiClient.CacheDelete(ctx, req.Type, req.Projects)
 }
 
 // Status returns the full cache status snapshot.

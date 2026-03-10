@@ -55,9 +55,13 @@ func TestCacheSyncReleasesRendersCountsAndWarnings(t *testing.T) {
 }
 
 func TestCacheSyncReviewsRendersCountsAndWarnings(t *testing.T) {
+	var gotBody client.CacheSyncReviewsOptions
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/cache/sync/reviews" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("Decode() error = %v", err)
 		}
 		_ = json.NewEncoder(w).Encode(client.CacheSyncReviewsResult{
 			ProjectsSynced:  1,
@@ -79,14 +83,48 @@ func TestCacheSyncReviewsRendersCountsAndWarnings(t *testing.T) {
 	}
 
 	cmd := newCacheCmd(opts)
-	cmd.SetArgs([]string{"sync", "reviews"})
+	cmd.SetArgs([]string{"sync", "reviews", "--project", "snap-openstack", "--project", "sunbeam-charms"})
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(gotBody.Projects) != 2 || gotBody.Projects[0] != "snap-openstack" || gotBody.Projects[1] != "sunbeam-charms" {
+		t.Fatalf("request body = %+v, want both projects", gotBody)
 	}
 	if got := out.String(); !strings.Contains(got, "1 projects, 5 summaries, 3 details") {
 		t.Fatalf("stdout = %q, want counted review sync summary", got)
 	}
 	if got := errOut.String(); !strings.Contains(got, "warning: snap-openstack:#42") {
 		t.Fatalf("stderr = %q, want review warning", got)
+	}
+}
+
+func TestCacheClearGitSupportsRepeatedProjectFlags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/v1/cache/git" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if got := r.URL.Query()["project"]; len(got) != 2 || got[0] != "keystone" || got[1] != "glance" {
+			t.Fatalf("project query = %+v, want repeated projects", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &bytes.Buffer{},
+		Output: "table",
+		Client: client.NewClient(server.URL),
+		Logger: discardTestLogger(),
+	}
+
+	cmd := newCacheCmd(opts)
+	cmd.SetArgs([]string{"clear", "git", "--project", "keystone", "--project", "glance"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "git cache") {
+		t.Fatalf("stdout = %q, want git cache clear output", got)
 	}
 }

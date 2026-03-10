@@ -213,7 +213,7 @@ func (a *App) BuildReviewProjects() (map[string]review.ProjectForge, error) {
 }
 
 // SyncReviewCache refreshes cached review summaries and details for configured projects.
-func (a *App) SyncReviewCache(ctx context.Context, project string, since *time.Time) (*ReviewCacheSyncResult, error) {
+func (a *App) SyncReviewCache(ctx context.Context, projects []string, since *time.Time) (*ReviewCacheSyncResult, error) {
 	liveClients, err := a.BuildForgeClients()
 	if err != nil {
 		return nil, err
@@ -224,8 +224,9 @@ func (a *App) SyncReviewCache(ctx context.Context, project string, since *time.T
 	}
 
 	result := &ReviewCacheSyncResult{}
+	selected := stringSet(projects)
 	for name, pf := range liveClients {
-		if project != "" && project != name {
+		if len(selected) > 0 && !selected[name] {
 			continue
 		}
 		cachedForge := reviewcache.NewCachedForge(pf.Forge, cache, name, a.Logger)

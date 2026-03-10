@@ -33,7 +33,7 @@ type CacheEntry struct {
 // CacheSyncGitInput is the request body for POST /api/v1/cache/sync/git.
 type CacheSyncGitInput struct {
 	Body struct {
-		Project string `json:"project" doc:"Sync only this project (empty = all)"`
+		Projects []string `json:"projects,omitempty" required:"false" doc:"Sync only these projects (empty = all configured)"`
 	}
 }
 
@@ -55,7 +55,7 @@ type CacheSyncUpstreamOutput struct {
 // CacheDeleteInput is the request for DELETE /api/v1/cache/{type}.
 type CacheDeleteInput struct {
 	Type     string   `path:"type" doc:"Cache type to clear (git, packages-index, upstream-repos, bugs, excuses, releases, reviews)"`
-	Project  string   `query:"project" required:"false" doc:"Clear only this project (git/bugs/reviews types only)"`
+	Projects []string `query:"project" required:"false" doc:"Clear only these projects (git/bugs/reviews types only)"`
 	Trackers []string `query:"tracker" required:"false" doc:"Clear only these excuses trackers (excuses type only)"`
 }
 
@@ -69,7 +69,7 @@ type CacheDeleteOutput struct {
 // CacheSyncBugsInput is the request body for POST /api/v1/cache/sync/bugs.
 type CacheSyncBugsInput struct {
 	Body struct {
-		Project string `json:"project" doc:"Sync only this project (empty = all configured)"`
+		Projects []string `json:"projects,omitempty" required:"false" doc:"Sync only these projects (empty = all configured)"`
 	}
 }
 
@@ -102,8 +102,8 @@ type CacheSyncReleasesOutput struct {
 // CacheSyncReviewsInput is the request body for POST /api/v1/cache/sync/reviews.
 type CacheSyncReviewsInput struct {
 	Body struct {
-		Project string `json:"project,omitempty" required:"false" doc:"Sync only this project (empty = all configured)"`
-		Since   string `json:"since,omitempty" required:"false" doc:"Sync full detail for closed reviews updated since this RFC 3339 timestamp"`
+		Projects []string `json:"projects,omitempty" required:"false" doc:"Sync only these projects (empty = all configured)"`
+		Since    string   `json:"since,omitempty" required:"false" doc:"Sync full detail for closed reviews updated since this RFC 3339 timestamp"`
 	}
 }
 
@@ -185,10 +185,10 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 
 		var warnings []string
 		synced := 0
-		project := input.Body.Project
+		projects := appStringSet(input.Body.Projects)
 
 		for _, proj := range cfg.Projects {
-			if project != "" && proj.Name != project {
+			if len(projects) > 0 && !projects[proj.Name] {
 				continue
 			}
 
@@ -291,7 +291,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		Summary:     "Sync bug caches for configured projects",
 		Tags:        []string{"cache"},
 	}, func(ctx context.Context, input *CacheSyncBugsInput) (*CacheSyncBugsOutput, error) {
-		synced, err := application.SyncBugCache(ctx, input.Body.Project)
+		synced, err := application.SyncBugCache(ctx, input.Body.Projects)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("bug cache sync failed: %v", err))
 		}
@@ -365,7 +365,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 			since = &parsed
 		}
 
-		result, err := application.SyncReviewCache(ctx, input.Body.Project, since)
+		result, err := application.SyncReviewCache(ctx, input.Body.Projects, since)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("review cache sync failed: %v", err))
 		}
@@ -391,7 +391,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 			if err != nil {
 				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open git cache: %v", err))
 			}
-			if input.Project == "" {
+			if len(input.Projects) == 0 {
 				if err := cache.RemoveAll(); err != nil {
 					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing git cache: %v", err))
 				}
@@ -400,9 +400,10 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				if cfg == nil {
 					return nil, huma.Error500InternalServerError("no configuration loaded")
 				}
+				selected := appStringSet(input.Projects)
 				found := false
 				for _, proj := range cfg.Projects {
-					if proj.Name != input.Project {
+					if !selected[proj.Name] {
 						continue
 					}
 					found = true
@@ -413,10 +414,9 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 					if err := cache.Remove(cloneURL); err != nil {
 						return nil, huma.Error500InternalServerError(fmt.Sprintf("removing git cache: %v", err))
 					}
-					break
 				}
 				if !found {
-					return nil, huma.Error404NotFound(fmt.Sprintf("project %q not found in config", input.Project))
+					return nil, huma.Error404NotFound("no requested projects found in config")
 				}
 			}
 
@@ -443,7 +443,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 			if err != nil {
 				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open bug cache: %v", err))
 			}
-			if input.Project == "" {
+			if len(input.Projects) == 0 {
 				if err := cache.RemoveAll(ctx); err != nil {
 					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing bug cache: %v", err))
 				}
@@ -452,24 +452,21 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				if cfg == nil {
 					return nil, huma.Error500InternalServerError("no configuration loaded")
 				}
+				selected := appStringSet(input.Projects)
 				found := false
 				for _, proj := range cfg.Projects {
 					for _, b := range proj.Bugs {
-						if b.Project == input.Project {
+						if selected[b.Project] {
 							found = true
 							forgeType := app.ForgeTypeFromConfig(b.Forge)
 							if err := cache.Remove(ctx, forgeType, b.Project); err != nil {
 								return nil, huma.Error500InternalServerError(fmt.Sprintf("removing bug cache: %v", err))
 							}
-							break
 						}
-					}
-					if found {
-						break
 					}
 				}
 				if !found {
-					return nil, huma.Error404NotFound(fmt.Sprintf("bug project %q not found in config", input.Project))
+					return nil, huma.Error404NotFound("no requested bug projects found in config")
 				}
 			}
 
@@ -507,7 +504,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 			if err != nil {
 				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open review cache: %v", err))
 			}
-			if input.Project == "" {
+			if len(input.Projects) == 0 {
 				if err := cache.RemoveAll(ctx); err != nil {
 					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing review cache: %v", err))
 				}
@@ -515,19 +512,19 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 				if application.Config == nil {
 					return nil, huma.Error500InternalServerError("no configuration loaded")
 				}
+				selected := appStringSet(input.Projects)
 				found := false
 				for _, proj := range application.Config.Projects {
-					if proj.Name != input.Project {
+					if !selected[proj.Name] {
 						continue
 					}
 					found = true
-					if err := cache.Remove(ctx, app.ForgeTypeFromConfig(proj.Code.Forge), input.Project); err != nil {
+					if err := cache.Remove(ctx, app.ForgeTypeFromConfig(proj.Code.Forge), proj.Name); err != nil {
 						return nil, huma.Error500InternalServerError(fmt.Sprintf("removing review cache: %v", err))
 					}
-					break
 				}
 				if !found {
-					return nil, huma.Error404NotFound(fmt.Sprintf("project %q not found in config", input.Project))
+					return nil, huma.Error404NotFound("no requested projects found in config")
 				}
 			}
 
@@ -666,6 +663,19 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 
 		return out, nil
 	})
+}
+
+func appStringSet(values []string) map[string]bool {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make(map[string]bool, len(values))
+	for _, value := range values {
+		if value != "" {
+			result[value] = true
+		}
+	}
+	return result
 }
 
 // --- Helpers -----------------------------------------------------------------

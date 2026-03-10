@@ -93,16 +93,17 @@ func (a *App) BuildCommitSources() (map[string]port.CommitSource, error) {
 }
 
 // SyncBugCache syncs the bug cache for configured projects.
-// If project is empty, all configured projects are synced.
-func (a *App) SyncBugCache(ctx context.Context, project string) (int, error) {
+// If projects is empty, all configured projects are synced.
+func (a *App) SyncBugCache(ctx context.Context, projects []string) (int, error) {
 	trackers, _, err := a.BuildBugTrackers()
 	if err != nil {
 		return 0, err
 	}
 
+	selected := stringSet(projects)
 	total := 0
 	for _, pbt := range trackers {
-		if project != "" && pbt.ProjectID != project {
+		if len(selected) > 0 && !selected[pbt.ProjectID] {
 			continue
 		}
 		ct, ok := pbt.Tracker.(*bugcache.CachedBugTracker)

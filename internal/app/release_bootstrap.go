@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/charmhub"
@@ -318,4 +319,19 @@ func shouldSkipReleaseArtifact(project config.ProjectConfig, name string) bool {
 		}
 	}
 	return false
+}
+
+func stringSet(values []string) map[string]bool {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make(map[string]bool, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		result[value] = true
+	}
+	return result
 }

@@ -197,9 +197,13 @@ type formModalModel struct {
 	options       [][]string
 	optionIndices []int
 	resetValues   []string
+	selected      [][]string
 	active        int
 	errorMsg      string
 	scroll        int
+	pendingG      bool
+	visualAnchor  int
+	visualMode    bool
 }
 
 type promptModel struct {
@@ -2655,7 +2659,7 @@ func syncCacheCmd(session *runtimeadapter.Session, target cacheActionTarget, val
 		switch target {
 		case cacheActionGit:
 			var result *frontend.CacheSyncGitResponse
-			result, err = session.Frontend.Cache().SyncGit(ctx, frontend.CacheSyncGitRequest{Project: strings.TrimSpace(firstValue(values))})
+			result, err = session.Frontend.Cache().SyncGit(ctx, frontend.CacheSyncGitRequest{Projects: splitCSV(firstValue(values))})
 			if err == nil {
 				action = "Git cache sync completed"
 				summary = append(summary, fmt.Sprintf("Synced: %d", result.Synced))
@@ -2680,7 +2684,7 @@ func syncCacheCmd(session *runtimeadapter.Session, target cacheActionTarget, val
 			}
 		case cacheActionBugs:
 			var result *frontend.CacheSyncBugsResponse
-			result, err = session.Frontend.Cache().SyncBugs(ctx, frontend.CacheSyncBugsRequest{Project: strings.TrimSpace(firstValue(values))})
+			result, err = session.Frontend.Cache().SyncBugs(ctx, frontend.CacheSyncBugsRequest{Projects: splitCSV(firstValue(values))})
 			if err == nil {
 				action = "Bug cache sync completed"
 				summary = []string{fmt.Sprintf("Synced: %d", result.Synced)}
@@ -2709,8 +2713,8 @@ func syncCacheCmd(session *runtimeadapter.Session, target cacheActionTarget, val
 		case cacheActionReviews:
 			var result *frontend.CacheSyncReviewsResponse
 			result, err = session.Frontend.Cache().SyncReviews(ctx, frontend.CacheSyncReviewsRequest{
-				Project: strings.TrimSpace(firstValue(values)),
-				Since:   strings.TrimSpace(valueAt(values, 1)),
+				Projects: splitCSV(firstValue(values)),
+				Since:    strings.TrimSpace(valueAt(values, 1)),
 			})
 			if err == nil {
 				action = "Review cache sync completed"
@@ -2732,7 +2736,7 @@ func clearCacheCmd(session *runtimeadapter.Session, target cacheActionTarget, va
 		req := frontend.CacheClearRequest{Type: cacheActionTypeName(target)}
 		switch target {
 		case cacheActionGit, cacheActionBugs, cacheActionReviews:
-			req.Project = strings.TrimSpace(firstValue(values))
+			req.Projects = splitCSV(firstValue(values))
 		case cacheActionExcuses:
 			req.Trackers = splitCSV(firstValue(values))
 		}
@@ -2824,14 +2828,14 @@ func newBuildTriggerForm(session *runtimeadapter.Session) formModalModel {
 
 func newProjectSyncForm(session *runtimeadapter.Session) formModalModel {
 	return newFormModal("Project Sync", []fieldDef{
-		{placeholder: "projects (comma separated)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		{placeholder: "dry run", value: "true", resetValue: "true", suggestions: []string{"true", "false"}, kind: fieldKindEnum},
 	})
 }
 
 func newBugSyncForm(session *runtimeadapter.Session) formModalModel {
 	return newFormModal("Bug Sync", []fieldDef{
-		{placeholder: "projects (comma separated)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		{placeholder: "since", value: "", resetValue: ""},
 		{placeholder: "dry run", value: "true", resetValue: "true", suggestions: []string{"true", "false"}, kind: fieldKindEnum},
 	})
@@ -2841,29 +2845,29 @@ func newCacheSyncForm(session *runtimeadapter.Session, target cacheActionTarget)
 	switch target {
 	case cacheActionGit:
 		return newFormModal("Sync Git Cache", []fieldDef{
-			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+			{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		})
 	case cacheActionPackages:
 		return newFormModal("Sync Package Index Cache", []fieldDef{
-			{placeholder: "distros (comma separated)", value: "", resetValue: "", suggestions: distroSuggestions(session)},
-			{placeholder: "releases (comma separated)", value: "", resetValue: "", suggestions: releaseSuggestions(session)},
-			{placeholder: "backports (comma separated)", value: "", resetValue: "", suggestions: backportSuggestions(session)},
+			{placeholder: "distros", value: "", resetValue: "", suggestions: distroSuggestions(session), kind: fieldKindMultiSelect},
+			{placeholder: "releases", value: "", resetValue: "", suggestions: releaseSuggestions(session), kind: fieldKindMultiSelect},
+			{placeholder: "backports", value: "", resetValue: "", suggestions: backportSuggestions(session), kind: fieldKindMultiSelect},
 		})
 	case cacheActionUpstream:
 		return newFormModal("Sync Upstream Cache", nil)
 	case cacheActionBugs:
 		return newFormModal("Sync Bug Cache", []fieldDef{
-			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+			{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		})
 	case cacheActionExcuses:
 		return newFormModal("Sync Excuses Cache", []fieldDef{
-			{placeholder: "trackers (comma separated)", value: "", resetValue: "", suggestions: excusesTrackerSuggestions(session)},
+			{placeholder: "trackers", value: "", resetValue: "", suggestions: excusesTrackerSuggestions(session), kind: fieldKindMultiSelect},
 		})
 	case cacheActionReleases:
 		return newFormModal("Sync Release Cache", nil)
 	case cacheActionReviews:
 		return newFormModal("Sync Review Cache", []fieldDef{
-			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+			{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 			{placeholder: "since", value: "", resetValue: ""},
 		})
 	default:
@@ -2875,7 +2879,7 @@ func newCacheClearForm(session *runtimeadapter.Session, target cacheActionTarget
 	switch target {
 	case cacheActionGit:
 		return newFormModal("Clear Git Cache", []fieldDef{
-			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+			{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		})
 	case cacheActionPackages:
 		return newFormModal("Clear Package Index Cache", nil)
@@ -2883,17 +2887,17 @@ func newCacheClearForm(session *runtimeadapter.Session, target cacheActionTarget
 		return newFormModal("Clear Upstream Cache", nil)
 	case cacheActionBugs:
 		return newFormModal("Clear Bug Cache", []fieldDef{
-			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+			{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		})
 	case cacheActionExcuses:
 		return newFormModal("Clear Excuses Cache", []fieldDef{
-			{placeholder: "trackers (comma separated)", value: "", resetValue: "", suggestions: excusesTrackerSuggestions(session)},
+			{placeholder: "trackers", value: "", resetValue: "", suggestions: excusesTrackerSuggestions(session), kind: fieldKindMultiSelect},
 		})
 	case cacheActionReleases:
 		return newFormModal("Clear Release Cache", nil)
 	case cacheActionReviews:
 		return newFormModal("Clear Review Cache", []fieldDef{
-			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+			{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		})
 	default:
 		return newFormModal("Clear Cache", nil)
@@ -2961,6 +2965,7 @@ type fieldKind int
 const (
 	fieldKindText fieldKind = iota
 	fieldKindEnum
+	fieldKindMultiSelect
 )
 
 func newFormModal(title string, fields []fieldDef) formModalModel {
@@ -2969,35 +2974,54 @@ func newFormModal(title string, fields []fieldDef) formModalModel {
 	options := make([][]string, 0, len(fields))
 	optionIndices := make([]int, 0, len(fields))
 	resetValues := make([]string, 0, len(fields))
+	selected := make([][]string, 0, len(fields))
 	for i, field := range fields {
 		input := textinput.New()
 		input.Placeholder = field.placeholder
 		input.SetValue(field.value)
 		kind := field.kind
 		var enumOptions []string
-		if kind == fieldKindEnum {
+		if kind == fieldKindEnum || kind == fieldKindMultiSelect {
 			enumOptions = uniqueSortedStrings(field.suggestions...)
-			if field.value != "" && !containsString(enumOptions, field.value) {
+			if kind == fieldKindEnum && field.value != "" && !containsString(enumOptions, field.value) {
 				enumOptions = append([]string{field.value}, enumOptions...)
 			}
 			if len(enumOptions) == 0 {
 				kind = fieldKindText
 			}
 		}
-		if kind == fieldKindEnum {
+		selectedValues := splitCSV(field.value)
+		if kind == fieldKindMultiSelect {
+			for _, value := range selectedValues {
+				if value != "" && !containsString(enumOptions, value) {
+					enumOptions = append(enumOptions, value)
+				}
+			}
+			enumOptions = uniqueSortedStrings(enumOptions...)
+			selectedValues = orderedSelection(enumOptions, selectedValues)
+			input.ShowSuggestions = false
+			input.SetValue(strings.Join(selectedValues, ", "))
+			kinds = append(kinds, fieldKindMultiSelect)
+			options = append(options, enumOptions)
+			selected = append(selected, append([]string(nil), selectedValues...))
+			optionIndices = append(optionIndices, formOptionIndexForMulti(enumOptions, selectedValues))
+		} else if kind == fieldKindEnum {
 			input.ShowSuggestions = false
 			kinds = append(kinds, fieldKindEnum)
 			options = append(options, enumOptions)
+			selected = append(selected, nil)
 			optionIndices = append(optionIndices, formOptionIndex(enumOptions, field.value))
 		} else if len(field.suggestions) > 0 {
 			input.ShowSuggestions = true
 			input.SetSuggestions(field.suggestions)
 			kinds = append(kinds, fieldKindText)
 			options = append(options, append([]string(nil), field.suggestions...))
+			selected = append(selected, nil)
 			optionIndices = append(optionIndices, -1)
 		} else {
 			kinds = append(kinds, fieldKindText)
 			options = append(options, nil)
+			selected = append(selected, nil)
 			optionIndices = append(optionIndices, -1)
 		}
 		if i == 0 {
@@ -3013,18 +3037,36 @@ func newFormModal(title string, fields []fieldDef) formModalModel {
 		options:       options,
 		optionIndices: optionIndices,
 		resetValues:   resetValues,
+		selected:      selected,
+		visualAnchor:  -1,
 	}
 }
 
 func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]string) tea.Cmd, onCancel func()) tea.Cmd {
 	switch msg.String() {
+	case "g":
+		if modal.activeFieldKind() == fieldKindMultiSelect {
+			if modal.pendingG {
+				modal.pendingG = false
+				modal.moveActiveMultiCursorTo(0)
+				return nil
+			}
+			modal.pendingG = true
+			return nil
+		}
+	default:
+		modal.pendingG = false
+	}
+	switch msg.String() {
 	case "esc", "q", "ctrl+c":
+		modal.clearVisualMode()
 		onCancel()
 		return nil
 	case "tab":
 		if modal.activeFieldKind() == fieldKindText && acceptFormSuggestion(modal) {
 			return nil
 		}
+		modal.clearVisualMode()
 		modal.moveActiveField(1)
 		return nil
 	case "enter":
@@ -3033,6 +3075,7 @@ func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]stri
 		modal.reset()
 		return nil
 	case "shift+tab":
+		modal.clearVisualMode()
 		modal.moveActiveField(-1)
 		return nil
 	case " ":
@@ -3040,9 +3083,27 @@ func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]stri
 			modal.applyActiveEnumSelection()
 			return nil
 		}
+		if modal.activeFieldKind() == fieldKindMultiSelect {
+			modal.toggleActiveMultiSelection()
+			return nil
+		}
+	case "v":
+		if modal.activeFieldKind() == fieldKindMultiSelect {
+			modal.toggleVisualMode()
+			return nil
+		}
+	case "G":
+		if modal.activeFieldKind() == fieldKindMultiSelect {
+			modal.moveActiveMultiCursorTo(len(modal.options[modal.active]) - 1)
+			return nil
+		}
 	case "up", "k":
 		if modal.activeFieldKind() == fieldKindEnum {
 			modal.stepActiveEnum(-1)
+			return nil
+		}
+		if modal.activeFieldKind() == fieldKindMultiSelect {
+			modal.stepActiveMulti(-1)
 			return nil
 		}
 	case "down", "j":
@@ -3050,13 +3111,21 @@ func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]stri
 			modal.stepActiveEnum(1)
 			return nil
 		}
+		if modal.activeFieldKind() == fieldKindMultiSelect {
+			modal.stepActiveMulti(1)
+			return nil
+		}
 	case "backspace", "delete":
 		if modal.activeFieldKind() == fieldKindEnum {
 			modal.fields[modal.active].SetValue("")
 			return nil
 		}
+		if modal.activeFieldKind() == fieldKindMultiSelect {
+			modal.clearActiveMultiSelection()
+			return nil
+		}
 	}
-	if modal.activeFieldKind() == fieldKindEnum {
+	if modal.activeFieldKind() == fieldKindEnum || modal.activeFieldKind() == fieldKindMultiSelect {
 		return nil
 	}
 	var cmd tea.Cmd
@@ -3066,7 +3135,11 @@ func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]stri
 
 func (m *formModalModel) values() []string {
 	values := make([]string, 0, len(m.fields))
-	for _, field := range m.fields {
+	for i, field := range m.fields {
+		if i < len(m.kinds) && m.kinds[i] == fieldKindMultiSelect {
+			values = append(values, strings.Join(m.selected[i], ", "))
+			continue
+		}
 		values = append(values, field.Value())
 	}
 	return values
@@ -3091,6 +3164,7 @@ func (m *formModalModel) moveActiveField(delta int) {
 	m.active = next
 	m.fields[m.active].Focus()
 	m.scroll = maxInt(0, m.fieldScrollAnchor(m.active))
+	m.clearVisualMode()
 }
 
 func (m *formModalModel) fieldScrollAnchor(idx int) int {
@@ -3151,15 +3225,155 @@ func (m *formModalModel) reset() {
 		if i < len(m.options) && m.kinds[i] == fieldKindEnum {
 			m.optionIndices[i] = formOptionIndex(m.options[i], m.fields[i].Value())
 		}
+		if i < len(m.options) && m.kinds[i] == fieldKindMultiSelect {
+			m.selected[i] = orderedSelection(m.options[i], splitCSV(m.fields[i].Value()))
+			m.fields[i].SetValue(strings.Join(m.selected[i], ", "))
+			m.optionIndices[i] = formOptionIndexForMulti(m.options[i], m.selected[i])
+		}
 	}
 	m.errorMsg = ""
 	m.scroll = maxInt(0, m.fieldScrollAnchor(m.active))
+	m.clearVisualMode()
+}
+
+func (m *formModalModel) stepActiveMulti(delta int) {
+	if m == nil || m.activeFieldKind() != fieldKindMultiSelect || delta == 0 {
+		return
+	}
+	opts := m.options[m.active]
+	if len(opts) == 0 {
+		return
+	}
+	idx := m.optionIndices[m.active]
+	if idx < 0 || idx >= len(opts) {
+		idx = 0
+	}
+	idx += delta
+	if idx < 0 {
+		idx = len(opts) - 1
+	}
+	if idx >= len(opts) {
+		idx = 0
+	}
+	m.optionIndices[m.active] = idx
+	m.applyVisualSelection()
+}
+
+func (m *formModalModel) moveActiveMultiCursorTo(idx int) {
+	if m == nil || m.activeFieldKind() != fieldKindMultiSelect {
+		return
+	}
+	opts := m.options[m.active]
+	if len(opts) == 0 {
+		return
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(opts) {
+		idx = len(opts) - 1
+	}
+	m.optionIndices[m.active] = idx
+	m.applyVisualSelection()
+}
+
+func (m *formModalModel) toggleActiveMultiSelection() {
+	if m == nil || m.activeFieldKind() != fieldKindMultiSelect {
+		return
+	}
+	idx := m.optionIndices[m.active]
+	opts := m.options[m.active]
+	if idx < 0 || idx >= len(opts) {
+		return
+	}
+	m.clearVisualMode()
+	value := opts[idx]
+	if containsString(m.selected[m.active], value) {
+		m.selected[m.active] = removeStringValue(m.selected[m.active], value)
+	} else {
+		m.selected[m.active] = append(m.selected[m.active], value)
+	}
+	m.selected[m.active] = orderedSelection(opts, m.selected[m.active])
+	m.fields[m.active].SetValue(strings.Join(m.selected[m.active], ", "))
+}
+
+func (m *formModalModel) clearActiveMultiSelection() {
+	if m == nil || m.activeFieldKind() != fieldKindMultiSelect {
+		return
+	}
+	m.selected[m.active] = nil
+	m.fields[m.active].SetValue("")
+	m.clearVisualMode()
+}
+
+func (m *formModalModel) toggleVisualMode() {
+	if m == nil || m.activeFieldKind() != fieldKindMultiSelect {
+		return
+	}
+	if m.visualMode {
+		m.clearVisualMode()
+		return
+	}
+	m.visualMode = true
+	m.visualAnchor = m.optionIndices[m.active]
+	if m.visualAnchor < 0 {
+		m.visualAnchor = 0
+	}
+}
+
+func (m *formModalModel) clearVisualMode() {
+	if m == nil {
+		return
+	}
+	m.visualMode = false
+	m.visualAnchor = -1
+}
+
+func (m *formModalModel) applyVisualSelection() {
+	if m == nil || m.activeFieldKind() != fieldKindMultiSelect || !m.visualMode {
+		return
+	}
+	opts := m.options[m.active]
+	if len(opts) == 0 {
+		return
+	}
+	start := m.visualAnchor
+	end := m.optionIndices[m.active]
+	if start < 0 || start >= len(opts) {
+		return
+	}
+	if end < 0 || end >= len(opts) {
+		return
+	}
+	if start > end {
+		start, end = end, start
+	}
+	selection := append([]string(nil), m.selected[m.active]...)
+	for _, option := range opts[start : end+1] {
+		if !containsString(selection, option) {
+			selection = append(selection, option)
+		}
+	}
+	m.selected[m.active] = orderedSelection(opts, selection)
+	m.fields[m.active].SetValue(strings.Join(m.selected[m.active], ", "))
 }
 
 func formOptionIndex(options []string, value string) int {
 	for i, option := range options {
 		if option == value {
 			return i
+		}
+	}
+	if len(options) == 0 {
+		return -1
+	}
+	return 0
+}
+
+func formOptionIndexForMulti(options []string, values []string) int {
+	for _, value := range values {
+		if idx := formOptionIndex(options, value); idx >= 0 {
+			return idx
 		}
 	}
 	if len(options) == 0 {
@@ -3208,6 +3422,27 @@ func renderFormModal(t theme, modal formModalModel, totalWidth, totalHeight int)
 				fieldLines = append(fieldLines, line)
 			}
 		}
+		if modal.kinds[i] == fieldKindMultiSelect && i == modal.active && len(modal.options[i]) > 0 {
+			for j, option := range modal.options[i] {
+				marker := "[ ]"
+				if containsString(modal.selected[i], option) {
+					marker = "[x]"
+				}
+				line := fmt.Sprintf("  %s %s", marker, option)
+				line = fitLine(line, innerWidth)
+				switch {
+				case j == modal.optionIndices[i]:
+					line = t.selectedRow.Render(line)
+				case modal.visualMode && modal.visualAnchor >= 0 && withinVisualRange(modal.visualAnchor, modal.optionIndices[i], j):
+					line = t.info.Render(line)
+				case containsString(modal.selected[i], option):
+					line = t.success.Render(line)
+				default:
+					line = t.subtle.Render(line)
+				}
+				fieldLines = append(fieldLines, line)
+			}
+		}
 	}
 	errorLines := []string{""}
 	if modal.errorMsg != "" {
@@ -3216,6 +3451,8 @@ func renderFormModal(t theme, modal formModalModel, totalWidth, totalHeight int)
 	help := "[Tab/Shift+Tab] move  [Enter] apply  [Ctrl+R] reset  [Esc] cancel"
 	if modal.activeFieldKind() == fieldKindEnum {
 		help = "[Up/Down] pick  [Space] select  [Tab/Shift+Tab] move  [Enter] apply  [Ctrl+R] reset  [Esc] cancel"
+	} else if modal.activeFieldKind() == fieldKindMultiSelect {
+		help = "[Up/Down] move  [Space] toggle  [v] range  [gg/G] jump-range  [Tab/Shift+Tab] move  [Enter] apply  [Ctrl+R] reset  [Esc] cancel"
 	} else if len(modal.fields) > 0 && modal.fields[modal.active].ShowSuggestions {
 		help = "[Up/Down] suggestions  [Tab] accept/move  [Enter] apply  [Ctrl+R] reset  [Esc] cancel"
 	}
@@ -3840,6 +4077,49 @@ func dryRunLabel(dryRun bool) string {
 		return "dry-run"
 	}
 	return "apply"
+}
+
+func removeStringValue(values []string, want string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != want {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func orderedSelection(options []string, selected []string) []string {
+	if len(selected) == 0 {
+		return nil
+	}
+	present := make(map[string]bool, len(selected))
+	for _, value := range selected {
+		if value != "" {
+			present[value] = true
+		}
+	}
+	out := make([]string, 0, len(selected))
+	for _, option := range options {
+		if present[option] {
+			out = append(out, option)
+			delete(present, option)
+		}
+	}
+	for _, value := range selected {
+		if present[value] {
+			out = append(out, value)
+			delete(present, value)
+		}
+	}
+	return out
+}
+
+func withinVisualRange(anchor, cursor, idx int) bool {
+	if anchor > cursor {
+		anchor, cursor = cursor, anchor
+	}
+	return idx >= anchor && idx <= cursor
 }
 
 func selectedBuild(rows []dto.Build, idx int) *dto.Build {

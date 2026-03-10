@@ -1082,6 +1082,40 @@ func TestFormHelpersAndUtilityRendering(t *testing.T) {
 	}
 }
 
+func TestFormHelpersSupportMultiSelectVisualRange(t *testing.T) {
+	form := newFormModal("Project Sync", []fieldDef{
+		{placeholder: "projects", suggestions: []string{"alpha", "beta", "gamma"}, kind: fieldKindMultiSelect},
+		{placeholder: "dry run", value: "true", suggestions: []string{"true", "false"}, kind: fieldKindEnum},
+	})
+
+	_ = updateFormModal(tea.KeyMsg{Type: tea.KeySpace}, &form, func([]string) tea.Cmd { return nil }, func() {})
+	if got := form.values()[0]; got != "alpha" {
+		t.Fatalf("multi-select after space = %q, want alpha", got)
+	}
+
+	_ = updateFormModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")}, &form, func([]string) tea.Cmd { return nil }, func() {})
+	_ = updateFormModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")}, &form, func([]string) tea.Cmd { return nil }, func() {})
+	if got := form.values()[0]; got != "alpha, beta, gamma" {
+		t.Fatalf("multi-select after visual G = %q, want all values", got)
+	}
+	if !form.visualMode {
+		t.Fatal("visualMode = false, want true after v/G")
+	}
+
+	_ = updateFormModal(tea.KeyMsg{Type: tea.KeyTab}, &form, func([]string) tea.Cmd { return nil }, func() {})
+	if form.visualMode {
+		t.Fatal("visualMode = true after tab, want cleared")
+	}
+
+	form.moveActiveField(-1)
+	form.toggleVisualMode()
+	_ = updateFormModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")}, &form, func([]string) tea.Cmd { return nil }, func() {})
+	_ = updateFormModal(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")}, &form, func([]string) tea.Cmd { return nil }, func() {})
+	if got := form.optionIndices[0]; got != 0 {
+		t.Fatalf("cursor after gg = %d, want 0", got)
+	}
+}
+
 func TestCtrlRResetsFormFieldsToDefaults(t *testing.T) {
 	form := newFormModal("Bug Filters", []fieldDef{
 		{placeholder: "project", value: "demo", resetValue: ""},
