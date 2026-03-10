@@ -64,6 +64,17 @@ packages:
       releases:
         noble:
           suites: [release, updates, proposed]
+tui:
+  default_pane: packages
+  panes:
+    packages:
+      mode: excuses
+      filters:
+        tracker: ubuntu
+        team: ubuntu-openstack
+    bugs:
+      filters:
+        merge: false
 `
 	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
 		t.Fatal(err)
@@ -135,6 +146,15 @@ packages:
 	if got := cfg.Packages.Distros["ubuntu"].Excuses.TeamURL; got != "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml" {
 		t.Fatalf("Packages.Distros[ubuntu].Excuses.TeamURL = %q", got)
 	}
+	if cfg.TUI.DefaultPane != "packages" {
+		t.Fatalf("TUI.DefaultPane = %q, want packages", cfg.TUI.DefaultPane)
+	}
+	if cfg.TUI.Panes.Packages == nil || cfg.TUI.Panes.Packages.Mode != "excuses" {
+		t.Fatalf("TUI.Panes.Packages = %+v, want excuses preset", cfg.TUI.Panes.Packages)
+	}
+	if cfg.TUI.Panes.Bugs == nil || cfg.TUI.Panes.Bugs.Filters.Merge == nil || *cfg.TUI.Panes.Bugs.Filters.Merge {
+		t.Fatalf("TUI.Panes.Bugs = %+v, want merge=false preset", cfg.TUI.Panes.Bugs)
+	}
 }
 
 func TestLoad_Defaults(t *testing.T) {
@@ -170,6 +190,30 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	}
 }
 
+func TestLoad_TUIUnknownPaneFilterFails(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+
+	yaml := `
+projects: []
+build:
+  default_prefix: sunbeam
+tui:
+  panes:
+    packages:
+      filters:
+        not_a_filter: nope
+`
+	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(cfgFile)
+	if err == nil {
+		t.Fatal("Load() should error for unknown tui filter key")
+	}
+}
+
 func TestValidate_ValidConfig(t *testing.T) {
 	cfg := &Config{
 		Packages: PackagesConfig{
@@ -196,9 +240,27 @@ func TestValidate_ValidConfig(t *testing.T) {
 				Code: CodeConfig{Forge: "launchpad", Project: "proj"},
 			},
 		},
+		TUI: TUIConfig{
+			DefaultPane: "packages",
+			Panes: TUIPanesConfig{
+				Packages: &TUIPackagesPaneConfig{
+					Mode: "excuses",
+					Filters: TUIPackagesFiltersConfig{
+						Tracker: "ubuntu",
+					},
+				},
+			},
+		},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() error: %v", err)
+	}
+}
+
+func TestValidate_InvalidTUIDefaultPane(t *testing.T) {
+	cfg := &Config{TUI: TUIConfig{DefaultPane: "not-a-pane"}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should error for invalid tui default pane")
 	}
 }
 
@@ -880,5 +942,164 @@ func TestValidate_ProjectReleaseTargetProfileOverrides(t *testing.T) {
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() should accept release.target_profile_overrides without a named profile: %v", err)
+	}
+}
+
+func TestExpandSuiteHelpers(t *testing.T) {
+	if got := ExpandSuiteType("noble", "release"); got != "noble" {
+		t.Fatalf("ExpandSuiteType() = %q, want noble", got)
+	}
+	if got := ExpandSuiteType("noble", "updates"); got != "noble-updates" {
+		t.Fatalf("ExpandSuiteType() = %q, want noble-updates", got)
+	}
+	if got := ExpandBackportSuiteType("noble", "gazpacho", "release"); got != "noble" {
+		t.Fatalf("ExpandBackportSuiteType(release) = %q, want noble", got)
+	}
+	if got := ExpandBackportSuiteType("noble", "gazpacho", "updates"); got != "noble-updates/gazpacho" {
+		t.Fatalf("ExpandBackportSuiteType(updates) = %q", got)
+	}
+	if got := ExpandBackportSuiteType("noble", "gazpacho", "trixie-gazpacho-backports"); got != "trixie-gazpacho-backports" {
+		t.Fatalf("ExpandBackportSuiteType(literal) = %q", got)
+	}
+}
+
+func TestValidateTUIConfig_AllPaneEnumsAccepted(t *testing.T) {
+	active := true
+	allTargets := true
+	merge := false
+	behind := true
+	ftbfs := true
+	autopkgtest := true
+	bugged := true
+	reverse := true
+	includeMRs := true
+	cfg := &Config{
+		Releases: ReleasesConfig{
+			TargetProfiles: map[string]ReleaseTargetProfileConfig{
+				"noble-and-newer": {Include: []ReleaseTargetMatcherConfig{{BaseNames: []string{"ubuntu"}}}},
+			},
+		},
+		Packages: PackagesConfig{
+			Distros: map[string]DistroConfig{
+				"ubuntu": {
+					Excuses: &ExcusesConfig{URL: "https://example.invalid/excuses.yaml"},
+					Releases: map[string]ReleaseConfig{
+						"noble": {
+							Backports: map[string]BackportConfig{
+								"gazpacho": {},
+							},
+						},
+					},
+				},
+			},
+		},
+		TUI: TUIConfig{
+			DefaultPane: "packages",
+			Panes: TUIPanesConfig{
+				Builds: &TUIBuildsPaneConfig{Filters: TUIBuildsFiltersConfig{Active: &active, Source: "local"}},
+				Releases: &TUIReleasesPaneConfig{Filters: TUIReleasesFiltersConfig{
+					ArtifactType:  "snap",
+					Risk:          "stable",
+					TargetProfile: "noble-and-newer",
+					AllTargets:    &allTargets,
+				}},
+				Packages: &TUIPackagesPaneConfig{
+					Mode: "excuses",
+					Filters: TUIPackagesFiltersConfig{
+						Backport:       "gazpacho",
+						Tracker:        "ubuntu",
+						Merge:          &merge,
+						BehindUpstream: &behind,
+						FTBFS:          &ftbfs,
+						Autopkgtest:    &autopkgtest,
+						Bugged:         &bugged,
+						Reverse:        &reverse,
+					},
+				},
+				Bugs: &TUIBugsPaneConfig{Filters: TUIBugsFiltersConfig{Status: "Fix Released", Importance: "Critical", Merge: &merge}},
+				Reviews: &TUIReviewsPaneConfig{Filters: TUIReviewsFiltersConfig{Forge: "github", State: "wip"}},
+				Commits: &TUICommitsPaneConfig{Mode: "track", Filters: TUICommitsFiltersConfig{Forge: "gerrit", IncludeMRs: &includeMRs}},
+				Projects: &TUIProjectsPaneConfig{Filters: TUIProjectsFiltersConfig{
+					ArtifactType: "rock",
+					CodeForge:    "github",
+					BugForge:     "launchpad",
+					HasBuild:     "true",
+					HasRelease:   "any",
+				}},
+			},
+		},
+	}
+
+	if err := validateTUIConfig(cfg.TUI, cfg); err != nil {
+		t.Fatalf("validateTUIConfig() error = %v", err)
+	}
+}
+
+func TestValidateTUIConfig_InvalidValues(t *testing.T) {
+	base := &Config{
+		Packages: PackagesConfig{
+			Distros: map[string]DistroConfig{
+				"ubuntu": {
+					Excuses: &ExcusesConfig{URL: "https://example.invalid/excuses.yaml"},
+				},
+			},
+		},
+	}
+
+	cases := []struct {
+		name string
+		tui  TUIConfig
+	}{
+		{name: "invalid build source", tui: TUIConfig{Panes: TUIPanesConfig{Builds: &TUIBuildsPaneConfig{Filters: TUIBuildsFiltersConfig{Source: "weird"}}}}},
+		{name: "invalid release artifact", tui: TUIConfig{Panes: TUIPanesConfig{Releases: &TUIReleasesPaneConfig{Filters: TUIReleasesFiltersConfig{ArtifactType: "deb"}}}}},
+		{name: "invalid release risk", tui: TUIConfig{Panes: TUIPanesConfig{Releases: &TUIReleasesPaneConfig{Filters: TUIReleasesFiltersConfig{Risk: "daily"}}}}},
+		{name: "invalid package mode", tui: TUIConfig{Panes: TUIPanesConfig{Packages: &TUIPackagesPaneConfig{Mode: "browse"}}}},
+		{name: "invalid package tracker", tui: TUIConfig{Panes: TUIPanesConfig{Packages: &TUIPackagesPaneConfig{Filters: TUIPackagesFiltersConfig{Tracker: "debian"}}}}},
+		{name: "invalid bug status", tui: TUIConfig{Panes: TUIPanesConfig{Bugs: &TUIBugsPaneConfig{Filters: TUIBugsFiltersConfig{Status: "Done"}}}}},
+		{name: "invalid review forge", tui: TUIConfig{Panes: TUIPanesConfig{Reviews: &TUIReviewsPaneConfig{Filters: TUIReviewsFiltersConfig{Forge: "gitlab"}}}}},
+		{name: "invalid commit mode", tui: TUIConfig{Panes: TUIPanesConfig{Commits: &TUICommitsPaneConfig{Mode: "browse"}}}},
+		{name: "invalid project bool", tui: TUIConfig{Panes: TUIPanesConfig{Projects: &TUIProjectsPaneConfig{Filters: TUIProjectsFiltersConfig{HasBuild: "sometimes"}}}}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := *base
+			cfg.TUI = tc.tui
+			if err := validateTUIConfig(cfg.TUI, &cfg); err == nil {
+				t.Fatal("validateTUIConfig() expected error")
+			}
+		})
+	}
+}
+
+func TestTUIHelperFunctions(t *testing.T) {
+	cfg := &Config{
+		Packages: PackagesConfig{
+			Distros: map[string]DistroConfig{
+				"ubuntu": {
+					Excuses: &ExcusesConfig{URL: "https://example.invalid/excuses.yaml"},
+					Releases: map[string]ReleaseConfig{
+						"noble": {
+							Backports: map[string]BackportConfig{
+								"gazpacho": {},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if !isConfiguredBackport(cfg, "gazpacho") {
+		t.Fatal("isConfiguredBackport() = false, want true")
+	}
+	if isConfiguredBackport(cfg, "epoxy") {
+		t.Fatal("isConfiguredBackport() = true, want false")
+	}
+	if !isConfiguredExcusesTracker(cfg, "ubuntu") {
+		t.Fatal("isConfiguredExcusesTracker() = false, want true")
+	}
+	if containsOneOf("gamma", []string{"alpha", "beta"}) {
+		t.Fatal("containsOneOf() = true, want false")
 	}
 }
