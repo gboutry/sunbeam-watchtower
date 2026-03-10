@@ -39,6 +39,7 @@ func startTestServer(t *testing.T) (*Server, string) {
 
 func newEphemeralTestApp(t *testing.T, cfg *config.Config) *app.App {
 	t.Helper()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	application := app.NewAppWithOptions(cfg, discardLogger(), app.Options{
 		RuntimeMode: app.RuntimeModeEphemeral,
 	})
