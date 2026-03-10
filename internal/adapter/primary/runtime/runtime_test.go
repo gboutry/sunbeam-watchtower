@@ -163,6 +163,29 @@ func TestNewSession_PreferExistingDaemonReusesDaemon(t *testing.T) {
 	}
 }
 
+func TestNewSession_PreferExistingDaemonFallsBackToEmbedded(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	session, err := NewSession(context.Background(), Options{
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: TargetPolicyPreferExistingDaemon,
+	})
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	defer session.Close()
+
+	if got := session.Target().Kind; got != TargetKindEmbedded {
+		t.Fatalf("Target().Kind = %q, want %q", got, TargetKindEmbedded)
+	}
+	if session.Client == nil {
+		t.Fatal("session.Client = nil")
+	}
+	if session.Frontend == nil {
+		t.Fatal("session.Frontend = nil")
+	}
+}
+
 func TestNewSession_RequirePersistentStartsDaemon(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 

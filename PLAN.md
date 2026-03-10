@@ -53,6 +53,7 @@ The following are implemented and should be treated as the current baseline:
 - HTTP API for auth, builds, releases, cache, packages, bugs, reviews, commits, config, and project sync
 - shared frontend facade for auth, operations, project, build, cache, package, bug, review, commit, release, and config workflows
 - shared runtime/bootstrap layer for env defaults, logger setup, config loading, embedded server startup, local daemon management, and target resolution
+- TUI sessions now prefer an already running local daemon on startup and only fall back to an embedded session when no persistent daemon is available
 - shared runtime session target policies for CLI and TUI, covering embedded, discovered-daemon, and persistent-daemon resolution
 - shared action access catalog and runtime access mode plumbing for CLI, TUI, and future MCP surfaces
 - backend-neutral prepared-build contract using canonical `target_ref`, `repository_ref`, and `recipes` fields
