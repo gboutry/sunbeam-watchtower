@@ -161,3 +161,48 @@ func TestCacheSyncReviews_EmptyConfigReturnsZeroCounts(t *testing.T) {
 		t.Fatalf("body = %+v, want zero-count review sync result", body)
 	}
 }
+
+func TestCacheSyncReviews_AcceptsMultipleProjects(t *testing.T) {
+	srv, base := startTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	application := newEphemeralTestApp(t, &config.Config{})
+	RegisterCacheAPI(srv.API(), application)
+
+	resp, err := http.Post(base+"/api/v1/cache/sync/reviews", "application/json", bytes.NewBufferString(`{"projects":["snap-openstack","sunbeam-charms"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestCacheDeleteGit_AcceptsRepeatedProjectQuery(t *testing.T) {
+	srv, base := startTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	application := newEphemeralTestApp(t, &config.Config{
+		Projects: []config.ProjectConfig{
+			{Name: "keystone", Code: config.CodeConfig{Forge: "github", Owner: "canonical", Project: "keystone"}},
+			{Name: "glance", Code: config.CodeConfig{Forge: "github", Owner: "canonical", Project: "glance"}},
+		},
+	})
+	RegisterCacheAPI(srv.API(), application)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete, base+"/api/v1/cache/git?project=keystone&project=glance", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200/204, got %d", resp.StatusCode)
+	}
+}

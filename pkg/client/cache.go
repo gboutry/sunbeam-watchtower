@@ -12,7 +12,7 @@ import (
 
 // CacheSyncGitOptions holds the request body for syncing git caches.
 type CacheSyncGitOptions struct {
-	Project string `json:"project"`
+	Projects []string `json:"projects,omitempty"`
 }
 
 // CacheSyncGitResult is the response returned by CacheSyncGit.
@@ -42,7 +42,7 @@ func (c *Client) CacheSyncUpstream(ctx context.Context) (*CacheSyncUpstreamResul
 
 // CacheSyncBugsOptions holds the request body for syncing bug caches.
 type CacheSyncBugsOptions struct {
-	Project string `json:"project"`
+	Projects []string `json:"projects,omitempty"`
 }
 
 // CacheSyncBugsResult is the response returned by CacheSyncBugs.
@@ -79,8 +79,8 @@ type CacheSyncReleasesResult = dto.ReleaseSyncResult
 
 // CacheSyncReviewsOptions holds the request body for syncing review caches.
 type CacheSyncReviewsOptions struct {
-	Project string `json:"project,omitempty"`
-	Since   string `json:"since,omitempty"`
+	Projects []string `json:"projects,omitempty"`
+	Since    string   `json:"since,omitempty"`
 }
 
 // CacheSyncReviewsResult is the response returned by CacheSyncReviews.
@@ -106,15 +106,15 @@ func (c *Client) CacheSyncReviews(ctx context.Context, opts CacheSyncReviewsOpti
 }
 
 // CacheDelete clears a specific cache type.
-func (c *Client) CacheDelete(ctx context.Context, cacheType string, project string) error {
-	return c.CacheDeleteWithTrackers(ctx, cacheType, project, nil)
+func (c *Client) CacheDelete(ctx context.Context, cacheType string, projects []string) error {
+	return c.CacheDeleteWithTrackers(ctx, cacheType, projects, nil)
 }
 
 // CacheDeleteWithTrackers clears a specific cache type with optional excuses tracker filters.
-func (c *Client) CacheDeleteWithTrackers(ctx context.Context, cacheType string, project string, trackers []string) error {
+func (c *Client) CacheDeleteWithTrackers(ctx context.Context, cacheType string, projects []string, trackers []string) error {
 	q := url.Values{}
-	if project != "" {
-		q.Set("project", project)
+	for _, project := range projects {
+		q.Add("project", project)
 	}
 	for _, tracker := range trackers {
 		q.Add("tracker", tracker)

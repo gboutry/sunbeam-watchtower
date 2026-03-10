@@ -79,6 +79,7 @@ The following are implemented and should be treated as the current baseline:
 - TUI filters now use centered scrollable modals with wrapped shortcut help, `Enter`-to-apply behavior, `Ctrl+R` reset, mode-specific Packages filter forms, a visible Packages submenu, and picker-style enum fields instead of free-text autocomplete for small known value sets
 - `watchtower.yaml` can now declare TUI startup presets, including `tui.default_pane`, per-pane default filters, and explicit startup modes for Packages and Commits
 - the TUI now exposes meta-overlay mutation workflows for cache sync/clear plus project and bug sync, while keeping those write actions out of the read-only content tabs
+- the TUI form system now supports reusable multi-select fields with `Space` toggles and visual-range `v` + `gg`/`G` motions for known finite multi-value inputs, and cache sync/clear for git/bugs/reviews now accepts multiple projects end to end instead of single-project bodies only
 
 ## Current Gaps
 
@@ -125,6 +126,7 @@ These are the main known gaps that still matter:
 ### Auth and forge expansion
 
 - keep the current durable auth-flow model shared across Launchpad and GitHub, and extend it to other forges such as Gerrit when authenticated workflows become necessary
+- keep new TUI selection-heavy workflows on the shared centered-form system so multi-select and vim-style range motions can be reused consistently instead of reimplemented per overlay
 
 ## Validation Baseline
 
