@@ -210,6 +210,29 @@ func TestNewRootModelDefaultsBugViewToMerge(t *testing.T) {
 	}
 }
 
+func TestSummarizeProjectsUsesLaunchpadDefaultsForSeriesAndFocus(t *testing.T) {
+	rows := summarizeProjects(&dto.Config{
+		Launchpad: dto.LaunchpadConfig{
+			Series:           []string{"2024.1", "2025.1"},
+			DevelopmentFocus: "2025.1",
+		},
+		Projects: []dto.ProjectConfig{{
+			Name: "sunbeam-charms",
+			Code: dto.CodeConfig{Forge: "gerrit", Project: "openstack/sunbeam-charms"},
+		}},
+	}, projectsFilters{})
+
+	if len(rows) != 1 {
+		t.Fatalf("len(rows) = %d, want 1", len(rows))
+	}
+	if got := rows[0].Series; !reflect.DeepEqual(got, []string{"2024.1", "2025.1"}) {
+		t.Fatalf("row series = %v, want launchpad defaults", got)
+	}
+	if got := rows[0].DevelopmentFocus; got != "2025.1" {
+		t.Fatalf("row development focus = %q, want launchpad default", got)
+	}
+}
+
 func TestApplyTUIConfigSetsStartupPaneAndDefaults(t *testing.T) {
 	model := newRootModel(nil, true)
 	merge := false
@@ -624,6 +647,20 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 	model.activeView = viewProjects
 	if rendered := model.renderProjects(); !strings.Contains(rendered, "snap-openstack") {
 		t.Fatalf("renderProjects missing project detail:\n%s", rendered)
+	}
+	projectDetail := renderProjectPane(newTheme(), &projectSummary{
+		Name:             "sunbeam-charms",
+		CodeForge:        "gerrit",
+		CodeProject:      "openstack/sunbeam-charms",
+		Series:           []string{"2024.1", "2025.1"},
+		DevelopmentFocus: "2025.1",
+		Config: dto.ProjectConfig{
+			Name: "sunbeam-charms",
+			Code: dto.CodeConfig{Forge: "gerrit", Project: "openstack/sunbeam-charms"},
+		},
+	}, 80)
+	if !strings.Contains(projectDetail, "Series: 2024.1, 2025.1") || !strings.Contains(projectDetail, "Development focus: 2025.1") {
+		t.Fatalf("renderProjectPane missing effective launchpad defaults:\n%s", projectDetail)
 	}
 
 	for _, tc := range []struct {

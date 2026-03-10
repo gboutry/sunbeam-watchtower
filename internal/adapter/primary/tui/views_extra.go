@@ -549,13 +549,14 @@ func summarizeProjects(cfg *dto.Config, filters projectsFilters) []projectSummar
 	}
 	rows := make([]projectSummary, 0, len(cfg.Projects))
 	for _, project := range cfg.Projects {
+		effectiveSeries, effectiveFocus := projectSeriesAndFocus(cfg, project)
 		row := projectSummary{
 			Name:             project.Name,
 			ArtifactType:     project.ArtifactType,
 			CodeForge:        project.Code.Forge,
 			CodeProject:      project.Code.Project,
-			Series:           append([]string(nil), project.Series...),
-			DevelopmentFocus: project.DevelopmentFocus,
+			Series:           effectiveSeries,
+			DevelopmentFocus: effectiveFocus,
 			HasBuild:         project.Build != nil,
 			HasRelease:       project.Release != nil,
 			Config:           project,
@@ -574,6 +575,18 @@ func summarizeProjects(cfg *dto.Config, filters projectsFilters) []projectSummar
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows
+}
+
+func projectSeriesAndFocus(cfg *dto.Config, project dto.ProjectConfig) ([]string, string) {
+	series := append([]string(nil), project.Series...)
+	if len(series) == 0 {
+		series = append([]string(nil), cfg.Launchpad.Series...)
+	}
+	focus := project.DevelopmentFocus
+	if focus == "" {
+		focus = cfg.Launchpad.DevelopmentFocus
+	}
+	return series, focus
 }
 
 func projectMatchesFilters(row projectSummary, filters projectsFilters) bool {
