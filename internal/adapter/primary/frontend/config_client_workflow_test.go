@@ -23,6 +23,9 @@ func TestConfigClientWorkflowShow(t *testing.T) {
 			Build: dto.BuildConfig{
 				DefaultPrefix: "tmp-build",
 			},
+			TUI: dto.TUIConfig{
+				DefaultPane: "packages",
+			},
 		})
 	}))
 	defer ts.Close()
@@ -34,5 +37,8 @@ func TestConfigClientWorkflowShow(t *testing.T) {
 	}
 	if got.Build.DefaultPrefix != "tmp-build" {
 		t.Fatalf("Show() = %+v, want tmp-build prefix", got)
+	}
+	if got.TUI.DefaultPane != "packages" {
+		t.Fatalf("Show() TUI.DefaultPane = %q, want packages", got.TUI.DefaultPane)
 	}
 }

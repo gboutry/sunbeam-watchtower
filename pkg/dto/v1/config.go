@@ -82,6 +82,129 @@ type ReleasesConfig struct {
 	TargetProfiles       map[string]ReleaseTargetProfileConfig `json:"target_profiles,omitempty" yaml:"target_profiles,omitempty"`
 }
 
+type TUIBuildsFiltersConfig struct {
+	Project string `json:"project,omitempty" yaml:"project,omitempty"`
+	State   string `json:"state,omitempty" yaml:"state,omitempty"`
+	Active  *bool  `json:"active,omitempty" yaml:"active,omitempty"`
+	Source  string `json:"source,omitempty" yaml:"source,omitempty"`
+}
+
+type TUIBuildsPaneConfig struct {
+	Filters TUIBuildsFiltersConfig `json:"filters,omitempty" yaml:"filters,omitempty"`
+}
+
+type TUIReleasesFiltersConfig struct {
+	Project       string `json:"project,omitempty" yaml:"project,omitempty"`
+	ArtifactType  string `json:"artifact_type,omitempty" yaml:"artifact_type,omitempty"`
+	Risk          string `json:"risk,omitempty" yaml:"risk,omitempty"`
+	Track         string `json:"track,omitempty" yaml:"track,omitempty"`
+	Branch        string `json:"branch,omitempty" yaml:"branch,omitempty"`
+	TargetProfile string `json:"target_profile,omitempty" yaml:"target_profile,omitempty"`
+	AllTargets    *bool  `json:"all_targets,omitempty" yaml:"all_targets,omitempty"`
+}
+
+type TUIReleasesPaneConfig struct {
+	Filters TUIReleasesFiltersConfig `json:"filters,omitempty" yaml:"filters,omitempty"`
+}
+
+type TUIPackagesFiltersConfig struct {
+	Set             string `json:"set,omitempty" yaml:"set,omitempty"`
+	Distro          string `json:"distro,omitempty" yaml:"distro,omitempty"`
+	Release         string `json:"release,omitempty" yaml:"release,omitempty"`
+	Suite           string `json:"suite,omitempty" yaml:"suite,omitempty"`
+	Component       string `json:"component,omitempty" yaml:"component,omitempty"`
+	Backport        string `json:"backport,omitempty" yaml:"backport,omitempty"`
+	Merge           *bool  `json:"merge,omitempty" yaml:"merge,omitempty"`
+	UpstreamRelease string `json:"upstream_release,omitempty" yaml:"upstream_release,omitempty"`
+	BehindUpstream  *bool  `json:"behind_upstream,omitempty" yaml:"behind_upstream,omitempty"`
+	OnlyIn          string `json:"only_in,omitempty" yaml:"only_in,omitempty"`
+	Constraints     string `json:"constraints,omitempty" yaml:"constraints,omitempty"`
+	Tracker         string `json:"tracker,omitempty" yaml:"tracker,omitempty"`
+	Name            string `json:"name,omitempty" yaml:"name,omitempty"`
+	Team            string `json:"team,omitempty" yaml:"team,omitempty"`
+	FTBFS           *bool  `json:"ftbfs,omitempty" yaml:"ftbfs,omitempty"`
+	Autopkgtest     *bool  `json:"autopkgtest,omitempty" yaml:"autopkgtest,omitempty"`
+	BlockedBy       string `json:"blocked_by,omitempty" yaml:"blocked_by,omitempty"`
+	Bugged          *bool  `json:"bugged,omitempty" yaml:"bugged,omitempty"`
+	MinAge          string `json:"min_age,omitempty" yaml:"min_age,omitempty"`
+	MaxAge          string `json:"max_age,omitempty" yaml:"max_age,omitempty"`
+	Limit           string `json:"limit,omitempty" yaml:"limit,omitempty"`
+	Reverse         *bool  `json:"reverse,omitempty" yaml:"reverse,omitempty"`
+}
+
+type TUIPackagesPaneConfig struct {
+	Mode    string                   `json:"mode,omitempty" yaml:"mode,omitempty"`
+	Filters TUIPackagesFiltersConfig `json:"filters,omitempty" yaml:"filters,omitempty"`
+}
+
+type TUIBugsFiltersConfig struct {
+	Project    string `json:"project,omitempty" yaml:"project,omitempty"`
+	Status     string `json:"status,omitempty" yaml:"status,omitempty"`
+	Importance string `json:"importance,omitempty" yaml:"importance,omitempty"`
+	Assignee   string `json:"assignee,omitempty" yaml:"assignee,omitempty"`
+	Tag        string `json:"tag,omitempty" yaml:"tag,omitempty"`
+	Since      string `json:"since,omitempty" yaml:"since,omitempty"`
+	Merge      *bool  `json:"merge,omitempty" yaml:"merge,omitempty"`
+}
+
+type TUIBugsPaneConfig struct {
+	Filters TUIBugsFiltersConfig `json:"filters,omitempty" yaml:"filters,omitempty"`
+}
+
+type TUIReviewsFiltersConfig struct {
+	Project string `json:"project,omitempty" yaml:"project,omitempty"`
+	Forge   string `json:"forge,omitempty" yaml:"forge,omitempty"`
+	State   string `json:"state,omitempty" yaml:"state,omitempty"`
+	Author  string `json:"author,omitempty" yaml:"author,omitempty"`
+	Since   string `json:"since,omitempty" yaml:"since,omitempty"`
+}
+
+type TUIReviewsPaneConfig struct {
+	Filters TUIReviewsFiltersConfig `json:"filters,omitempty" yaml:"filters,omitempty"`
+}
+
+type TUICommitsFiltersConfig struct {
+	Project    string `json:"project,omitempty" yaml:"project,omitempty"`
+	Forge      string `json:"forge,omitempty" yaml:"forge,omitempty"`
+	Branch     string `json:"branch,omitempty" yaml:"branch,omitempty"`
+	Author     string `json:"author,omitempty" yaml:"author,omitempty"`
+	IncludeMRs *bool  `json:"include_mrs,omitempty" yaml:"include_mrs,omitempty"`
+	BugID      string `json:"bug_id,omitempty" yaml:"bug_id,omitempty"`
+}
+
+type TUICommitsPaneConfig struct {
+	Mode    string                  `json:"mode,omitempty" yaml:"mode,omitempty"`
+	Filters TUICommitsFiltersConfig `json:"filters,omitempty" yaml:"filters,omitempty"`
+}
+
+type TUIProjectsFiltersConfig struct {
+	Name         string `json:"name,omitempty" yaml:"name,omitempty"`
+	ArtifactType string `json:"artifact_type,omitempty" yaml:"artifact_type,omitempty"`
+	CodeForge    string `json:"code_forge,omitempty" yaml:"code_forge,omitempty"`
+	BugForge     string `json:"bug_forge,omitempty" yaml:"bug_forge,omitempty"`
+	HasBuild     string `json:"has_build,omitempty" yaml:"has_build,omitempty"`
+	HasRelease   string `json:"has_release,omitempty" yaml:"has_release,omitempty"`
+}
+
+type TUIProjectsPaneConfig struct {
+	Filters TUIProjectsFiltersConfig `json:"filters,omitempty" yaml:"filters,omitempty"`
+}
+
+type TUIPanesConfig struct {
+	Builds   *TUIBuildsPaneConfig   `json:"builds,omitempty" yaml:"builds,omitempty"`
+	Releases *TUIReleasesPaneConfig `json:"releases,omitempty" yaml:"releases,omitempty"`
+	Packages *TUIPackagesPaneConfig `json:"packages,omitempty" yaml:"packages,omitempty"`
+	Bugs     *TUIBugsPaneConfig     `json:"bugs,omitempty" yaml:"bugs,omitempty"`
+	Reviews  *TUIReviewsPaneConfig  `json:"reviews,omitempty" yaml:"reviews,omitempty"`
+	Commits  *TUICommitsPaneConfig  `json:"commits,omitempty" yaml:"commits,omitempty"`
+	Projects *TUIProjectsPaneConfig `json:"projects,omitempty" yaml:"projects,omitempty"`
+}
+
+type TUIConfig struct {
+	DefaultPane string         `json:"default_pane,omitempty" yaml:"default_pane,omitempty"`
+	Panes       TUIPanesConfig `json:"panes,omitempty" yaml:"panes,omitempty"`
+}
+
 type ProjectConfig struct {
 	Name             string                `json:"name" yaml:"name"`
 	ArtifactType     string                `json:"artifact_type,omitempty" yaml:"artifact_type,omitempty"`
@@ -204,5 +327,6 @@ type Config struct {
 	Build     BuildConfig               `json:"build" yaml:"build"`
 	Releases  ReleasesConfig            `json:"releases,omitempty" yaml:"releases,omitempty"`
 	Packages  PackagesConfig            `json:"packages,omitempty" yaml:"packages,omitempty"`
+	TUI       TUIConfig                 `json:"tui,omitempty" yaml:"tui,omitempty"`
 	OTel      OTelConfig                `json:"otel,omitempty" yaml:"otel,omitempty"`
 }

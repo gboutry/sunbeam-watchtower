@@ -98,11 +98,12 @@ type buildsFilters struct {
 }
 
 type buildsModel struct {
-	filters buildsFilters
-	rows    []dto.Build
-	index   int
-	loaded  bool
-	err     string
+	filters  buildsFilters
+	defaults buildsFilters
+	rows     []dto.Build
+	index    int
+	loaded   bool
+	err      string
 }
 
 type releasesFilters struct {
@@ -117,6 +118,7 @@ type releasesFilters struct {
 
 type releasesModel struct {
 	filters   releasesFilters
+	defaults  releasesFilters
 	rows      []dto.ReleaseListEntry
 	artifacts []releaseArtifactSummary
 	index     int
@@ -217,6 +219,11 @@ type buildsLoadedMsg struct {
 type releasesLoadedMsg struct {
 	rows []dto.ReleaseListEntry
 	err  error
+}
+
+type tuiBootstrapLoadedMsg struct {
+	config *dto.Config
+	err    error
 }
 
 type releaseDetailLoadedMsg struct {
@@ -364,36 +371,39 @@ func newRootModelWithLogs(session *runtimeadapter.Session, noColor bool, logs *l
 		theme:      t,
 		activeView: viewDashboard,
 		builds: buildsModel{
-			filters: buildsFilters{active: true, source: "remote"},
+			filters:  buildsFilters{active: true, source: "remote"},
+			defaults: buildsFilters{active: true, source: "remote"},
 		},
 		releases: releasesModel{
-			filters: releasesFilters{},
+			filters:  releasesFilters{},
+			defaults: releasesFilters{},
 		},
 		packages: packagesModel{
-			filters: packagesFilters{mode: packageModeInventory, backport: "none"},
+			filters:  packagesFilters{mode: packageModeInventory, backport: "none"},
+			defaults: packagesFilters{mode: packageModeInventory, backport: "none"},
 		},
 		bugs: bugsModel{
-			filters: bugsFilters{merge: true},
+			filters:  bugsFilters{merge: true},
+			defaults: bugsFilters{merge: true},
+		},
+		reviews: reviewsModel{
+			filters:  reviewsFilters{},
+			defaults: reviewsFilters{},
 		},
 		commits: commitsModel{
-			filters: commitsFilters{mode: commitModeLog},
+			filters:  commitsFilters{mode: commitModeLog},
+			defaults: commitsFilters{mode: commitModeLog},
+		},
+		projects: projectsModel{
+			filters:  projectsFilters{},
+			defaults: projectsFilters{},
 		},
 	}
 	return m
 }
 
 func (m rootModel) Init() tea.Cmd {
-	return tea.Batch(
-		loadDashboardCmd(m.session),
-		loadBuildsCmd(m.session, m.builds.filters),
-		loadReleasesCmd(m.session, m.releases.filters),
-		loadPackagesCmd(m.session, m.packages.filters),
-		loadBugsCmd(m.session, m.bugs.filters),
-		loadReviewsCmd(m.session, m.reviews.filters),
-		loadCommitsCmd(m.session, m.commits.filters),
-		loadProjectsCmd(m.session, m.projects.filters),
-		tickDashboardCmd(),
-	)
+	return loadTUIBootstrapCmd(m.session)
 }
 
 func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -407,6 +417,15 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateOverlay(msg)
 		}
 		return m.updateGlobal(msg)
+	case tuiBootstrapLoadedMsg:
+		if msg.err != nil {
+			m.setToast("Using built-in TUI defaults", "error")
+			return m, tea.Batch(clearToastLater(), m.initialLoadCmd(nil), tickDashboardCmd())
+		}
+		if msg.config != nil {
+			m.applyTUIConfig(msg.config)
+		}
+		return m, tea.Batch(m.initialLoadCmd(msg.config), tickDashboardCmd())
 	case dashboardLoadedMsg:
 		m.dashboard.loaded = msg.err == nil
 		m.dashboard.err = errString(msg.err)
@@ -815,7 +834,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		switch m.activeView {
 		case viewBuilds:
-			m.buildFilterForm = newBuildFilterForm(m.builds.filters)
+			m.buildFilterForm = newBuildFilterForm(m.builds)
 			m.overlay = overlayBuildFilters
 			m.overlayScroll = 0
 		case viewReleases:
@@ -1291,6 +1310,322 @@ func (m rootModel) resumeDeferredAction(action deferredAction) tea.Cmd {
 
 func (m *rootModel) setToast(message, level string) {
 	m.toast = toastState{message: message, level: level}
+}
+
+func loadTUIBootstrapCmd(session *runtimeadapter.Session) tea.Cmd {
+	return func() tea.Msg {
+		if session == nil || session.Frontend == nil {
+			return tuiBootstrapLoadedMsg{err: errors.New("runtime session does not expose config workflow")}
+		}
+		cfg, err := session.Frontend.Config().Show(context.Background())
+		if err != nil {
+			return tuiBootstrapLoadedMsg{err: err}
+		}
+		return tuiBootstrapLoadedMsg{config: cfg}
+	}
+}
+
+func loadProjectsFromConfigCmd(cfg *dto.Config, filters projectsFilters) tea.Cmd {
+	return func() tea.Msg {
+		if cfg == nil {
+			return projectsLoadedMsg{err: errors.New("configuration is not loaded")}
+		}
+		return projectsLoadedMsg{
+			config: cfg,
+			rows:   summarizeProjects(cfg, filters),
+		}
+	}
+}
+
+func (m rootModel) initialLoadCmd(cfg *dto.Config) tea.Cmd {
+	cmds := []tea.Cmd{
+		loadDashboardCmd(m.session),
+		loadBuildsCmd(m.session, m.builds.filters),
+		loadReleasesCmd(m.session, m.releases.filters),
+		loadPackagesCmd(m.session, m.packages.filters),
+		loadBugsCmd(m.session, m.bugs.filters),
+		loadReviewsCmd(m.session, m.reviews.filters),
+		loadCommitsCmd(m.session, m.commits.filters),
+	}
+	if cfg != nil {
+		cmds = append(cmds, loadProjectsFromConfigCmd(cfg, m.projects.filters))
+	} else {
+		cmds = append(cmds, loadProjectsCmd(m.session, m.projects.filters))
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *rootModel) applyTUIConfig(cfg *dto.Config) {
+	if m == nil || cfg == nil {
+		return
+	}
+	if view, ok := parseTUIPane(cfg.TUI.DefaultPane); ok {
+		m.activeView = view
+	}
+	m.builds.defaults = applyTUIBuildsDefaults(m.builds.defaults, cfg.TUI.Panes.Builds)
+	m.builds.filters = m.builds.defaults
+	m.releases.defaults = applyTUIReleasesDefaults(m.releases.defaults, cfg.TUI.Panes.Releases)
+	m.releases.filters = m.releases.defaults
+	m.packages.defaults = applyTUIPackagesDefaults(m.packages.defaults, cfg.TUI.Panes.Packages)
+	m.packages.filters = m.packages.defaults
+	m.bugs.defaults = applyTUIBugsDefaults(m.bugs.defaults, cfg.TUI.Panes.Bugs)
+	m.bugs.filters = m.bugs.defaults
+	m.reviews.defaults = applyTUIReviewsDefaults(m.reviews.defaults, cfg.TUI.Panes.Reviews)
+	m.reviews.filters = m.reviews.defaults
+	m.commits.defaults = applyTUICommitsDefaults(m.commits.defaults, cfg.TUI.Panes.Commits)
+	m.commits.filters = m.commits.defaults
+	m.projects.defaults = applyTUIProjectsDefaults(m.projects.defaults, cfg.TUI.Panes.Projects)
+	m.projects.filters = m.projects.defaults
+	m.projects.config = cfg
+}
+
+func parseTUIPane(raw string) (viewID, bool) {
+	switch strings.TrimSpace(raw) {
+	case "dashboard":
+		return viewDashboard, true
+	case "builds":
+		return viewBuilds, true
+	case "releases":
+		return viewReleases, true
+	case "packages":
+		return viewPackages, true
+	case "bugs":
+		return viewBugs, true
+	case "reviews":
+		return viewReviews, true
+	case "commits":
+		return viewCommits, true
+	case "projects":
+		return viewProjects, true
+	default:
+		return viewDashboard, false
+	}
+}
+
+func applyTUIBuildsDefaults(base buildsFilters, pane *dto.TUIBuildsPaneConfig) buildsFilters {
+	if pane == nil {
+		return base
+	}
+	if pane.Filters.Project != "" {
+		base.project = pane.Filters.Project
+	}
+	if pane.Filters.State != "" {
+		base.state = pane.Filters.State
+	}
+	if pane.Filters.Active != nil {
+		base.active = *pane.Filters.Active
+	}
+	if pane.Filters.Source != "" {
+		base.source = pane.Filters.Source
+	}
+	return base
+}
+
+func applyTUIReleasesDefaults(base releasesFilters, pane *dto.TUIReleasesPaneConfig) releasesFilters {
+	if pane == nil {
+		return base
+	}
+	if pane.Filters.Project != "" {
+		base.project = pane.Filters.Project
+	}
+	if pane.Filters.ArtifactType != "" {
+		base.artifactType = pane.Filters.ArtifactType
+	}
+	if pane.Filters.Risk != "" {
+		base.risk = pane.Filters.Risk
+	}
+	if pane.Filters.Track != "" {
+		base.track = pane.Filters.Track
+	}
+	if pane.Filters.Branch != "" {
+		base.branch = pane.Filters.Branch
+	}
+	if pane.Filters.TargetProfile != "" {
+		base.targetProfile = pane.Filters.TargetProfile
+	}
+	if pane.Filters.AllTargets != nil {
+		base.allTargets = *pane.Filters.AllTargets
+	}
+	return base
+}
+
+func applyTUIPackagesDefaults(base packagesFilters, pane *dto.TUIPackagesPaneConfig) packagesFilters {
+	if pane == nil {
+		return base
+	}
+	if mode, err := parsePackageMode(pane.Mode); err == nil && pane.Mode != "" {
+		base.mode = mode
+	}
+	if pane.Filters.Set != "" {
+		base.set = pane.Filters.Set
+	}
+	if pane.Filters.Distro != "" {
+		base.distro = pane.Filters.Distro
+	}
+	if pane.Filters.Release != "" {
+		base.release = pane.Filters.Release
+	}
+	if pane.Filters.Suite != "" {
+		base.suite = pane.Filters.Suite
+	}
+	if pane.Filters.Component != "" {
+		base.component = pane.Filters.Component
+	}
+	if pane.Filters.Backport != "" {
+		base.backport = pane.Filters.Backport
+	}
+	if pane.Filters.Merge != nil {
+		base.merge = *pane.Filters.Merge
+	}
+	if pane.Filters.UpstreamRelease != "" {
+		base.upstreamRelease = pane.Filters.UpstreamRelease
+	}
+	if pane.Filters.BehindUpstream != nil {
+		base.behindUpstream = *pane.Filters.BehindUpstream
+	}
+	if pane.Filters.OnlyIn != "" {
+		base.onlyIn = pane.Filters.OnlyIn
+	}
+	if pane.Filters.Constraints != "" {
+		base.constraints = pane.Filters.Constraints
+	}
+	if pane.Filters.Tracker != "" {
+		base.tracker = pane.Filters.Tracker
+	}
+	if pane.Filters.Name != "" {
+		base.name = pane.Filters.Name
+	}
+	if pane.Filters.Team != "" {
+		base.team = pane.Filters.Team
+	}
+	if pane.Filters.FTBFS != nil {
+		base.ftbfs = *pane.Filters.FTBFS
+	}
+	if pane.Filters.Autopkgtest != nil {
+		base.autopkgtest = *pane.Filters.Autopkgtest
+	}
+	if pane.Filters.BlockedBy != "" {
+		base.blockedBy = pane.Filters.BlockedBy
+	}
+	if pane.Filters.Bugged != nil {
+		base.bugged = *pane.Filters.Bugged
+	}
+	if pane.Filters.MinAge != "" {
+		base.minAge = pane.Filters.MinAge
+	}
+	if pane.Filters.MaxAge != "" {
+		base.maxAge = pane.Filters.MaxAge
+	}
+	if pane.Filters.Limit != "" {
+		base.limit = pane.Filters.Limit
+	}
+	if pane.Filters.Reverse != nil {
+		base.reverse = *pane.Filters.Reverse
+	}
+	return base
+}
+
+func applyTUIBugsDefaults(base bugsFilters, pane *dto.TUIBugsPaneConfig) bugsFilters {
+	if pane == nil {
+		return base
+	}
+	if pane.Filters.Project != "" {
+		base.project = pane.Filters.Project
+	}
+	if pane.Filters.Status != "" {
+		base.status = pane.Filters.Status
+	}
+	if pane.Filters.Importance != "" {
+		base.importance = pane.Filters.Importance
+	}
+	if pane.Filters.Assignee != "" {
+		base.assignee = pane.Filters.Assignee
+	}
+	if pane.Filters.Tag != "" {
+		base.tag = pane.Filters.Tag
+	}
+	if pane.Filters.Since != "" {
+		base.since = pane.Filters.Since
+	}
+	if pane.Filters.Merge != nil {
+		base.merge = *pane.Filters.Merge
+	}
+	return base
+}
+
+func applyTUIReviewsDefaults(base reviewsFilters, pane *dto.TUIReviewsPaneConfig) reviewsFilters {
+	if pane == nil {
+		return base
+	}
+	if pane.Filters.Project != "" {
+		base.project = pane.Filters.Project
+	}
+	if pane.Filters.Forge != "" {
+		base.forge = pane.Filters.Forge
+	}
+	if pane.Filters.State != "" {
+		base.state = pane.Filters.State
+	}
+	if pane.Filters.Author != "" {
+		base.author = pane.Filters.Author
+	}
+	if pane.Filters.Since != "" {
+		base.since = pane.Filters.Since
+	}
+	return base
+}
+
+func applyTUICommitsDefaults(base commitsFilters, pane *dto.TUICommitsPaneConfig) commitsFilters {
+	if pane == nil {
+		return base
+	}
+	if mode, err := parseCommitMode(pane.Mode); err == nil && pane.Mode != "" {
+		base.mode = mode
+	}
+	if pane.Filters.Project != "" {
+		base.project = pane.Filters.Project
+	}
+	if pane.Filters.Forge != "" {
+		base.forge = pane.Filters.Forge
+	}
+	if pane.Filters.Branch != "" {
+		base.branch = pane.Filters.Branch
+	}
+	if pane.Filters.Author != "" {
+		base.author = pane.Filters.Author
+	}
+	if pane.Filters.IncludeMRs != nil {
+		base.includeMRs = *pane.Filters.IncludeMRs
+	}
+	if pane.Filters.BugID != "" {
+		base.bugID = pane.Filters.BugID
+	}
+	return base
+}
+
+func applyTUIProjectsDefaults(base projectsFilters, pane *dto.TUIProjectsPaneConfig) projectsFilters {
+	if pane == nil {
+		return base
+	}
+	if pane.Filters.Name != "" {
+		base.name = pane.Filters.Name
+	}
+	if pane.Filters.ArtifactType != "" {
+		base.artifactType = pane.Filters.ArtifactType
+	}
+	if pane.Filters.CodeForge != "" {
+		base.codeForge = pane.Filters.CodeForge
+	}
+	if pane.Filters.BugForge != "" {
+		base.bugForge = pane.Filters.BugForge
+	}
+	if pane.Filters.HasBuild != "" {
+		base.hasBuild = pane.Filters.HasBuild
+	}
+	if pane.Filters.HasRelease != "" {
+		base.hasRelease = pane.Filters.HasRelease
+	}
+	return base
 }
 
 func (m rootModel) View() string {
@@ -2116,25 +2451,25 @@ func clearToastLater() tea.Cmd {
 	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearToastMsg{} })
 }
 
-func newBuildFilterForm(filters buildsFilters) formModalModel {
+func newBuildFilterForm(builds buildsModel) formModalModel {
 	return newFormModal("Build Filters", []fieldDef{
-		{placeholder: "project", value: filters.project, resetValue: ""},
-		{placeholder: "state", value: filters.state, resetValue: ""},
-		{placeholder: "active", value: fmt.Sprintf("%t", filters.active), resetValue: "true", kind: fieldKindEnum, suggestions: []string{"false", "true"}},
-		{placeholder: "source", value: filters.source, resetValue: "remote", kind: fieldKindEnum, suggestions: []string{"remote", "local"}},
+		{placeholder: "project", value: builds.filters.project, resetValue: builds.defaults.project},
+		{placeholder: "state", value: builds.filters.state, resetValue: builds.defaults.state},
+		{placeholder: "active", value: fmt.Sprintf("%t", builds.filters.active), resetValue: fmt.Sprintf("%t", builds.defaults.active), kind: fieldKindEnum, suggestions: []string{"false", "true"}},
+		{placeholder: "source", value: builds.filters.source, resetValue: builds.defaults.source, kind: fieldKindEnum, suggestions: []string{"remote", "local"}},
 	})
 }
 
 func newReleaseFilterForm(session *runtimeadapter.Session, releases releasesModel) formModalModel {
 	suggestions := releaseFilterSuggestions(session, releases)
 	return newFormModal("Release Filters", []fieldDef{
-		{placeholder: "project", value: releases.filters.project, resetValue: "", suggestions: suggestions.projects},
-		{placeholder: "artifact type", value: releases.filters.artifactType, resetValue: "", suggestions: suggestions.artifactTypes, kind: fieldKindEnum},
-		{placeholder: "risk", value: releases.filters.risk, resetValue: "", suggestions: suggestions.risks, kind: fieldKindEnum},
-		{placeholder: "track", value: releases.filters.track, resetValue: "", suggestions: suggestions.tracks},
-		{placeholder: "branch", value: releases.filters.branch, resetValue: "", suggestions: suggestions.branches},
-		{placeholder: "target profile", value: releases.filters.targetProfile, resetValue: "", suggestions: suggestions.targetProfiles, kind: fieldKindEnum},
-		{placeholder: "all targets", value: fmt.Sprintf("%t", releases.filters.allTargets), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+		{placeholder: "project", value: releases.filters.project, resetValue: releases.defaults.project, suggestions: suggestions.projects},
+		{placeholder: "artifact type", value: releases.filters.artifactType, resetValue: releases.defaults.artifactType, suggestions: suggestions.artifactTypes, kind: fieldKindEnum},
+		{placeholder: "risk", value: releases.filters.risk, resetValue: releases.defaults.risk, suggestions: suggestions.risks, kind: fieldKindEnum},
+		{placeholder: "track", value: releases.filters.track, resetValue: releases.defaults.track, suggestions: suggestions.tracks},
+		{placeholder: "branch", value: releases.filters.branch, resetValue: releases.defaults.branch, suggestions: suggestions.branches},
+		{placeholder: "target profile", value: releases.filters.targetProfile, resetValue: releases.defaults.targetProfile, suggestions: suggestions.targetProfiles, kind: fieldKindEnum},
+		{placeholder: "all targets", value: fmt.Sprintf("%t", releases.filters.allTargets), resetValue: fmt.Sprintf("%t", releases.defaults.allTargets), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
 	})
 }
 

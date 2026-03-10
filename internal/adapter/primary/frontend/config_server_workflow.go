@@ -55,6 +55,9 @@ func configToDTO(cfg *config.Config) *dto.Config {
 			DefaultTargetProfile: cfg.Releases.DefaultTargetProfile,
 			TargetProfiles:       make(map[string]dto.ReleaseTargetProfileConfig, len(cfg.Releases.TargetProfiles)),
 		},
+		TUI: dto.TUIConfig{
+			DefaultPane: cfg.TUI.DefaultPane,
+		},
 		BugGroups: make(map[string]dto.BugGroupConfig, len(cfg.BugGroups)),
 		OTel: dto.OTelConfig{
 			ServiceName:        cfg.OTel.ServiceName,
@@ -165,6 +168,15 @@ func configToDTO(cfg *config.Config) *dto.Config {
 
 	for name, profile := range cfg.Releases.TargetProfiles {
 		out.Releases.TargetProfiles[name] = *profileConfigToDTO(&profile)
+	}
+	out.TUI.Panes = dto.TUIPanesConfig{
+		Builds:   tuiBuildsPaneConfigToDTO(cfg.TUI.Panes.Builds),
+		Releases: tuiReleasesPaneConfigToDTO(cfg.TUI.Panes.Releases),
+		Packages: tuiPackagesPaneConfigToDTO(cfg.TUI.Panes.Packages),
+		Bugs:     tuiBugsPaneConfigToDTO(cfg.TUI.Panes.Bugs),
+		Reviews:  tuiReviewsPaneConfigToDTO(cfg.TUI.Panes.Reviews),
+		Commits:  tuiCommitsPaneConfigToDTO(cfg.TUI.Panes.Commits),
+		Projects: tuiProjectsPaneConfigToDTO(cfg.TUI.Panes.Projects),
 	}
 	for name, group := range cfg.BugGroups {
 		out.BugGroups[name] = dto.BugGroupConfig{
@@ -286,5 +298,134 @@ func signalConfigToDTO(cfg config.OTelSignalConfig) dto.OTelSignalConfig {
 		SamplingRatio: cfg.SamplingRatio,
 		MinLevel:      cfg.MinLevel,
 		MirrorStderr:  cfg.MirrorStderr,
+	}
+}
+
+func tuiBuildsPaneConfigToDTO(cfg *config.TUIBuildsPaneConfig) *dto.TUIBuildsPaneConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &dto.TUIBuildsPaneConfig{
+		Filters: dto.TUIBuildsFiltersConfig{
+			Project: cfg.Filters.Project,
+			State:   cfg.Filters.State,
+			Active:  cfg.Filters.Active,
+			Source:  cfg.Filters.Source,
+		},
+	}
+}
+
+func tuiReleasesPaneConfigToDTO(cfg *config.TUIReleasesPaneConfig) *dto.TUIReleasesPaneConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &dto.TUIReleasesPaneConfig{
+		Filters: dto.TUIReleasesFiltersConfig{
+			Project:       cfg.Filters.Project,
+			ArtifactType:  cfg.Filters.ArtifactType,
+			Risk:          cfg.Filters.Risk,
+			Track:         cfg.Filters.Track,
+			Branch:        cfg.Filters.Branch,
+			TargetProfile: cfg.Filters.TargetProfile,
+			AllTargets:    cfg.Filters.AllTargets,
+		},
+	}
+}
+
+func tuiPackagesPaneConfigToDTO(cfg *config.TUIPackagesPaneConfig) *dto.TUIPackagesPaneConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &dto.TUIPackagesPaneConfig{
+		Mode: cfg.Mode,
+		Filters: dto.TUIPackagesFiltersConfig{
+			Set:             cfg.Filters.Set,
+			Distro:          cfg.Filters.Distro,
+			Release:         cfg.Filters.Release,
+			Suite:           cfg.Filters.Suite,
+			Component:       cfg.Filters.Component,
+			Backport:        cfg.Filters.Backport,
+			Merge:           cfg.Filters.Merge,
+			UpstreamRelease: cfg.Filters.UpstreamRelease,
+			BehindUpstream:  cfg.Filters.BehindUpstream,
+			OnlyIn:          cfg.Filters.OnlyIn,
+			Constraints:     cfg.Filters.Constraints,
+			Tracker:         cfg.Filters.Tracker,
+			Name:            cfg.Filters.Name,
+			Team:            cfg.Filters.Team,
+			FTBFS:           cfg.Filters.FTBFS,
+			Autopkgtest:     cfg.Filters.Autopkgtest,
+			BlockedBy:       cfg.Filters.BlockedBy,
+			Bugged:          cfg.Filters.Bugged,
+			MinAge:          cfg.Filters.MinAge,
+			MaxAge:          cfg.Filters.MaxAge,
+			Limit:           cfg.Filters.Limit,
+			Reverse:         cfg.Filters.Reverse,
+		},
+	}
+}
+
+func tuiBugsPaneConfigToDTO(cfg *config.TUIBugsPaneConfig) *dto.TUIBugsPaneConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &dto.TUIBugsPaneConfig{
+		Filters: dto.TUIBugsFiltersConfig{
+			Project:    cfg.Filters.Project,
+			Status:     cfg.Filters.Status,
+			Importance: cfg.Filters.Importance,
+			Assignee:   cfg.Filters.Assignee,
+			Tag:        cfg.Filters.Tag,
+			Since:      cfg.Filters.Since,
+			Merge:      cfg.Filters.Merge,
+		},
+	}
+}
+
+func tuiReviewsPaneConfigToDTO(cfg *config.TUIReviewsPaneConfig) *dto.TUIReviewsPaneConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &dto.TUIReviewsPaneConfig{
+		Filters: dto.TUIReviewsFiltersConfig{
+			Project: cfg.Filters.Project,
+			Forge:   cfg.Filters.Forge,
+			State:   cfg.Filters.State,
+			Author:  cfg.Filters.Author,
+			Since:   cfg.Filters.Since,
+		},
+	}
+}
+
+func tuiCommitsPaneConfigToDTO(cfg *config.TUICommitsPaneConfig) *dto.TUICommitsPaneConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &dto.TUICommitsPaneConfig{
+		Mode: cfg.Mode,
+		Filters: dto.TUICommitsFiltersConfig{
+			Project:    cfg.Filters.Project,
+			Forge:      cfg.Filters.Forge,
+			Branch:     cfg.Filters.Branch,
+			Author:     cfg.Filters.Author,
+			IncludeMRs: cfg.Filters.IncludeMRs,
+			BugID:      cfg.Filters.BugID,
+		},
+	}
+}
+
+func tuiProjectsPaneConfigToDTO(cfg *config.TUIProjectsPaneConfig) *dto.TUIProjectsPaneConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &dto.TUIProjectsPaneConfig{
+		Filters: dto.TUIProjectsFiltersConfig{
+			Name:         cfg.Filters.Name,
+			ArtifactType: cfg.Filters.ArtifactType,
+			CodeForge:    cfg.Filters.CodeForge,
+			BugForge:     cfg.Filters.BugForge,
+			HasBuild:     cfg.Filters.HasBuild,
+			HasRelease:   cfg.Filters.HasRelease,
+		},
 	}
 }

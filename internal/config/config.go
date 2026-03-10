@@ -106,6 +106,145 @@ type ReleasesConfig struct {
 	TargetProfiles       map[string]ReleaseTargetProfileConfig `mapstructure:"target_profiles" yaml:"target_profiles,omitempty"`
 }
 
+// TUIBuildsFiltersConfig holds startup filter presets for the Builds pane.
+type TUIBuildsFiltersConfig struct {
+	Project string `mapstructure:"project" yaml:"project,omitempty"`
+	State   string `mapstructure:"state" yaml:"state,omitempty"`
+	Active  *bool  `mapstructure:"active" yaml:"active,omitempty"`
+	Source  string `mapstructure:"source" yaml:"source,omitempty"`
+}
+
+// TUIBuildsPaneConfig holds startup state for the Builds pane.
+type TUIBuildsPaneConfig struct {
+	Filters TUIBuildsFiltersConfig `mapstructure:"filters" yaml:"filters,omitempty"`
+}
+
+// TUIReleasesFiltersConfig holds startup filter presets for the Releases pane.
+type TUIReleasesFiltersConfig struct {
+	Project       string `mapstructure:"project" yaml:"project,omitempty"`
+	ArtifactType  string `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
+	Risk          string `mapstructure:"risk" yaml:"risk,omitempty"`
+	Track         string `mapstructure:"track" yaml:"track,omitempty"`
+	Branch        string `mapstructure:"branch" yaml:"branch,omitempty"`
+	TargetProfile string `mapstructure:"target_profile" yaml:"target_profile,omitempty"`
+	AllTargets    *bool  `mapstructure:"all_targets" yaml:"all_targets,omitempty"`
+}
+
+// TUIReleasesPaneConfig holds startup state for the Releases pane.
+type TUIReleasesPaneConfig struct {
+	Filters TUIReleasesFiltersConfig `mapstructure:"filters" yaml:"filters,omitempty"`
+}
+
+// TUIPackagesFiltersConfig holds startup filter presets for the Packages pane.
+type TUIPackagesFiltersConfig struct {
+	Set             string `mapstructure:"set" yaml:"set,omitempty"`
+	Distro          string `mapstructure:"distro" yaml:"distro,omitempty"`
+	Release         string `mapstructure:"release" yaml:"release,omitempty"`
+	Suite           string `mapstructure:"suite" yaml:"suite,omitempty"`
+	Component       string `mapstructure:"component" yaml:"component,omitempty"`
+	Backport        string `mapstructure:"backport" yaml:"backport,omitempty"`
+	Merge           *bool  `mapstructure:"merge" yaml:"merge,omitempty"`
+	UpstreamRelease string `mapstructure:"upstream_release" yaml:"upstream_release,omitempty"`
+	BehindUpstream  *bool  `mapstructure:"behind_upstream" yaml:"behind_upstream,omitempty"`
+	OnlyIn          string `mapstructure:"only_in" yaml:"only_in,omitempty"`
+	Constraints     string `mapstructure:"constraints" yaml:"constraints,omitempty"`
+	Tracker         string `mapstructure:"tracker" yaml:"tracker,omitempty"`
+	Name            string `mapstructure:"name" yaml:"name,omitempty"`
+	Team            string `mapstructure:"team" yaml:"team,omitempty"`
+	FTBFS           *bool  `mapstructure:"ftbfs" yaml:"ftbfs,omitempty"`
+	Autopkgtest     *bool  `mapstructure:"autopkgtest" yaml:"autopkgtest,omitempty"`
+	BlockedBy       string `mapstructure:"blocked_by" yaml:"blocked_by,omitempty"`
+	Bugged          *bool  `mapstructure:"bugged" yaml:"bugged,omitempty"`
+	MinAge          string `mapstructure:"min_age" yaml:"min_age,omitempty"`
+	MaxAge          string `mapstructure:"max_age" yaml:"max_age,omitempty"`
+	Limit           string `mapstructure:"limit" yaml:"limit,omitempty"`
+	Reverse         *bool  `mapstructure:"reverse" yaml:"reverse,omitempty"`
+}
+
+// TUIPackagesPaneConfig holds startup state for the Packages pane.
+type TUIPackagesPaneConfig struct {
+	Mode    string                   `mapstructure:"mode" yaml:"mode,omitempty"`
+	Filters TUIPackagesFiltersConfig `mapstructure:"filters" yaml:"filters,omitempty"`
+}
+
+// TUIBugsFiltersConfig holds startup filter presets for the Bugs pane.
+type TUIBugsFiltersConfig struct {
+	Project    string `mapstructure:"project" yaml:"project,omitempty"`
+	Status     string `mapstructure:"status" yaml:"status,omitempty"`
+	Importance string `mapstructure:"importance" yaml:"importance,omitempty"`
+	Assignee   string `mapstructure:"assignee" yaml:"assignee,omitempty"`
+	Tag        string `mapstructure:"tag" yaml:"tag,omitempty"`
+	Since      string `mapstructure:"since" yaml:"since,omitempty"`
+	Merge      *bool  `mapstructure:"merge" yaml:"merge,omitempty"`
+}
+
+// TUIBugsPaneConfig holds startup state for the Bugs pane.
+type TUIBugsPaneConfig struct {
+	Filters TUIBugsFiltersConfig `mapstructure:"filters" yaml:"filters,omitempty"`
+}
+
+// TUIReviewsFiltersConfig holds startup filter presets for the Reviews pane.
+type TUIReviewsFiltersConfig struct {
+	Project string `mapstructure:"project" yaml:"project,omitempty"`
+	Forge   string `mapstructure:"forge" yaml:"forge,omitempty"`
+	State   string `mapstructure:"state" yaml:"state,omitempty"`
+	Author  string `mapstructure:"author" yaml:"author,omitempty"`
+	Since   string `mapstructure:"since" yaml:"since,omitempty"`
+}
+
+// TUIReviewsPaneConfig holds startup state for the Reviews pane.
+type TUIReviewsPaneConfig struct {
+	Filters TUIReviewsFiltersConfig `mapstructure:"filters" yaml:"filters,omitempty"`
+}
+
+// TUICommitsFiltersConfig holds startup filter presets for the Commits pane.
+type TUICommitsFiltersConfig struct {
+	Project    string `mapstructure:"project" yaml:"project,omitempty"`
+	Forge      string `mapstructure:"forge" yaml:"forge,omitempty"`
+	Branch     string `mapstructure:"branch" yaml:"branch,omitempty"`
+	Author     string `mapstructure:"author" yaml:"author,omitempty"`
+	IncludeMRs *bool  `mapstructure:"include_mrs" yaml:"include_mrs,omitempty"`
+	BugID      string `mapstructure:"bug_id" yaml:"bug_id,omitempty"`
+}
+
+// TUICommitsPaneConfig holds startup state for the Commits pane.
+type TUICommitsPaneConfig struct {
+	Mode    string                  `mapstructure:"mode" yaml:"mode,omitempty"`
+	Filters TUICommitsFiltersConfig `mapstructure:"filters" yaml:"filters,omitempty"`
+}
+
+// TUIProjectsFiltersConfig holds startup filter presets for the Projects pane.
+type TUIProjectsFiltersConfig struct {
+	Name         string `mapstructure:"name" yaml:"name,omitempty"`
+	ArtifactType string `mapstructure:"artifact_type" yaml:"artifact_type,omitempty"`
+	CodeForge    string `mapstructure:"code_forge" yaml:"code_forge,omitempty"`
+	BugForge     string `mapstructure:"bug_forge" yaml:"bug_forge,omitempty"`
+	HasBuild     string `mapstructure:"has_build" yaml:"has_build,omitempty"`
+	HasRelease   string `mapstructure:"has_release" yaml:"has_release,omitempty"`
+}
+
+// TUIProjectsPaneConfig holds startup state for the Projects pane.
+type TUIProjectsPaneConfig struct {
+	Filters TUIProjectsFiltersConfig `mapstructure:"filters" yaml:"filters,omitempty"`
+}
+
+// TUIPanesConfig groups pane-specific TUI presets.
+type TUIPanesConfig struct {
+	Builds   *TUIBuildsPaneConfig   `mapstructure:"builds" yaml:"builds,omitempty"`
+	Releases *TUIReleasesPaneConfig `mapstructure:"releases" yaml:"releases,omitempty"`
+	Packages *TUIPackagesPaneConfig `mapstructure:"packages" yaml:"packages,omitempty"`
+	Bugs     *TUIBugsPaneConfig     `mapstructure:"bugs" yaml:"bugs,omitempty"`
+	Reviews  *TUIReviewsPaneConfig  `mapstructure:"reviews" yaml:"reviews,omitempty"`
+	Commits  *TUICommitsPaneConfig  `mapstructure:"commits" yaml:"commits,omitempty"`
+	Projects *TUIProjectsPaneConfig `mapstructure:"projects" yaml:"projects,omitempty"`
+}
+
+// TUIConfig holds TUI startup defaults and preset filters.
+type TUIConfig struct {
+	DefaultPane string         `mapstructure:"default_pane" yaml:"default_pane,omitempty"`
+	Panes       TUIPanesConfig `mapstructure:"panes" yaml:"panes,omitempty"`
+}
+
 // ProjectConfig defines a project tracked across forges.
 type ProjectConfig struct {
 	Name             string                `mapstructure:"name" yaml:"name"`
@@ -277,6 +416,7 @@ type Config struct {
 	Build     BuildConfig               `mapstructure:"build" yaml:"build"`
 	Releases  ReleasesConfig            `mapstructure:"releases" yaml:"releases,omitempty"`
 	Packages  PackagesConfig            `mapstructure:"packages" yaml:"packages,omitempty"`
+	TUI       TUIConfig                 `mapstructure:"tui" yaml:"tui,omitempty"`
 	OTel      OTelConfig                `mapstructure:"otel" yaml:"otel,omitempty"`
 }
 
@@ -334,6 +474,9 @@ func defaults(v *viper.Viper) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshalling config: %w", err)
 	}
+	if err := validateTUIRawConfig(v.Get("tui")); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
 }
 
@@ -366,6 +509,9 @@ func (c *Config) Validate() error {
 		if _, ok := c.Releases.TargetProfiles[c.Releases.DefaultTargetProfile]; !ok {
 			return fmt.Errorf("releases.default_target_profile %q must match a configured releases.target_profiles entry", c.Releases.DefaultTargetProfile)
 		}
+	}
+	if err := validateTUIConfig(c.TUI, c); err != nil {
+		return err
 	}
 	for name, profile := range c.Releases.TargetProfiles {
 		if strings.TrimSpace(name) == "" {
@@ -552,6 +698,233 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+func validateTUIRawConfig(raw any) error {
+	if raw == nil {
+		return nil
+	}
+	root, ok := raw.(map[string]any)
+	if !ok {
+		return fmt.Errorf("tui must be a mapping")
+	}
+	if err := validateKnownKeys("tui", root, map[string]bool{"default_pane": true, "panes": true}); err != nil {
+		return err
+	}
+	panesRaw, ok := root["panes"]
+	if !ok {
+		return nil
+	}
+	panes, ok := panesRaw.(map[string]any)
+	if !ok {
+		return fmt.Errorf("tui.panes must be a mapping")
+	}
+	allowedPanes := map[string]map[string]bool{
+		"builds":   {"filters": true},
+		"releases": {"filters": true},
+		"packages": {"mode": true, "filters": true},
+		"bugs":     {"filters": true},
+		"reviews":  {"filters": true},
+		"commits":  {"mode": true, "filters": true},
+		"projects": {"filters": true},
+	}
+	allowedFilters := map[string]map[string]bool{
+		"builds": {
+			"project": true, "state": true, "active": true, "source": true,
+		},
+		"releases": {
+			"project": true, "artifact_type": true, "risk": true, "track": true, "branch": true, "target_profile": true, "all_targets": true,
+		},
+		"packages": {
+			"set": true, "distro": true, "release": true, "suite": true, "component": true, "backport": true, "merge": true,
+			"upstream_release": true, "behind_upstream": true, "only_in": true, "constraints": true, "tracker": true, "name": true,
+			"team": true, "ftbfs": true, "autopkgtest": true, "blocked_by": true, "bugged": true, "min_age": true,
+			"max_age": true, "limit": true, "reverse": true,
+		},
+		"bugs": {
+			"project": true, "status": true, "importance": true, "assignee": true, "tag": true, "since": true, "merge": true,
+		},
+		"reviews": {
+			"project": true, "forge": true, "state": true, "author": true, "since": true,
+		},
+		"commits": {
+			"project": true, "forge": true, "branch": true, "author": true, "include_mrs": true, "bug_id": true,
+		},
+		"projects": {
+			"name": true, "artifact_type": true, "code_forge": true, "bug_forge": true, "has_build": true, "has_release": true,
+		},
+	}
+	for paneName, paneRaw := range panes {
+		allowedPaneKeys, ok := allowedPanes[paneName]
+		if !ok {
+			return fmt.Errorf("tui.panes.%s is not a supported pane preset", paneName)
+		}
+		paneMap, ok := paneRaw.(map[string]any)
+		if !ok {
+			return fmt.Errorf("tui.panes.%s must be a mapping", paneName)
+		}
+		if err := validateKnownKeys("tui.panes."+paneName, paneMap, allowedPaneKeys); err != nil {
+			return err
+		}
+		filtersRaw, ok := paneMap["filters"]
+		if !ok {
+			continue
+		}
+		filtersMap, ok := filtersRaw.(map[string]any)
+		if !ok {
+			return fmt.Errorf("tui.panes.%s.filters must be a mapping", paneName)
+		}
+		if err := validateKnownKeys("tui.panes."+paneName+".filters", filtersMap, allowedFilters[paneName]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateKnownKeys(prefix string, raw map[string]any, allowed map[string]bool) error {
+	for key := range raw {
+		if !allowed[key] {
+			return fmt.Errorf("%s.%s is not supported", prefix, key)
+		}
+	}
+	return nil
+}
+
+func validateTUIConfig(cfg TUIConfig, root *Config) error {
+	if cfg.DefaultPane != "" && !isAllowedTUIPane(cfg.DefaultPane) {
+		return fmt.Errorf("tui.default_pane %q must be one of dashboard, builds, releases, packages, bugs, reviews, commits, or projects", cfg.DefaultPane)
+	}
+	if cfg.Panes.Builds != nil {
+		if cfg.Panes.Builds.Filters.Source != "" && cfg.Panes.Builds.Filters.Source != "remote" && cfg.Panes.Builds.Filters.Source != "local" {
+			return fmt.Errorf("tui.panes.builds.filters.source %q must be remote or local", cfg.Panes.Builds.Filters.Source)
+		}
+	}
+	if cfg.Panes.Releases != nil {
+		if cfg.Panes.Releases.Filters.ArtifactType != "" {
+			if cfg.Panes.Releases.Filters.ArtifactType != "rock" && cfg.Panes.Releases.Filters.ArtifactType != "charm" && cfg.Panes.Releases.Filters.ArtifactType != "snap" {
+				return fmt.Errorf("tui.panes.releases.filters.artifact_type %q must be rock, charm, or snap", cfg.Panes.Releases.Filters.ArtifactType)
+			}
+		}
+		if cfg.Panes.Releases.Filters.Risk != "" {
+			switch cfg.Panes.Releases.Filters.Risk {
+			case "edge", "beta", "candidate", "stable":
+			default:
+				return fmt.Errorf("tui.panes.releases.filters.risk %q must be edge, beta, candidate, or stable", cfg.Panes.Releases.Filters.Risk)
+			}
+		}
+		if cfg.Panes.Releases.Filters.TargetProfile != "" {
+			if _, ok := root.Releases.TargetProfiles[cfg.Panes.Releases.Filters.TargetProfile]; !ok {
+				return fmt.Errorf("tui.panes.releases.filters.target_profile %q must match a configured releases.target_profiles entry", cfg.Panes.Releases.Filters.TargetProfile)
+			}
+		}
+	}
+	if cfg.Panes.Packages != nil {
+		if cfg.Panes.Packages.Mode != "" {
+			switch cfg.Panes.Packages.Mode {
+			case "inventory", "diff", "excuses":
+			default:
+				return fmt.Errorf("tui.panes.packages.mode %q must be inventory, diff, or excuses", cfg.Panes.Packages.Mode)
+			}
+		}
+		if cfg.Panes.Packages.Filters.Backport != "" && cfg.Panes.Packages.Filters.Backport != "none" && !isConfiguredBackport(root, cfg.Panes.Packages.Filters.Backport) {
+			return fmt.Errorf("tui.panes.packages.filters.backport %q must be none or a configured backport name", cfg.Panes.Packages.Filters.Backport)
+		}
+		if cfg.Panes.Packages.Filters.Tracker != "" && !isConfiguredExcusesTracker(root, cfg.Panes.Packages.Filters.Tracker) {
+			return fmt.Errorf("tui.panes.packages.filters.tracker %q must match a configured excuses tracker", cfg.Panes.Packages.Filters.Tracker)
+		}
+	}
+	if cfg.Panes.Bugs != nil {
+		if cfg.Panes.Bugs.Filters.Status != "" && !containsOneOf(cfg.Panes.Bugs.Filters.Status, []string{"New", "Incomplete", "Opinion", "Invalid", "Won't Fix", "Expired", "Confirmed", "Triaged", "In Progress", "Fix Committed", "Fix Released", "Does Not Exist", "Deferred"}) {
+			return fmt.Errorf("tui.panes.bugs.filters.status %q is not supported", cfg.Panes.Bugs.Filters.Status)
+		}
+		if cfg.Panes.Bugs.Filters.Importance != "" && !containsOneOf(cfg.Panes.Bugs.Filters.Importance, []string{"Critical", "High", "Medium", "Low", "Wishlist", "Undecided"}) {
+			return fmt.Errorf("tui.panes.bugs.filters.importance %q is not supported", cfg.Panes.Bugs.Filters.Importance)
+		}
+	}
+	if cfg.Panes.Reviews != nil {
+		if cfg.Panes.Reviews.Filters.Forge != "" && !containsOneOf(cfg.Panes.Reviews.Filters.Forge, []string{"github", "launchpad", "gerrit"}) {
+			return fmt.Errorf("tui.panes.reviews.filters.forge %q must be github, launchpad, or gerrit", cfg.Panes.Reviews.Filters.Forge)
+		}
+		if cfg.Panes.Reviews.Filters.State != "" && !containsOneOf(cfg.Panes.Reviews.Filters.State, []string{"open", "merged", "closed", "wip", "abandoned"}) {
+			return fmt.Errorf("tui.panes.reviews.filters.state %q is not supported", cfg.Panes.Reviews.Filters.State)
+		}
+	}
+	if cfg.Panes.Commits != nil {
+		if cfg.Panes.Commits.Mode != "" {
+			switch cfg.Panes.Commits.Mode {
+			case "log", "track":
+			default:
+				return fmt.Errorf("tui.panes.commits.mode %q must be log or track", cfg.Panes.Commits.Mode)
+			}
+		}
+		if cfg.Panes.Commits.Filters.Forge != "" && !containsOneOf(cfg.Panes.Commits.Filters.Forge, []string{"github", "launchpad", "gerrit"}) {
+			return fmt.Errorf("tui.panes.commits.filters.forge %q must be github, launchpad, or gerrit", cfg.Panes.Commits.Filters.Forge)
+		}
+	}
+	if cfg.Panes.Projects != nil {
+		if cfg.Panes.Projects.Filters.ArtifactType != "" && !containsOneOf(cfg.Panes.Projects.Filters.ArtifactType, []string{"rock", "charm", "snap"}) {
+			return fmt.Errorf("tui.panes.projects.filters.artifact_type %q must be rock, charm, or snap", cfg.Panes.Projects.Filters.ArtifactType)
+		}
+		if cfg.Panes.Projects.Filters.CodeForge != "" && !containsOneOf(cfg.Panes.Projects.Filters.CodeForge, []string{"github", "launchpad", "gerrit"}) {
+			return fmt.Errorf("tui.panes.projects.filters.code_forge %q must be github, launchpad, or gerrit", cfg.Panes.Projects.Filters.CodeForge)
+		}
+		if cfg.Panes.Projects.Filters.BugForge != "" && !containsOneOf(cfg.Panes.Projects.Filters.BugForge, []string{"github", "launchpad", "gerrit"}) {
+			return fmt.Errorf("tui.panes.projects.filters.bug_forge %q must be github, launchpad, or gerrit", cfg.Panes.Projects.Filters.BugForge)
+		}
+		if cfg.Panes.Projects.Filters.HasBuild != "" && !containsOneOf(cfg.Panes.Projects.Filters.HasBuild, []string{"any", "true", "false"}) {
+			return fmt.Errorf("tui.panes.projects.filters.has_build %q must be any, true, or false", cfg.Panes.Projects.Filters.HasBuild)
+		}
+		if cfg.Panes.Projects.Filters.HasRelease != "" && !containsOneOf(cfg.Panes.Projects.Filters.HasRelease, []string{"any", "true", "false"}) {
+			return fmt.Errorf("tui.panes.projects.filters.has_release %q must be any, true, or false", cfg.Panes.Projects.Filters.HasRelease)
+		}
+	}
+	return nil
+}
+
+func isAllowedTUIPane(raw string) bool {
+	switch raw {
+	case "dashboard", "builds", "releases", "packages", "bugs", "reviews", "commits", "projects":
+		return true
+	default:
+		return false
+	}
+}
+
+func isConfiguredBackport(cfg *Config, backport string) bool {
+	if cfg == nil {
+		return false
+	}
+	for _, distro := range cfg.Packages.Distros {
+		for _, release := range distro.Releases {
+			if _, ok := release.Backports[backport]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isConfiguredExcusesTracker(cfg *Config, tracker string) bool {
+	if cfg == nil {
+		return false
+	}
+	for distroName, distro := range cfg.Packages.Distros {
+		if distro.Excuses != nil {
+			if distroName == tracker {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsOneOf(raw string, values []string) bool {
+	for _, value := range values {
+		if raw == value {
+			return true
+		}
+	}
+	return false
 }
 
 func validateReleaseTargetProfileConfig(prefix string, profile ReleaseTargetProfileConfig) error {

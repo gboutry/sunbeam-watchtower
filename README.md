@@ -142,7 +142,23 @@ The config file lives at `~/.config/sunbeam-watchtower/config.yaml` by default. 
 | `launchpad` | Launchpad settings (`default_owner`, `use_keyring`, default `series`, `development_focus`) |
 | `github`    | GitHub settings (`client_id`, `use_keyring`) |
 | `gerrit`    | Gerrit settings (`hosts` list with `url` entries) |
+| `tui`       | TUI startup presets (`default_pane`, per-pane preset filters, and package/commit modes) |
 | `projects`  | List of tracked projects |
+
+Example TUI preset:
+
+```yaml
+tui:
+  default_pane: packages
+  panes:
+    packages:
+      mode: excuses
+      filters:
+        tracker: ubuntu
+        team: ubuntu-openstack
+```
+
+The TUI applies these presets once at startup, uses them for the first load of each pane, and treats them as the reset target for filter modals.
 | `build`     | Build pipeline settings (`default_prefix`, `timeout_minutes`, `artifacts_dir`) |
 | `packages`  | Package source, set, and upstream configuration |
 | `otel`      | Server-side OpenTelemetry exporters and metrics listeners |

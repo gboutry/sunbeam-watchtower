@@ -24,6 +24,15 @@ releases:
         - base_names: [ubuntu]
           min_base_channel: "24.04"
 
+tui:
+  default_pane: packages
+  panes:
+    packages:
+      mode: excuses
+      filters:
+        tracker: ubuntu
+        team: ubuntu-openstack
+
 projects:
   - name: sunbeam-charms
     artifact_type: charm

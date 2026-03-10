@@ -6,6 +6,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -206,6 +207,53 @@ func TestNewRootModelDefaultsBugViewToMerge(t *testing.T) {
 	model := newRootModel(nil, true)
 	if !model.bugs.filters.merge {
 		t.Fatal("model.bugs.filters.merge = false, want true")
+	}
+}
+
+func TestApplyTUIConfigSetsStartupPaneAndDefaults(t *testing.T) {
+	model := newRootModel(nil, true)
+	merge := false
+	reverse := true
+	cfg := &dto.Config{
+		TUI: dto.TUIConfig{
+			DefaultPane: "packages",
+			Panes: dto.TUIPanesConfig{
+				Packages: &dto.TUIPackagesPaneConfig{
+					Mode: "excuses",
+					Filters: dto.TUIPackagesFiltersConfig{
+						Tracker: "ubuntu",
+						Team:    "ubuntu-openstack",
+						Reverse: &reverse,
+					},
+				},
+				Bugs: &dto.TUIBugsPaneConfig{
+					Filters: dto.TUIBugsFiltersConfig{
+						Merge: &merge,
+					},
+				},
+			},
+		},
+	}
+
+	model.applyTUIConfig(cfg)
+
+	if model.activeView != viewPackages {
+		t.Fatalf("activeView = %v, want packages", model.activeView)
+	}
+	if model.packages.filters.mode != packageModeExcuses {
+		t.Fatalf("packages mode = %v, want excuses", model.packages.filters.mode)
+	}
+	if model.packages.filters.tracker != "ubuntu" || model.packages.filters.team != "ubuntu-openstack" {
+		t.Fatalf("package preset filters = %+v", model.packages.filters)
+	}
+	if !model.packages.filters.reverse {
+		t.Fatal("packages reverse = false, want true")
+	}
+	if model.bugs.filters.merge {
+		t.Fatal("bugs merge = true, want false from preset")
+	}
+	if model.projects.config != cfg {
+		t.Fatal("projects.config not seeded from bootstrap config")
 	}
 }
 
@@ -487,9 +535,10 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		daemonLines:  []string{"time=... level=INFO msg=\"daemon\""},
 	}
 	model.prompt = promptModel{title: "Switch?", body: "body", accept: "Yes", reject: "No"}
-	model.buildFilterForm = newBuildFilterForm(buildsFilters{project: "demo", state: "building", active: true, source: "remote"})
+	model.buildFilterForm = newBuildFilterForm(buildsModel{filters: buildsFilters{project: "demo", state: "building", active: true, source: "remote"}, defaults: buildsFilters{active: true, source: "remote"}})
 	model.releaseFilterForm = newReleaseFilterForm(session, releasesModel{
-		filters: releasesFilters{project: "demo"},
+		filters:  releasesFilters{project: "demo"},
+		defaults: releasesFilters{},
 		rows: []dto.ReleaseListEntry{{
 			Project:      "demo",
 			Name:         "artifact-a",
@@ -993,6 +1042,42 @@ func TestCtrlRResetsFormFieldsToDefaults(t *testing.T) {
 	}
 	if form.active != 1 {
 		t.Fatalf("active field after ctrl+r = %d, want 1", form.active)
+	}
+}
+
+func TestCtrlRUsesConfiguredPaneDefaults(t *testing.T) {
+	model := newRootModel(nil, true)
+	model.bugs.defaults = bugsFilters{project: "snap-openstack", merge: false}
+	model.bugs.filters = bugsFilters{project: "ubuntu-openstack-rocks", merge: true}
+	model.bugFilterForm = newBugFilterForm(nil, model.bugs)
+	model.bugFilterForm.fields[0].SetValue("openstack")
+	model.bugFilterForm.fields[6].SetValue("true")
+
+	next, _ := model.updateBugFilterForm(tea.KeyMsg{Type: tea.KeyCtrlR})
+	model = next.(rootModel)
+
+	if got := model.bugFilterForm.fields[0].Value(); got != "snap-openstack" {
+		t.Fatalf("bug project after ctrl+r = %q, want preset project", got)
+	}
+	if got := model.bugFilterForm.fields[6].Value(); got != "false" {
+		t.Fatalf("bug merge after ctrl+r = %q, want preset false", got)
+	}
+}
+
+func TestBootstrapFailureFallsBackToBuiltInDefaults(t *testing.T) {
+	model := newRootModel(nil, true)
+
+	next, _ := model.Update(tuiBootstrapLoadedMsg{err: errors.New("boom")})
+	model = next.(rootModel)
+
+	if model.activeView != viewDashboard {
+		t.Fatalf("activeView after bootstrap failure = %v, want dashboard", model.activeView)
+	}
+	if !model.bugs.filters.merge {
+		t.Fatal("bugs merge after bootstrap failure = false, want built-in true")
+	}
+	if model.toast.message == "" {
+		t.Fatal("toast after bootstrap failure = empty, want warning")
 	}
 }
 

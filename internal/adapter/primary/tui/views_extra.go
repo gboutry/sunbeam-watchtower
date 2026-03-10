@@ -62,6 +62,7 @@ type packagesFilters struct {
 
 type packagesModel struct {
 	filters         packagesFilters
+	defaults        packagesFilters
 	inventoryRows   []distro.SourcePackage
 	diffRows        []dto.PackageDiffResult
 	diffSources     []dto.PackageSource
@@ -88,6 +89,7 @@ type bugsFilters struct {
 
 type bugsModel struct {
 	filters  bugsFilters
+	defaults bugsFilters
 	rows     []forge.BugTask
 	index    int
 	detail   *forge.Bug
@@ -106,6 +108,7 @@ type reviewsFilters struct {
 
 type reviewsModel struct {
 	filters   reviewsFilters
+	defaults  reviewsFilters
 	rows      []forge.MergeRequest
 	index     int
 	detail    *forge.MergeRequest
@@ -127,6 +130,7 @@ type commitsFilters struct {
 
 type commitsModel struct {
 	filters  commitsFilters
+	defaults commitsFilters
 	rows     []forge.Commit
 	index    int
 	warnings []string
@@ -160,12 +164,13 @@ type projectsFilters struct {
 }
 
 type projectsModel struct {
-	filters projectsFilters
-	rows    []projectSummary
-	index   int
-	config  *dto.Config
-	loaded  bool
-	err     string
+	filters  projectsFilters
+	defaults projectsFilters
+	rows     []projectSummary
+	index    int
+	config   *dto.Config
+	loaded   bool
+	err      string
 }
 
 type packagesLoadedMsg struct {
@@ -1653,39 +1658,39 @@ func newPackageFilterForm(session *runtimeadapter.Session, model packagesModel) 
 	switch model.filters.mode {
 	case packageModeDiff:
 		return newFormModal("Package Filters / Diff", []fieldDef{
-			{placeholder: "set", value: model.filters.set, resetValue: "", suggestions: s.sets},
-			{placeholder: "distro", value: model.filters.distro, resetValue: "", suggestions: s.distros},
-			{placeholder: "release", value: model.filters.release, resetValue: "", suggestions: s.releases},
-			{placeholder: "suite", value: model.filters.suite, resetValue: "", suggestions: s.suites},
-			{placeholder: "backport", value: defaultString(model.filters.backport, "none"), resetValue: "none", suggestions: s.backports},
-			{placeholder: "merge", value: fmt.Sprintf("%t", model.filters.merge), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
-			{placeholder: "upstream release", value: model.filters.upstreamRelease, resetValue: ""},
-			{placeholder: "behind upstream", value: fmt.Sprintf("%t", model.filters.behindUpstream), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
-			{placeholder: "only in", value: model.filters.onlyIn, resetValue: ""},
-			{placeholder: "constraints", value: model.filters.constraints, resetValue: ""},
+			{placeholder: "set", value: model.filters.set, resetValue: model.defaults.set, suggestions: s.sets},
+			{placeholder: "distro", value: model.filters.distro, resetValue: model.defaults.distro, suggestions: s.distros},
+			{placeholder: "release", value: model.filters.release, resetValue: model.defaults.release, suggestions: s.releases},
+			{placeholder: "suite", value: model.filters.suite, resetValue: model.defaults.suite, suggestions: s.suites},
+			{placeholder: "backport", value: defaultString(model.filters.backport, "none"), resetValue: defaultString(model.defaults.backport, "none"), suggestions: s.backports},
+			{placeholder: "merge", value: fmt.Sprintf("%t", model.filters.merge), resetValue: fmt.Sprintf("%t", model.defaults.merge), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "upstream release", value: model.filters.upstreamRelease, resetValue: model.defaults.upstreamRelease},
+			{placeholder: "behind upstream", value: fmt.Sprintf("%t", model.filters.behindUpstream), resetValue: fmt.Sprintf("%t", model.defaults.behindUpstream), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "only in", value: model.filters.onlyIn, resetValue: model.defaults.onlyIn},
+			{placeholder: "constraints", value: model.filters.constraints, resetValue: model.defaults.constraints},
 		})
 	case packageModeExcuses:
 		return newFormModal("Package Filters / Excuses", []fieldDef{
-			{placeholder: "tracker", value: model.filters.tracker, resetValue: "", suggestions: s.trackers, kind: fieldKindEnum},
-			{placeholder: "name", value: model.filters.name, resetValue: "", suggestions: s.names},
-			{placeholder: "component", value: model.filters.component, resetValue: "", suggestions: s.components},
-			{placeholder: "team", value: model.filters.team, resetValue: "", suggestions: s.teams},
-			{placeholder: "ftbfs", value: fmt.Sprintf("%t", model.filters.ftbfs), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
-			{placeholder: "autopkgtest", value: fmt.Sprintf("%t", model.filters.autopkgtest), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
-			{placeholder: "blocked by", value: model.filters.blockedBy, resetValue: ""},
-			{placeholder: "bugged", value: fmt.Sprintf("%t", model.filters.bugged), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
-			{placeholder: "min age", value: model.filters.minAge, resetValue: ""},
-			{placeholder: "max age", value: model.filters.maxAge, resetValue: ""},
-			{placeholder: "limit", value: model.filters.limit, resetValue: ""},
-			{placeholder: "reverse", value: fmt.Sprintf("%t", model.filters.reverse), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "tracker", value: model.filters.tracker, resetValue: model.defaults.tracker, suggestions: s.trackers, kind: fieldKindEnum},
+			{placeholder: "name", value: model.filters.name, resetValue: model.defaults.name, suggestions: s.names},
+			{placeholder: "component", value: model.filters.component, resetValue: model.defaults.component, suggestions: s.components},
+			{placeholder: "team", value: model.filters.team, resetValue: model.defaults.team, suggestions: s.teams},
+			{placeholder: "ftbfs", value: fmt.Sprintf("%t", model.filters.ftbfs), resetValue: fmt.Sprintf("%t", model.defaults.ftbfs), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "autopkgtest", value: fmt.Sprintf("%t", model.filters.autopkgtest), resetValue: fmt.Sprintf("%t", model.defaults.autopkgtest), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "blocked by", value: model.filters.blockedBy, resetValue: model.defaults.blockedBy},
+			{placeholder: "bugged", value: fmt.Sprintf("%t", model.filters.bugged), resetValue: fmt.Sprintf("%t", model.defaults.bugged), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "min age", value: model.filters.minAge, resetValue: model.defaults.minAge},
+			{placeholder: "max age", value: model.filters.maxAge, resetValue: model.defaults.maxAge},
+			{placeholder: "limit", value: model.filters.limit, resetValue: model.defaults.limit},
+			{placeholder: "reverse", value: fmt.Sprintf("%t", model.filters.reverse), resetValue: fmt.Sprintf("%t", model.defaults.reverse), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
 		})
 	default:
 		return newFormModal("Package Filters / Inventory", []fieldDef{
-			{placeholder: "distro", value: model.filters.distro, resetValue: "", suggestions: s.distros},
-			{placeholder: "release", value: model.filters.release, resetValue: "", suggestions: s.releases},
-			{placeholder: "suite", value: model.filters.suite, resetValue: "", suggestions: s.suites},
-			{placeholder: "component", value: model.filters.component, resetValue: "", suggestions: s.components},
-			{placeholder: "backport", value: defaultString(model.filters.backport, "none"), resetValue: "none", suggestions: s.backports},
+			{placeholder: "distro", value: model.filters.distro, resetValue: model.defaults.distro, suggestions: s.distros},
+			{placeholder: "release", value: model.filters.release, resetValue: model.defaults.release, suggestions: s.releases},
+			{placeholder: "suite", value: model.filters.suite, resetValue: model.defaults.suite, suggestions: s.suites},
+			{placeholder: "component", value: model.filters.component, resetValue: model.defaults.component, suggestions: s.components},
+			{placeholder: "backport", value: defaultString(model.filters.backport, "none"), resetValue: defaultString(model.defaults.backport, "none"), suggestions: s.backports},
 		})
 	}
 }
@@ -1693,49 +1698,49 @@ func newPackageFilterForm(session *runtimeadapter.Session, model packagesModel) 
 func newBugFilterForm(session *runtimeadapter.Session, model bugsModel) formModalModel {
 	s := bugFilterSuggestions(session, model)
 	return newFormModal("Bug Filters", []fieldDef{
-		{placeholder: "project", value: model.filters.project, resetValue: "", suggestions: s.projects},
-		{placeholder: "status", value: model.filters.status, resetValue: "", suggestions: s.statuses, kind: fieldKindEnum},
-		{placeholder: "importance", value: model.filters.importance, resetValue: "", suggestions: s.importances, kind: fieldKindEnum},
-		{placeholder: "assignee", value: model.filters.assignee, resetValue: "", suggestions: s.assignees},
-		{placeholder: "tag", value: model.filters.tag, resetValue: "", suggestions: s.tags},
-		{placeholder: "since", value: model.filters.since, resetValue: ""},
-		{placeholder: "merge", value: fmt.Sprintf("%t", model.filters.merge), resetValue: "true", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+		{placeholder: "project", value: model.filters.project, resetValue: model.defaults.project, suggestions: s.projects},
+		{placeholder: "status", value: model.filters.status, resetValue: model.defaults.status, suggestions: s.statuses, kind: fieldKindEnum},
+		{placeholder: "importance", value: model.filters.importance, resetValue: model.defaults.importance, suggestions: s.importances, kind: fieldKindEnum},
+		{placeholder: "assignee", value: model.filters.assignee, resetValue: model.defaults.assignee, suggestions: s.assignees},
+		{placeholder: "tag", value: model.filters.tag, resetValue: model.defaults.tag, suggestions: s.tags},
+		{placeholder: "since", value: model.filters.since, resetValue: model.defaults.since},
+		{placeholder: "merge", value: fmt.Sprintf("%t", model.filters.merge), resetValue: fmt.Sprintf("%t", model.defaults.merge), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
 	})
 }
 
 func newReviewFilterForm(session *runtimeadapter.Session, model reviewsModel) formModalModel {
 	s := reviewFilterSuggestions(session, model)
 	return newFormModal("Review Filters", []fieldDef{
-		{placeholder: "project", value: model.filters.project, resetValue: "", suggestions: s.projects},
-		{placeholder: "forge", value: model.filters.forge, resetValue: "", suggestions: s.forges, kind: fieldKindEnum},
-		{placeholder: "state", value: model.filters.state, resetValue: "", suggestions: s.states, kind: fieldKindEnum},
-		{placeholder: "author", value: model.filters.author, resetValue: "", suggestions: s.authors},
-		{placeholder: "since", value: model.filters.since, resetValue: ""},
+		{placeholder: "project", value: model.filters.project, resetValue: model.defaults.project, suggestions: s.projects},
+		{placeholder: "forge", value: model.filters.forge, resetValue: model.defaults.forge, suggestions: s.forges, kind: fieldKindEnum},
+		{placeholder: "state", value: model.filters.state, resetValue: model.defaults.state, suggestions: s.states, kind: fieldKindEnum},
+		{placeholder: "author", value: model.filters.author, resetValue: model.defaults.author, suggestions: s.authors},
+		{placeholder: "since", value: model.filters.since, resetValue: model.defaults.since},
 	})
 }
 
 func newCommitFilterForm(session *runtimeadapter.Session, model commitsModel) formModalModel {
 	s := commitFilterSuggestions(session, model)
 	return newFormModal("Commit Filters", []fieldDef{
-		{placeholder: "mode", value: strings.ToLower(commitModeName(model.filters.mode)), resetValue: strings.ToLower(commitModeName(model.filters.mode)), suggestions: []string{"log", "track"}, kind: fieldKindEnum},
-		{placeholder: "project", value: model.filters.project, resetValue: "", suggestions: s.projects},
-		{placeholder: "forge", value: model.filters.forge, resetValue: "", suggestions: s.forges, kind: fieldKindEnum},
-		{placeholder: "branch", value: model.filters.branch, resetValue: "", suggestions: s.branches},
-		{placeholder: "author", value: model.filters.author, resetValue: "", suggestions: s.authors},
-		{placeholder: "include mrs", value: fmt.Sprintf("%t", model.filters.includeMRs), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
-		{placeholder: "bug id", value: model.filters.bugID, resetValue: ""},
+		{placeholder: "mode", value: strings.ToLower(commitModeName(model.filters.mode)), resetValue: strings.ToLower(commitModeName(model.defaults.mode)), suggestions: []string{"log", "track"}, kind: fieldKindEnum},
+		{placeholder: "project", value: model.filters.project, resetValue: model.defaults.project, suggestions: s.projects},
+		{placeholder: "forge", value: model.filters.forge, resetValue: model.defaults.forge, suggestions: s.forges, kind: fieldKindEnum},
+		{placeholder: "branch", value: model.filters.branch, resetValue: model.defaults.branch, suggestions: s.branches},
+		{placeholder: "author", value: model.filters.author, resetValue: model.defaults.author, suggestions: s.authors},
+		{placeholder: "include mrs", value: fmt.Sprintf("%t", model.filters.includeMRs), resetValue: fmt.Sprintf("%t", model.defaults.includeMRs), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+		{placeholder: "bug id", value: model.filters.bugID, resetValue: model.defaults.bugID},
 	})
 }
 
 func newProjectFilterForm(model projectsModel) formModalModel {
 	s := projectFilterSuggestions(model)
 	return newFormModal("Project Filters", []fieldDef{
-		{placeholder: "name", value: model.filters.name, resetValue: "", suggestions: s.names},
-		{placeholder: "artifact type", value: model.filters.artifactType, resetValue: "", suggestions: s.artifactTypes, kind: fieldKindEnum},
-		{placeholder: "code forge", value: model.filters.codeForge, resetValue: "", suggestions: s.codeForges, kind: fieldKindEnum},
-		{placeholder: "bug forge", value: model.filters.bugForge, resetValue: "", suggestions: s.bugForges, kind: fieldKindEnum},
-		{placeholder: "has build", value: defaultString(model.filters.hasBuild, "any"), resetValue: "any", suggestions: s.bools, kind: fieldKindEnum},
-		{placeholder: "has release", value: defaultString(model.filters.hasRelease, "any"), resetValue: "any", suggestions: s.bools, kind: fieldKindEnum},
+		{placeholder: "name", value: model.filters.name, resetValue: model.defaults.name, suggestions: s.names},
+		{placeholder: "artifact type", value: model.filters.artifactType, resetValue: model.defaults.artifactType, suggestions: s.artifactTypes, kind: fieldKindEnum},
+		{placeholder: "code forge", value: model.filters.codeForge, resetValue: model.defaults.codeForge, suggestions: s.codeForges, kind: fieldKindEnum},
+		{placeholder: "bug forge", value: model.filters.bugForge, resetValue: model.defaults.bugForge, suggestions: s.bugForges, kind: fieldKindEnum},
+		{placeholder: "has build", value: defaultString(model.filters.hasBuild, "any"), resetValue: defaultString(model.defaults.hasBuild, "any"), suggestions: s.bools, kind: fieldKindEnum},
+		{placeholder: "has release", value: defaultString(model.filters.hasRelease, "any"), resetValue: defaultString(model.defaults.hasRelease, "any"), suggestions: s.bools, kind: fieldKindEnum},
 	})
 }
 
