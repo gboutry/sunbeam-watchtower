@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
@@ -49,6 +50,123 @@ func TestViewRendersAcrossWidths(t *testing.T) {
 				t.Fatalf("width %d view missing %q", width, want)
 			}
 		}
+	}
+}
+
+func TestRenderReviewRowsKeepsColumnsAlignedWithLongFields(t *testing.T) {
+	tm := newTheme()
+	rows := []forge.MergeRequest{
+		{
+			Repo:   "canonical/snap-openstack-super-long-repository-name",
+			Forge:  forge.ForgeGitHub,
+			State:  forge.MergeStateOpen,
+			Author: "very-long-author-name",
+			Title:  "First review title",
+		},
+		{
+			Repo:   "short-repo",
+			Forge:  forge.ForgeLaunchpad,
+			State:  forge.MergeStateMerged,
+			Author: "short",
+			Title:  "Second review title",
+		},
+	}
+
+	rendered := renderReviewRows(tm, rows, -1, 90)
+	lines := strings.Split(rendered, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("renderReviewRows() produced %d lines, want 2", len(lines))
+	}
+
+	firstForge := strings.Index(lines[0], "GitHub")
+	secondForge := strings.Index(lines[1], "Launchpad")
+	if firstForge < 0 || secondForge < 0 {
+		t.Fatalf("missing forge column:\n%s\n%s", lines[0], lines[1])
+	}
+	if lipgloss.Width(lines[0][:firstForge]) != lipgloss.Width(lines[1][:secondForge]) {
+		t.Fatalf("forge column misaligned:\n%s\n%s", lines[0], lines[1])
+	}
+
+	if lipgloss.Width(lines[0]) > 90 || lipgloss.Width(lines[1]) > 90 {
+		t.Fatalf("renderReviewRows() overflowed width 90:\n%s\n%s", lines[0], lines[1])
+	}
+}
+
+func TestRenderReviewRowsTruncatesToSingleLineInNarrowPane(t *testing.T) {
+	tm := newTheme()
+	rows := []forge.MergeRequest{{
+		Repo:   "canonical/snap-openstack-super-long-repository-name",
+		Forge:  forge.ForgeGitHub,
+		State:  forge.MergeStateOpen,
+		Author: "very-long-author-name",
+		Title:  "This merge request title is also intentionally very long to prove it never wraps into a second line\nwith a second raw line",
+	}}
+
+	rendered := renderReviewRows(tm, rows, -1, 40)
+	if strings.Contains(rendered, "\n") {
+		t.Fatalf("renderReviewRows() wrapped to multiple lines:\n%s", rendered)
+	}
+	if lipgloss.Width(rendered) > 40 {
+		t.Fatalf("renderReviewRows() overflowed width 40: %q", rendered)
+	}
+}
+
+func TestRenderBugRowsTruncatesToSingleLineInNarrowPane(t *testing.T) {
+	tm := newTheme()
+	rows := []forge.BugTask{{
+		Project:    "snap-openstack-super-long-project-name",
+		BugID:      "123456789",
+		Status:     "Fix Released",
+		Importance: "Critical",
+		Title:      "This bug title is intentionally very long to prove it stays on one line\nwith a second raw line",
+	}}
+
+	rendered := renderBugRows(tm, rows, -1, 40)
+	if strings.Contains(rendered, "\n") {
+		t.Fatalf("renderBugRows() wrapped to multiple lines:\n%s", rendered)
+	}
+	if lipgloss.Width(rendered) > 40 {
+		t.Fatalf("renderBugRows() overflowed width 40: %q", rendered)
+	}
+}
+
+func TestRenderBugRowsStripsRepeatedBugPrefix(t *testing.T) {
+	tm := newTheme()
+	rows := []forge.BugTask{{
+		Project: "snap-openstack",
+		BugID:   "2143746",
+		Status:  "Fix Released",
+		Title:   "Bug #2143746 in Openstack Snap: \"nova-compute fails to refresh placement inventory\"",
+	}}
+
+	rendered := renderBugRows(tm, rows, -1, 120)
+	if strings.Contains(rendered, "Bug #2143746 in Openstack Snap:") {
+		t.Fatalf("renderBugRows() kept repeated bug prefix:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "\"nova-compute fails to refresh placement inventory\"") {
+		t.Fatalf("renderBugRows() kept quoted bug title:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "nova-compute fails to refresh placement inventory") {
+		t.Fatalf("renderBugRows() lost stripped bug title:\n%s", rendered)
+	}
+}
+
+func TestRenderCommitRowsTruncatesToSingleLineInNarrowPane(t *testing.T) {
+	tm := newTheme()
+	rows := []forge.Commit{{
+		Repo:    "sunbeam-charms-super-long-repository-name",
+		SHA:     "0123456789abcdef",
+		Date:    time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC),
+		Author:  "very-long-author-name",
+		Message: "This commit message is intentionally very long to prove it stays on one line\nwith a second raw line",
+	}}
+
+	rendered := renderCommitRows(tm, rows, -1, 40)
+	if strings.Contains(rendered, "\n") {
+		t.Fatalf("renderCommitRows() wrapped to multiple lines:\n%s", rendered)
+	}
+	if lipgloss.Width(rendered) > 40 {
+		t.Fatalf("renderCommitRows() overflowed width 40: %q", rendered)
 	}
 }
 
