@@ -78,13 +78,14 @@ The following are implemented and should be treated as the current baseline:
 - the CLI bug list now applies the same cleanup, stripping repeated Launchpad-style `Bug #... in ...:` prefixes and surrounding quotes from bug row titles while leaving bug detail output unchanged
 - TUI filters now use centered scrollable modals with wrapped shortcut help, `Enter`-to-apply behavior, `Ctrl+R` reset, mode-specific Packages filter forms, a visible Packages submenu, and picker-style enum fields instead of free-text autocomplete for small known value sets
 - `watchtower.yaml` can now declare TUI startup presets, including `tui.default_pane`, per-pane default filters, and explicit startup modes for Packages and Commits
+- the TUI now exposes meta-overlay mutation workflows for cache sync/clear plus project and bug sync, while keeping those write actions out of the read-only content tabs
 
 ## Current Gaps
 
 These are the main known gaps that still matter:
 
 - Launchpad and GitHub auth are implemented, but the same authenticated-flow model is not yet extended to other forges such as Gerrit
-- the TUI now covers the main read-only workflows, but it still does not expose cache mutation, project sync, bug sync, or direct build retry/cancel flows
+- the TUI now covers the main read-only workflows and cache/project/bug mutation entrypoints, but it still does not expose direct build retry/cancel flows
 - the `Packages` and `Commits` TUI tabs now have read-only submodes, but deeper workflow actions remain CLI/API-first
 - some forge/package bootstrap paths in `internal/app` still contain logic that should continue moving into narrower builders/factories
 - some tests still have environment-sensitive assumptions and need further hardening
@@ -104,6 +105,7 @@ These are the main known gaps that still matter:
 ### TUI
 
 - expose cache mutation and richer config inspection where the frontend/API contracts are ready
+- extend the new meta-overlay mutation surfaces carefully rather than pushing write actions into every tab by default
 - add direct retry/cancel workflows for builds where the server/API model is settled
 - continue improving dense keyboard UX, list/detail layouts, and responsive rendering
 
