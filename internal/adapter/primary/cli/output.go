@@ -254,7 +254,7 @@ func renderBugTable(w io.Writer, styler *outputStyler, tasks []forge.BugTask) er
 	headers := []string{"PROJECT", "ID", "STATUS", "IMPORTANCE", "ASSIGNEE", "TITLE", "URL"}
 	rows := make([][]string, 0, len(tasks))
 	for _, t := range tasks {
-		title := t.Title
+		title := cleanBugListTitle(t.Title, t.BugID, t.Project)
 		if len(title) > 60 {
 			title = title[:57] + "..."
 		}
@@ -263,6 +263,62 @@ func renderBugTable(w io.Writer, styler *outputStyler, tasks []forge.BugTask) er
 		rows = append(rows, []string{t.Project, t.BugID, t.Status, t.Importance, t.Assignee, title, t.URL})
 	}
 	return renderStyledTable(w, styler, headers, rows)
+}
+
+func cleanBugListTitle(title, bugID, project string) string {
+	title = stripBugListTitlePrefix(title, bugID, project)
+	title = strings.TrimSpace(title)
+	if len(title) >= 2 && strings.HasPrefix(title, "\"") && strings.HasSuffix(title, "\"") {
+		title = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(title, "\""), "\""))
+	}
+	return title
+}
+
+func stripBugListTitlePrefix(title, bugID, project string) string {
+	title = strings.TrimSpace(title)
+	if title == "" || bugID == "" {
+		return title
+	}
+
+	genericPrefix := fmt.Sprintf("Bug #%s in ", bugID)
+	if strings.HasPrefix(title, genericPrefix) {
+		if idx := strings.Index(title[len(genericPrefix):], ": "); idx >= 0 {
+			return strings.TrimSpace(title[len(genericPrefix)+idx+2:])
+		}
+	}
+
+	prefixes := []string{
+		fmt.Sprintf("Bug #%s in %s: ", bugID, project),
+		fmt.Sprintf("Bug #%s in %s: ", bugID, humanizeBugProject(project)),
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(title, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(title, prefix))
+		}
+	}
+	return title
+}
+
+func humanizeBugProject(project string) string {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return project
+	}
+	parts := strings.FieldsFunc(project, func(r rune) bool {
+		return r == '-' || r == '_' || r == '/'
+	})
+	if len(parts) == 0 {
+		return project
+	}
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		runes := []rune(strings.ToLower(part))
+		runes[0] = []rune(strings.ToUpper(string(runes[0])))[0]
+		parts[i] = string(runes)
+	}
+	return strings.Join(parts, " ")
 }
 
 func renderTable(w io.Writer, styler *outputStyler, mrs []forge.MergeRequest) error {

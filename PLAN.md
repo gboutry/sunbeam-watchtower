@@ -75,6 +75,7 @@ The following are implemented and should be treated as the current baseline:
 - TUI read-only workflow tabs for packages, bugs, reviews, commits, and config-backed project inspection, including filter forms and list/detail layouts
 - dense TUI list rows for reviews, bugs, and commits now clamp and truncate long text so narrow panes do not wrap or misalign adjacent rows
 - the TUI bug list also strips repeated Launchpad-style `Bug #... in ...:` prefixes from row titles when the row already shows project and bug ID
+- the CLI bug list now applies the same cleanup, stripping repeated Launchpad-style `Bug #... in ...:` prefixes and surrounding quotes from bug row titles while leaving bug detail output unchanged
 - TUI filters now use centered scrollable modals with wrapped shortcut help, `Enter`-to-apply behavior, `Ctrl+R` reset, mode-specific Packages filter forms, a visible Packages submenu, and picker-style enum fields instead of free-text autocomplete for small known value sets
 - `watchtower.yaml` can now declare TUI startup presets, including `tui.default_pane`, per-pane default filters, and explicit startup modes for Packages and Commits
 
