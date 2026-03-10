@@ -63,6 +63,7 @@ The following are implemented and should be treated as the current baseline:
 - bug cache sync and bug `since` filtering treat created-or-modified task activity as in-scope, with Launchpad task activity timestamps derived from the latest task state transition and incremental bug sync using a small modified-time overlap to recover recent closed-task transitions
 - bug list supports group-aware `--merge` output driven by explicit `bug_groups` config, collapsing same-forge bug IDs within one shared tracker group under that group's common project label
 - review browsing is now cache-first across CLI/API/TUI, backed by a dedicated review cache that stores summary rows plus cached comments/files/diff detail for open and recently updated closed reviews
+- durable GitHub auth is now implemented via device flow, with aggregated auth status, provider-specific CLI/TUI flows, env/file credential precedence, and automatic authenticated GitHub clients for GitHub-backed reads when credentials are present
 - local daemon lifecycle commands and explicit runtime resolution order
 - Launchpad auth flows with durable server-side coordination
 - durable operations surface for async workflows
@@ -76,7 +77,7 @@ The following are implemented and should be treated as the current baseline:
 
 These are the main known gaps that still matter:
 
-- Launchpad auth is implemented, but the same authenticated-flow model is not yet extended to other forges such as GitHub or Gerrit
+- Launchpad and GitHub auth are implemented, but the same authenticated-flow model is not yet extended to other forges such as Gerrit
 - the TUI now covers the main read-only workflows, but it still does not expose cache mutation, project sync, bug sync, or direct build retry/cancel flows
 - the `Packages` and `Commits` TUI tabs now have read-only submodes, but deeper workflow actions remain CLI/API-first
 - some forge/package bootstrap paths in `internal/app` still contain logic that should continue moving into narrower builders/factories
@@ -115,7 +116,7 @@ These are the main known gaps that still matter:
 
 ### Auth and forge expansion
 
-- generalize the current durable auth-flow model beyond Launchpad when authenticated GitHub/Gerrit workflows become necessary
+- keep the current durable auth-flow model shared across Launchpad and GitHub, and extend it to other forges such as Gerrit when authenticated workflows become necessary
 
 ## Validation Baseline
 

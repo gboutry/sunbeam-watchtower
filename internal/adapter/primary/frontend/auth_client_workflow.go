@@ -13,10 +13,19 @@ import (
 // LaunchpadAuthorizationHandler handles the user-facing authorization step between begin and finalize.
 type LaunchpadAuthorizationHandler func(context.Context, *dto.LaunchpadAuthBeginResult) error
 
+// GitHubAuthorizationHandler handles the user-facing device-code authorization step.
+type GitHubAuthorizationHandler func(context.Context, *dto.GitHubAuthBeginResult) error
+
 // AuthLoginResult contains both halves of a completed login workflow.
 type AuthLoginResult struct {
 	Begin     *dto.LaunchpadAuthBeginResult
 	Finalized *dto.LaunchpadAuthFinalizeResult
+}
+
+// GitHubAuthLoginResult contains both halves of a completed GitHub login workflow.
+type GitHubAuthLoginResult struct {
+	Begin     *dto.GitHubAuthBeginResult
+	Finalized *dto.GitHubAuthFinalizeResult
 }
 
 // AuthClientWorkflow exposes reusable client-side auth workflows for CLI/TUI/MCP frontends.
@@ -90,6 +99,60 @@ func (w *AuthClientWorkflow) LogoutLaunchpad(ctx context.Context) (*dto.Launchpa
 		return nil, err
 	}
 	return apiClient.AuthLaunchpadLogout(ctx)
+}
+
+// BeginGitHub starts a remote GitHub auth flow.
+func (w *AuthClientWorkflow) BeginGitHub(ctx context.Context) (*dto.GitHubAuthBeginResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthGitHubBegin(ctx)
+}
+
+// FinalizeGitHub completes one remote GitHub auth flow.
+func (w *AuthClientWorkflow) FinalizeGitHub(ctx context.Context, flowID string) (*dto.GitHubAuthFinalizeResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthGitHubFinalize(ctx, flowID)
+}
+
+// LoginGitHub runs the full begin -> authorize -> finalize client workflow.
+func (w *AuthClientWorkflow) LoginGitHub(
+	ctx context.Context,
+	handler GitHubAuthorizationHandler,
+) (*GitHubAuthLoginResult, error) {
+	if handler == nil {
+		return nil, errors.New("github authorization handler is required")
+	}
+
+	begin, err := w.BeginGitHub(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := handler(ctx, begin); err != nil {
+		return nil, err
+	}
+
+	finalized, err := w.FinalizeGitHub(ctx, begin.FlowID)
+	if err != nil {
+		return nil, err
+	}
+	return &GitHubAuthLoginResult{
+		Begin:     begin,
+		Finalized: finalized,
+	}, nil
+}
+
+// LogoutGitHub clears persisted GitHub credentials through the API.
+func (w *AuthClientWorkflow) LogoutGitHub(ctx context.Context) (*dto.GitHubAuthLogoutResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthGitHubLogout(ctx)
 }
 
 func (w *AuthClientWorkflow) resolveClient() (*ClientTransport, error) {

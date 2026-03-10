@@ -99,7 +99,7 @@ func TestLocalDaemonStatePersistsAcrossInvocations(t *testing.T) {
 	})
 
 	t.Run("auth persists", func(t *testing.T) {
-		login := runCLIHelper(t, wrapper, env, "\n", "auth", "login")
+		login := runCLIHelper(t, wrapper, env, "\n", "auth", "launchpad", "login")
 		if !strings.Contains(login.Stdout, "Authenticated as: Jane Doe (jdoe)") {
 			t.Fatalf("auth login output = %q", login.Stdout)
 		}
@@ -109,7 +109,7 @@ func TestLocalDaemonStatePersistsAcrossInvocations(t *testing.T) {
 			t.Fatalf("auth status output = %q", status.Stdout)
 		}
 
-		logout := runCLIHelper(t, wrapper, env, "", "auth", "logout")
+		logout := runCLIHelper(t, wrapper, env, "", "auth", "launchpad", "logout")
 		if !strings.Contains(logout.Stdout, "Removed Launchpad credentials") {
 			t.Fatalf("auth logout output = %q", logout.Stdout)
 		}
@@ -121,7 +121,7 @@ func TestLocalDaemonStatePersistsAcrossInvocations(t *testing.T) {
 	})
 
 	t.Run("operations persist", func(t *testing.T) {
-		login := runCLIHelper(t, wrapper, env, "\n", "auth", "login")
+		login := runCLIHelper(t, wrapper, env, "\n", "auth", "launchpad", "login")
 		if !strings.Contains(login.Stdout, "Authenticated as: Jane Doe (jdoe)") {
 			t.Fatalf("auth login output = %q", login.Stdout)
 		}

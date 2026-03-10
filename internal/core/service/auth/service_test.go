@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
 
@@ -62,6 +63,77 @@ type fakeFlowStore struct {
 	deleteErr error
 }
 
+type fakeGitHubCredentialStore struct {
+	record   *gh.CredentialRecord
+	savePath string
+	loadErr  error
+	saveErr  error
+	clearErr error
+}
+
+func (s *fakeGitHubCredentialStore) Load(context.Context) (*gh.CredentialRecord, error) {
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
+	if s.record == nil {
+		return nil, nil
+	}
+	recordCopy := *s.record
+	return &recordCopy, nil
+}
+
+func (s *fakeGitHubCredentialStore) Save(_ context.Context, creds *gh.Credentials) (*gh.CredentialRecord, error) {
+	if s.saveErr != nil {
+		return nil, s.saveErr
+	}
+	s.record = &gh.CredentialRecord{
+		Credentials: creds,
+		Source:      gh.CredentialSourceFile,
+		Path:        s.savePath,
+	}
+	return s.Load(context.Background())
+}
+
+func (s *fakeGitHubCredentialStore) Clear(context.Context) error {
+	if s.clearErr != nil {
+		return s.clearErr
+	}
+	s.record = nil
+	return nil
+}
+
+type fakeGitHubFlowStore struct {
+	flows     map[string]gh.PendingAuthFlow
+	putErr    error
+	getErr    error
+	deleteErr error
+}
+
+func (s *fakeGitHubFlowStore) Put(_ context.Context, flow *gh.PendingAuthFlow) error {
+	if s.flows == nil {
+		s.flows = make(map[string]gh.PendingAuthFlow)
+	}
+	s.flows[flow.ID] = *flow
+	return s.putErr
+}
+
+func (s *fakeGitHubFlowStore) Get(_ context.Context, id string) (*gh.PendingAuthFlow, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	flow, ok := s.flows[id]
+	if !ok {
+		return nil, gh.ErrPendingAuthFlowNotFound
+	}
+	flowCopy := flow
+	return &flowCopy, nil
+}
+
+func (s *fakeGitHubFlowStore) Delete(_ context.Context, id string) error {
+	delete(s.flows, id)
+	return s.deleteErr
+}
+
 func (s *fakeFlowStore) Put(_ context.Context, flow *lp.PendingAuthFlow) error {
 	if s.flows == nil {
 		s.flows = make(map[string]lp.PendingAuthFlow)
@@ -109,6 +181,38 @@ func (a *fakeLaunchpadAuthenticator) ExchangeAccessToken(_ context.Context, toke
 func (a *fakeLaunchpadAuthenticator) CurrentUser(context.Context, *lp.Credentials) (lp.Person, error) {
 	if a.userErr != nil {
 		return lp.Person{}, a.userErr
+	}
+	return a.identity, nil
+}
+
+type fakeGitHubAuthenticator struct {
+	beginFlow *gh.PendingAuthFlow
+	creds     *gh.Credentials
+	identity  gh.User
+	userErr   error
+	pollErr   error
+	beginErr  error
+}
+
+func (a *fakeGitHubAuthenticator) ClientID() string { return "client-id" }
+
+func (a *fakeGitHubAuthenticator) BeginDeviceFlow(context.Context) (*gh.PendingAuthFlow, error) {
+	if a.beginErr != nil {
+		return nil, a.beginErr
+	}
+	return a.beginFlow, nil
+}
+
+func (a *fakeGitHubAuthenticator) PollAccessToken(context.Context, *gh.PendingAuthFlow) (*gh.Credentials, error) {
+	if a.pollErr != nil {
+		return nil, a.pollErr
+	}
+	return a.creds, nil
+}
+
+func (a *fakeGitHubAuthenticator) CurrentUser(context.Context, *gh.Credentials) (gh.User, error) {
+	if a.userErr != nil {
+		return gh.User{}, a.userErr
 	}
 	return a.identity, nil
 }
@@ -343,5 +447,377 @@ func TestRandomFlowIDReturnsHexToken(t *testing.T) {
 	}
 	if _, err := hex.DecodeString(id); err != nil {
 		t.Fatalf("randomFlowID() = %q, want hex: %v", id, err)
+	}
+}
+
+func TestBeginGitHubStoresPendingFlow(t *testing.T) {
+	flows := &fakeGitHubFlowStore{}
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		&fakeGitHubCredentialStore{},
+		flows,
+		&fakeGitHubAuthenticator{
+			beginFlow: &gh.PendingAuthFlow{
+				DeviceCode:      "device",
+				UserCode:        "ABCD-EFGH",
+				VerificationURI: "https://github.com/login/device",
+				IntervalSeconds: 5,
+				ExpiresAt:       time.Now().Add(time.Minute),
+			},
+		},
+		nil,
+		testLogger(),
+	)
+	svc.newFlowID = func() (string, error) { return "flow-123", nil }
+
+	result, err := svc.BeginGitHub(context.Background())
+	if err != nil {
+		t.Fatalf("BeginGitHub() error = %v", err)
+	}
+	if result.FlowID != "flow-123" || result.UserCode != "ABCD-EFGH" {
+		t.Fatalf("BeginGitHub() = %+v", result)
+	}
+	if _, ok := flows.flows["flow-123"]; !ok {
+		t.Fatal("pending flow not stored")
+	}
+}
+
+func TestFinalizeGitHubSavesCredentials(t *testing.T) {
+	store := &fakeGitHubCredentialStore{savePath: "/tmp/github-creds"}
+	flows := &fakeGitHubFlowStore{
+		flows: map[string]gh.PendingAuthFlow{
+			"flow-123": {ID: "flow-123", DeviceCode: "device", UserCode: "ABCD-EFGH"},
+		},
+	}
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		store,
+		flows,
+		&fakeGitHubAuthenticator{
+			creds:    &gh.Credentials{AccessToken: "token"},
+			identity: gh.User{Login: "jdoe", Name: "Jane Doe"},
+		},
+		nil,
+		testLogger(),
+	)
+
+	result, err := svc.FinalizeGitHub(context.Background(), "flow-123")
+	if err != nil {
+		t.Fatalf("FinalizeGitHub() error = %v", err)
+	}
+	if !result.GitHub.Authenticated || result.GitHub.Username != "jdoe" {
+		t.Fatalf("FinalizeGitHub() = %+v", result)
+	}
+	if _, ok := flows.flows["flow-123"]; ok {
+		t.Fatal("flow was not deleted after finalize")
+	}
+}
+
+func TestStatusReportsGitHubAuthentication(t *testing.T) {
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		&fakeGitHubCredentialStore{
+			record: &gh.CredentialRecord{
+				Credentials: &gh.Credentials{AccessToken: "token"},
+				Source:      gh.CredentialSourceFile,
+				Path:        "/tmp/github-creds.json",
+			},
+		},
+		&fakeGitHubFlowStore{},
+		&fakeGitHubAuthenticator{identity: gh.User{Login: "jdoe", Name: "Jane Doe"}},
+		nil,
+		testLogger(),
+	)
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.GitHub.Authenticated || status.GitHub.Username != "jdoe" || status.GitHub.DisplayName != "Jane Doe" {
+		t.Fatalf("Status().GitHub = %+v", status.GitHub)
+	}
+}
+
+func TestStatusReportsGitHubVerificationErrorWithoutFailing(t *testing.T) {
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		&fakeGitHubCredentialStore{
+			record: &gh.CredentialRecord{
+				Credentials: &gh.Credentials{AccessToken: "token"},
+				Source:      gh.CredentialSourceFile,
+				Path:        "/tmp/github-creds.json",
+			},
+		},
+		&fakeGitHubFlowStore{},
+		&fakeGitHubAuthenticator{userErr: errors.New("invalid github token")},
+		nil,
+		testLogger(),
+	)
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.GitHub.Authenticated {
+		t.Fatal("expected unauthenticated GitHub status when verification fails")
+	}
+	if status.GitHub.Error == "" {
+		t.Fatal("expected GitHub verification error in auth status")
+	}
+}
+
+func TestStatusReportsGitHubAuthenticatorUnavailable(t *testing.T) {
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		&fakeGitHubCredentialStore{
+			record: &gh.CredentialRecord{
+				Credentials: &gh.Credentials{AccessToken: "token"},
+				Source:      gh.CredentialSourceFile,
+			},
+		},
+		&fakeGitHubFlowStore{},
+		nil,
+		nil,
+		testLogger(),
+	)
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.GitHub.Authenticated {
+		t.Fatal("expected unauthenticated GitHub status without authenticator")
+	}
+	if status.GitHub.Error == "" {
+		t.Fatal("expected unavailable authenticator error")
+	}
+}
+
+func TestBeginGitHubRejectsEnvironmentCredentials(t *testing.T) {
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		&fakeGitHubCredentialStore{
+			record: &gh.CredentialRecord{
+				Credentials: &gh.Credentials{AccessToken: "token"},
+				Source:      gh.CredentialSourceEnvironment,
+			},
+		},
+		&fakeGitHubFlowStore{},
+		&fakeGitHubAuthenticator{beginFlow: &gh.PendingAuthFlow{}},
+		nil,
+		testLogger(),
+	)
+
+	_, err := svc.BeginGitHub(context.Background())
+	if !errors.Is(err, ErrGitHubEnvironmentCredentials) {
+		t.Fatalf("BeginGitHub() error = %v, want %v", err, ErrGitHubEnvironmentCredentials)
+	}
+}
+
+func TestBeginGitHubRejectsMutableError(t *testing.T) {
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		&fakeGitHubCredentialStore{},
+		&fakeGitHubFlowStore{},
+		&fakeGitHubAuthenticator{beginFlow: &gh.PendingAuthFlow{}},
+		ErrGitHubKeyringNotImplemented,
+		testLogger(),
+	)
+
+	_, err := svc.BeginGitHub(context.Background())
+	if !errors.Is(err, ErrGitHubKeyringNotImplemented) {
+		t.Fatalf("BeginGitHub() error = %v, want %v", err, ErrGitHubKeyringNotImplemented)
+	}
+}
+
+func TestBeginGitHubRequiresClientID(t *testing.T) {
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		&fakeGitHubCredentialStore{},
+		&fakeGitHubFlowStore{},
+		nil,
+		nil,
+		testLogger(),
+	)
+
+	_, err := svc.BeginGitHub(context.Background())
+	if !errors.Is(err, ErrGitHubClientIDRequired) {
+		t.Fatalf("BeginGitHub() error = %v, want %v", err, ErrGitHubClientIDRequired)
+	}
+}
+
+func TestFinalizeGitHubMapsErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		pollErr error
+		wantErr error
+	}{
+		{name: "access denied", pollErr: gh.ErrAccessDenied, wantErr: ErrGitHubAccessDenied},
+		{name: "expired token", pollErr: gh.ErrExpiredToken, wantErr: ErrGitHubAuthFlowExpired},
+		{name: "incorrect device code", pollErr: gh.ErrIncorrectDeviceCode, wantErr: ErrGitHubAuthFlowExpired},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flows := &fakeGitHubFlowStore{
+				flows: map[string]gh.PendingAuthFlow{
+					"flow-123": {ID: "flow-123", DeviceCode: "device"},
+				},
+			}
+			svc := NewServiceWithGitHub(
+				&fakeCredentialStore{},
+				&fakeFlowStore{},
+				&fakeLaunchpadAuthenticator{},
+				&fakeGitHubCredentialStore{},
+				flows,
+				&fakeGitHubAuthenticator{pollErr: tt.pollErr},
+				nil,
+				testLogger(),
+			)
+
+			_, err := svc.FinalizeGitHub(context.Background(), "flow-123")
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("FinalizeGitHub() error = %v, want %v", err, tt.wantErr)
+			}
+			if _, ok := flows.flows["flow-123"]; ok {
+				t.Fatal("flow should be deleted after terminal GitHub finalize error")
+			}
+		})
+	}
+}
+
+func TestFinalizeGitHubMapsMissingAndExpiredFlows(t *testing.T) {
+	t.Run("missing flow", func(t *testing.T) {
+		svc := NewServiceWithGitHub(
+			&fakeCredentialStore{},
+			&fakeFlowStore{},
+			&fakeLaunchpadAuthenticator{},
+			&fakeGitHubCredentialStore{},
+			&fakeGitHubFlowStore{},
+			&fakeGitHubAuthenticator{},
+			nil,
+			testLogger(),
+		)
+
+		_, err := svc.FinalizeGitHub(context.Background(), "missing")
+		if !errors.Is(err, ErrGitHubAuthFlowNotFound) {
+			t.Fatalf("FinalizeGitHub() error = %v, want %v", err, ErrGitHubAuthFlowNotFound)
+		}
+	})
+
+	t.Run("expired flow", func(t *testing.T) {
+		svc := NewServiceWithGitHub(
+			&fakeCredentialStore{},
+			&fakeFlowStore{},
+			&fakeLaunchpadAuthenticator{},
+			&fakeGitHubCredentialStore{},
+			&fakeGitHubFlowStore{getErr: gh.ErrPendingAuthFlowExpired},
+			&fakeGitHubAuthenticator{},
+			nil,
+			testLogger(),
+		)
+
+		_, err := svc.FinalizeGitHub(context.Background(), "expired")
+		if !errors.Is(err, ErrGitHubAuthFlowExpired) {
+			t.Fatalf("FinalizeGitHub() error = %v, want %v", err, ErrGitHubAuthFlowExpired)
+		}
+	})
+}
+
+func TestLogoutGitHubPaths(t *testing.T) {
+	t.Run("rejects environment credentials", func(t *testing.T) {
+		svc := NewServiceWithGitHub(
+			&fakeCredentialStore{},
+			&fakeFlowStore{},
+			&fakeLaunchpadAuthenticator{},
+			&fakeGitHubCredentialStore{
+				record: &gh.CredentialRecord{
+					Credentials: &gh.Credentials{AccessToken: "token"},
+					Source:      gh.CredentialSourceEnvironment,
+				},
+			},
+			&fakeGitHubFlowStore{},
+			&fakeGitHubAuthenticator{},
+			nil,
+			testLogger(),
+		)
+
+		_, err := svc.LogoutGitHub(context.Background())
+		if !errors.Is(err, ErrGitHubEnvironmentCredentials) {
+			t.Fatalf("LogoutGitHub() error = %v, want %v", err, ErrGitHubEnvironmentCredentials)
+		}
+	})
+
+	t.Run("clears persisted credentials", func(t *testing.T) {
+		store := &fakeGitHubCredentialStore{
+			record: &gh.CredentialRecord{
+				Credentials: &gh.Credentials{AccessToken: "token"},
+				Source:      gh.CredentialSourceFile,
+				Path:        "/tmp/github-creds.json",
+			},
+		}
+		svc := NewServiceWithGitHub(
+			&fakeCredentialStore{},
+			&fakeFlowStore{},
+			&fakeLaunchpadAuthenticator{},
+			store,
+			&fakeGitHubFlowStore{},
+			&fakeGitHubAuthenticator{},
+			nil,
+			testLogger(),
+		)
+
+		result, err := svc.LogoutGitHub(context.Background())
+		if err != nil {
+			t.Fatalf("LogoutGitHub() error = %v", err)
+		}
+		if !result.Cleared || result.CredentialsPath != "/tmp/github-creds.json" {
+			t.Fatalf("LogoutGitHub() = %+v", result)
+		}
+		if store.record != nil {
+			t.Fatal("expected GitHub credentials to be cleared")
+		}
+	})
+}
+
+func TestFinalizeGitHubReturnsDeleteError(t *testing.T) {
+	svc := NewServiceWithGitHub(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		&fakeGitHubCredentialStore{},
+		&fakeGitHubFlowStore{
+			flows: map[string]gh.PendingAuthFlow{
+				"flow-123": {ID: "flow-123", DeviceCode: "device"},
+			},
+			deleteErr: errors.New("delete failed"),
+		},
+		&fakeGitHubAuthenticator{
+			creds:    &gh.Credentials{AccessToken: "token"},
+			identity: gh.User{Login: "jdoe"},
+		},
+		nil,
+		testLogger(),
+	)
+
+	_, err := svc.FinalizeGitHub(context.Background(), "flow-123")
+	if err == nil || !strings.Contains(err.Error(), "deleting completed github auth flow") {
+		t.Fatalf("FinalizeGitHub() error = %v, want deleting completed github auth flow", err)
 	}
 }

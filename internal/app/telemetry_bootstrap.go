@@ -72,12 +72,17 @@ func newTelemetrySnapshotSource(app *App) *oteladapter.SnapshotSource {
 }
 
 func (s *telemetrySnapshotSource) AuthSnapshot(ctx context.Context) (*oteladapter.AuthSnapshot, error) {
-	providers := []oteladapter.AuthMetric{{Provider: "launchpad"}}
+	providers := []oteladapter.AuthMetric{{Provider: "launchpad"}, {Provider: "github"}}
 	record, err := s.app.LaunchpadCredentialStore().Load(ctx)
 	if err != nil {
 		return nil, err
 	}
 	providers[0].Authenticated = record != nil && record.Credentials != nil && record.Credentials.AccessToken != ""
+	githubRecord, err := s.app.GitHubCredentialStore().Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	providers[1].Authenticated = githubRecord != nil && githubRecord.Credentials != nil && githubRecord.Credentials.AccessToken != ""
 	return &oteladapter.AuthSnapshot{Providers: providers}, nil
 }
 

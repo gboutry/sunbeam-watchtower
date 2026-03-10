@@ -44,6 +44,7 @@ func configToDTO(cfg *config.Config) *dto.Config {
 		},
 		GitHub: dto.GitHubConfig{
 			UseKeyring: cfg.GitHub.UseKeyring,
+			ClientID:   cfg.GitHub.ClientID,
 		},
 		Build: dto.BuildConfig{
 			DefaultPrefix:  cfg.Build.DefaultPrefix,

@@ -60,8 +60,10 @@ type deferredActionKind int
 
 const (
 	deferredNone deferredActionKind = iota
-	deferredAuthLogin
-	deferredAuthLogout
+	deferredLaunchpadAuthLogin
+	deferredLaunchpadAuthLogout
+	deferredGitHubAuthLogin
+	deferredGitHubAuthLogout
 	deferredOperationCancel
 	deferredBuildTrigger
 	deferredSwitchServer
@@ -143,10 +145,12 @@ type operationsDrawerModel struct {
 }
 
 type authModalModel struct {
-	status *dto.AuthStatus
-	begin  *dto.LaunchpadAuthBeginResult
-	loaded bool
-	err    string
+	status         *dto.AuthStatus
+	launchpadBegin *dto.LaunchpadAuthBeginResult
+	githubBegin    *dto.GitHubAuthBeginResult
+	githubCancel   context.CancelFunc
+	loaded         bool
+	err            string
 }
 
 type cacheModalModel struct {
@@ -239,6 +243,21 @@ type authFinalizeMsg struct {
 
 type authLogoutMsg struct {
 	result *dto.LaunchpadAuthLogoutResult
+	err    error
+}
+
+type authGitHubBeginMsg struct {
+	begin *dto.GitHubAuthBeginResult
+	err   error
+}
+
+type authGitHubFinalizeMsg struct {
+	result *dto.GitHubAuthFinalizeResult
+	err    error
+}
+
+type authGitHubLogoutMsg struct {
+	result *dto.GitHubAuthLogoutResult
 	err    error
 }
 
@@ -534,7 +553,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.auth.err = msg.err.Error()
 			return m, clearToastLater()
 		}
-		m.auth.begin = msg.begin
+		m.auth.launchpadBegin = msg.begin
 		m.setToast("Launchpad auth started", "info")
 		return m, clearToastLater()
 	case authFinalizeMsg:
@@ -543,8 +562,13 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.auth.err = msg.err.Error()
 			return m, clearToastLater()
 		}
-		m.auth.begin = nil
-		m.auth.status = &dto.AuthStatus{Launchpad: msg.result.Launchpad}
+		m.auth.launchpadBegin = nil
+		status := m.auth.status
+		if status == nil {
+			status = &dto.AuthStatus{}
+		}
+		status.Launchpad = msg.result.Launchpad
+		m.auth.status = status
 		m.dashboard.auth = m.auth.status
 		m.setToast("Launchpad login completed", "success")
 		return m, tea.Batch(clearToastLater(), loadDashboardCmd(m.session))
@@ -553,10 +577,58 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setToast(msg.err.Error(), "error")
 			return m, clearToastLater()
 		}
-		m.auth.begin = nil
-		m.auth.status = &dto.AuthStatus{}
+		m.auth.launchpadBegin = nil
+		status := m.auth.status
+		if status == nil {
+			status = &dto.AuthStatus{}
+		}
+		status.Launchpad = dto.LaunchpadAuthStatus{}
+		m.auth.status = status
 		m.dashboard.auth = m.auth.status
 		m.setToast("Launchpad credentials cleared", "success")
+		return m, tea.Batch(clearToastLater(), loadDashboardCmd(m.session))
+	case authGitHubBeginMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			m.auth.err = msg.err.Error()
+			return m, clearToastLater()
+		}
+		m.auth.githubBegin = msg.begin
+		m.setToast("GitHub auth started", "info")
+		cmd := finalizeGitHubAuthCmd(m.session, msg.begin.FlowID, &m.auth.githubCancel)
+		return m, tea.Batch(clearToastLater(), cmd)
+	case authGitHubFinalizeMsg:
+		m.auth.githubCancel = nil
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			m.auth.err = msg.err.Error()
+			return m, clearToastLater()
+		}
+		m.auth.githubBegin = nil
+		status := m.auth.status
+		if status == nil {
+			status = &dto.AuthStatus{}
+		}
+		status.GitHub = msg.result.GitHub
+		m.auth.status = status
+		m.dashboard.auth = m.auth.status
+		m.setToast("GitHub login completed", "success")
+		return m, tea.Batch(clearToastLater(), loadDashboardCmd(m.session))
+	case authGitHubLogoutMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.auth.githubBegin = nil
+		m.auth.githubCancel = nil
+		status := m.auth.status
+		if status == nil {
+			status = &dto.AuthStatus{}
+		}
+		status.GitHub = dto.GitHubAuthStatus{}
+		m.auth.status = status
+		m.dashboard.auth = m.auth.status
+		m.setToast("GitHub credentials cleared", "success")
 		return m, tea.Batch(clearToastLater(), loadDashboardCmd(m.session))
 	case cacheLoadedMsg:
 		m.cache.loaded = msg.err == nil
@@ -966,28 +1038,43 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pendingG = false
 		switch msg.String() {
 		case "esc", "q":
+			if m.auth.githubCancel != nil {
+				m.auth.githubCancel()
+				m.auth.githubCancel = nil
+			}
 			m.overlay = overlayNone
 			m.overlayScroll = 0
 			return m, nil
 		case "l":
 			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
-				m.openUpgradePrompt(deferredAction{kind: deferredAuthLogin})
+				m.openUpgradePrompt(deferredAction{kind: deferredLaunchpadAuthLogin})
 				return m, nil
 			}
-			return m, beginAuthCmd(m.session)
+			return m, beginLaunchpadAuthCmd(m.session)
 		case "x":
 			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
-				m.openUpgradePrompt(deferredAction{kind: deferredAuthLogout})
+				m.openUpgradePrompt(deferredAction{kind: deferredLaunchpadAuthLogout})
 				return m, nil
 			}
-			return m, logoutAuthCmd(m.session)
-		case "o":
-			if m.auth.begin != nil {
-				return m, openBrowserCmd(m.auth.begin.AuthorizeURL)
+			return m, logoutLaunchpadAuthCmd(m.session)
+		case "g":
+			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
+				m.openUpgradePrompt(deferredAction{kind: deferredGitHubAuthLogin})
+				return m, nil
 			}
-		case "enter":
-			if m.auth.begin != nil {
-				return m, finalizeAuthCmd(m.session, m.auth.begin.FlowID)
+			return m, beginGitHubAuthCmd(m.session)
+		case "d":
+			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
+				m.openUpgradePrompt(deferredAction{kind: deferredGitHubAuthLogout})
+				return m, nil
+			}
+			return m, logoutGitHubAuthCmd(m.session)
+		case "o":
+			if m.auth.githubBegin != nil {
+				return m, openBrowserCmd(m.auth.githubBegin.VerificationURI)
+			}
+			if m.auth.launchpadBegin != nil {
+				return m, openBrowserCmd(m.auth.launchpadBegin.AuthorizeURL)
 			}
 		}
 		return m, nil
@@ -1178,10 +1265,14 @@ func (m *rootModel) openUpgradePrompt(action deferredAction) {
 
 func (m rootModel) resumeDeferredAction(action deferredAction) tea.Cmd {
 	switch action.kind {
-	case deferredAuthLogin:
-		return beginAuthCmd(m.session)
-	case deferredAuthLogout:
-		return logoutAuthCmd(m.session)
+	case deferredLaunchpadAuthLogin:
+		return beginLaunchpadAuthCmd(m.session)
+	case deferredLaunchpadAuthLogout:
+		return logoutLaunchpadAuthCmd(m.session)
+	case deferredGitHubAuthLogin:
+		return beginGitHubAuthCmd(m.session)
+	case deferredGitHubAuthLogout:
+		return logoutGitHubAuthCmd(m.session)
 	case deferredOperationCancel:
 		return cancelOperationCmd(m.session, action.operationID)
 	case deferredBuildTrigger:
@@ -1224,10 +1315,7 @@ func (m rootModel) View() string {
 
 func (m rootModel) renderHeader() string {
 	target := m.session.Target()
-	authText := "LP: not authenticated"
-	if m.dashboard.auth != nil && m.dashboard.auth.Launchpad.Authenticated {
-		authText = "LP: " + displayLaunchpadName(m.dashboard.auth)
-	}
+	authText := renderAuthSummaryText(m.dashboard.auth)
 	left := m.theme.header.Render("watchtower-tui") + " " + m.theme.badge.Render(string(target.Kind))
 	if target.Address != "" {
 		left += " " + m.theme.metadata.Render(target.Address)
@@ -1288,12 +1376,9 @@ func (m rootModel) renderContent() string {
 
 func (m rootModel) renderStatusBar() string {
 	target := strings.ToUpper(string(m.session.Target().Kind))
-	auth := "guest"
-	if m.dashboard.auth != nil && m.dashboard.auth.Launchpad.Authenticated {
-		auth = displayLaunchpadName(m.dashboard.auth)
-	}
+	auth := renderAuthSummaryText(m.dashboard.auth)
 	runningOps := countRunningOperations(m.dashboard.ops)
-	left := fmt.Sprintf("Mode %s  LP %s  Ops %d/%d", target, auth, runningOps, len(m.dashboard.ops))
+	left := fmt.Sprintf("Mode %s  %s  Ops %d/%d", target, auth, runningOps, len(m.dashboard.ops))
 	right := "m Meta  a Auth  o Ops  c Cache  l Logs  s Server  r Refresh  q Quit"
 	return m.theme.statusBar.Width(m.width).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top,
@@ -1339,11 +1424,8 @@ func (m rootModel) renderDashboardRuntime() string {
 		fmt.Sprintf("Target: %s", target.Kind),
 		fmt.Sprintf("Address: %s", target.Address),
 	}
-	if m.dashboard.auth != nil && m.dashboard.auth.Launchpad.Authenticated {
-		lines = append(lines, fmt.Sprintf("Launchpad: %s", displayLaunchpadName(m.dashboard.auth)))
-	} else {
-		lines = append(lines, "Launchpad: not authenticated")
-	}
+	lines = append(lines, renderProviderStatusLine("Launchpad", launchpadStatusFromAuth(m.dashboard.auth)))
+	lines = append(lines, renderProviderStatusLine("GitHub", githubStatusFromAuth(m.dashboard.auth)))
 	return strings.Join(lines, "\n")
 }
 
@@ -1507,19 +1589,17 @@ func (m rootModel) renderAuthModal() string {
 	if m.auth.err != "" {
 		lines = append(lines, m.theme.errorText.Render(m.auth.err))
 	}
-	if m.auth.status != nil && m.auth.status.Launchpad.Authenticated {
-		lines = append(lines,
-			"Launchpad: "+displayLaunchpadName(m.auth.status),
-			"Source: "+emptyAsDash(m.auth.status.Launchpad.Source),
-			"Path: "+emptyAsDash(m.auth.status.Launchpad.CredentialsPath),
-		)
-	} else {
-		lines = append(lines, "Launchpad: not authenticated")
+	lines = append(lines, renderProviderStatusLine("Launchpad", launchpadStatusFromAuth(m.auth.status)))
+	lines = append(lines, renderProviderStatusDetail("Launchpad", launchpadStatusFromAuth(m.auth.status))...)
+	lines = append(lines, renderProviderStatusLine("GitHub", githubStatusFromAuth(m.auth.status)))
+	lines = append(lines, renderProviderStatusDetail("GitHub", githubStatusFromAuth(m.auth.status))...)
+	if m.auth.launchpadBegin != nil {
+		lines = append(lines, "", "Launchpad authorize URL:", m.auth.launchpadBegin.AuthorizeURL)
 	}
-	if m.auth.begin != nil {
-		lines = append(lines, "", "Authorize URL:", m.auth.begin.AuthorizeURL, "", "[o] open browser  [Enter] finalize")
+	if m.auth.githubBegin != nil {
+		lines = append(lines, "", "GitHub verification URI:", m.auth.githubBegin.VerificationURI, "GitHub code: "+m.auth.githubBegin.UserCode)
 	}
-	lines = append(lines, "", "[l] login  [x] logout  [Esc] close")
+	lines = append(lines, "", "[l] LP login  [x] LP logout  [g] GH login  [d] GH logout  [o] open browser  [Esc] close")
 	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
 }
 
@@ -1895,24 +1975,43 @@ func loadAuthStatusCmd(session *runtimeadapter.Session) tea.Cmd {
 	})
 }
 
-func beginAuthCmd(session *runtimeadapter.Session) tea.Cmd {
+func beginLaunchpadAuthCmd(session *runtimeadapter.Session) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionAuthLaunchpadBegin, func() tea.Msg {
 		begin, err := session.Frontend.Auth().BeginLaunchpad(context.Background())
 		return authBeginMsg{begin: begin, err: err}
 	})
 }
 
-func finalizeAuthCmd(session *runtimeadapter.Session, flowID string) tea.Cmd {
-	return guardSessionAction(session, frontend.ActionAuthLaunchpadFinalize, func() tea.Msg {
-		result, err := session.Frontend.Auth().FinalizeLaunchpad(context.Background(), flowID)
-		return authFinalizeMsg{result: result, err: err}
-	})
-}
-
-func logoutAuthCmd(session *runtimeadapter.Session) tea.Cmd {
+func logoutLaunchpadAuthCmd(session *runtimeadapter.Session) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionAuthLaunchpadLogout, func() tea.Msg {
 		result, err := session.Frontend.Auth().LogoutLaunchpad(context.Background())
 		return authLogoutMsg{result: result, err: err}
+	})
+}
+
+func beginGitHubAuthCmd(session *runtimeadapter.Session) tea.Cmd {
+	return guardSessionAction(session, frontend.ActionAuthGitHubBegin, func() tea.Msg {
+		begin, err := session.Frontend.Auth().BeginGitHub(context.Background())
+		return authGitHubBeginMsg{begin: begin, err: err}
+	})
+}
+
+func finalizeGitHubAuthCmd(session *runtimeadapter.Session, flowID string, cancelSlot *context.CancelFunc) tea.Cmd {
+	return guardSessionAction(session, frontend.ActionAuthGitHubFinalize, func() tea.Msg {
+		ctx, cancel := context.WithCancel(context.Background())
+		if cancelSlot != nil {
+			*cancelSlot = cancel
+		}
+		defer cancel()
+		result, err := session.Frontend.Auth().FinalizeGitHub(ctx, flowID)
+		return authGitHubFinalizeMsg{result: result, err: err}
+	})
+}
+
+func logoutGitHubAuthCmd(session *runtimeadapter.Session) tea.Cmd {
+	return guardSessionAction(session, frontend.ActionAuthGitHubLogout, func() tea.Msg {
+		result, err := session.Frontend.Auth().LogoutGitHub(context.Background())
+		return authGitHubLogoutMsg{result: result, err: err}
 	})
 }
 
@@ -2571,16 +2670,100 @@ func hasRunningOperation(rows []dto.OperationJob) bool {
 }
 
 func displayLaunchpadName(status *dto.AuthStatus) string {
+	return displayProviderName(launchpadStatusFromAuth(status))
+}
+
+func displayGitHubName(status *dto.AuthStatus) string {
+	return displayProviderName(githubStatusFromAuth(status))
+}
+
+func renderAuthSummaryText(status *dto.AuthStatus) string {
+	parts := make([]string, 0, 2)
+	if launchpadStatusFromAuth(status).authenticated {
+		parts = append(parts, "LP: "+displayLaunchpadName(status))
+	} else {
+		parts = append(parts, "LP: not authenticated")
+	}
+	if githubStatusFromAuth(status).authenticated {
+		parts = append(parts, "GH: "+displayGitHubName(status))
+	} else {
+		parts = append(parts, "GH: not authenticated")
+	}
+	return strings.Join(parts, "  ")
+}
+
+type providerStatusView struct {
+	authenticated   bool
+	displayName     string
+	username        string
+	source          string
+	credentialsPath string
+	err             string
+}
+
+func launchpadStatusFromAuth(status *dto.AuthStatus) providerStatusView {
 	if status == nil {
-		return "guest"
+		return providerStatusView{}
 	}
-	if status.Launchpad.DisplayName != "" {
-		return status.Launchpad.DisplayName
+	return providerStatusView{
+		authenticated:   status.Launchpad.Authenticated,
+		displayName:     status.Launchpad.DisplayName,
+		username:        status.Launchpad.Username,
+		source:          status.Launchpad.Source,
+		credentialsPath: status.Launchpad.CredentialsPath,
+		err:             status.Launchpad.Error,
 	}
-	if status.Launchpad.Username != "" {
-		return status.Launchpad.Username
+}
+
+func githubStatusFromAuth(status *dto.AuthStatus) providerStatusView {
+	if status == nil {
+		return providerStatusView{}
+	}
+	return providerStatusView{
+		authenticated:   status.GitHub.Authenticated,
+		displayName:     status.GitHub.DisplayName,
+		username:        status.GitHub.Username,
+		source:          status.GitHub.Source,
+		credentialsPath: status.GitHub.CredentialsPath,
+		err:             status.GitHub.Error,
+	}
+}
+
+func displayProviderName(status providerStatusView) string {
+	if status.displayName != "" {
+		return status.displayName
+	}
+	if status.username != "" {
+		return status.username
 	}
 	return "guest"
+}
+
+func renderProviderStatusLine(provider string, status providerStatusView) string {
+	if status.authenticated {
+		return fmt.Sprintf("%s: %s", provider, displayProviderName(status))
+	}
+	if status.err != "" {
+		return fmt.Sprintf("%s: invalid credentials", provider)
+	}
+	return fmt.Sprintf("%s: not authenticated", provider)
+}
+
+func renderProviderStatusDetail(provider string, status providerStatusView) []string {
+	if !status.authenticated && status.err == "" {
+		return nil
+	}
+	lines := make([]string, 0, 3)
+	if status.source != "" {
+		lines = append(lines, provider+" source: "+status.source)
+	}
+	if status.credentialsPath != "" {
+		lines = append(lines, provider+" path: "+status.credentialsPath)
+	}
+	if status.err != "" {
+		lines = append(lines, provider+" error: "+status.err)
+	}
+	return lines
 }
 
 func renderToast(t theme, toast toastState) string {

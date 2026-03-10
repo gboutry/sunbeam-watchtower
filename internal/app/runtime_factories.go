@@ -35,6 +35,30 @@ func newLaunchpadPendingAuthFlowStore(
 	return store
 }
 
+func newGitHubPendingAuthFlowStore(
+	logger *slog.Logger,
+	mode RuntimeMode,
+	stateDir func() (string, error),
+) port.GitHubPendingAuthFlowStore {
+	logger = appLogger(logger)
+	if mode == RuntimeModeEphemeral {
+		return authflowstore.NewMemoryGitHubFlowStore()
+	}
+
+	dir, err := stateDir()
+	if err != nil {
+		logger.Warn("failed to resolve cache dir for auth flow store, falling back to memory", "error", err)
+		return authflowstore.NewMemoryGitHubFlowStore()
+	}
+
+	store, err := authflowstore.NewBoltGitHubFlowStore(dir)
+	if err != nil {
+		logger.Warn("failed to initialize auth flow store, falling back to memory", "error", err)
+		return authflowstore.NewMemoryGitHubFlowStore()
+	}
+	return store
+}
+
 func newOperationStore(
 	logger *slog.Logger,
 	mode RuntimeMode,

@@ -217,3 +217,59 @@ func TestAuthLaunchpadLogoutEndpoint_EnvironmentCredentials(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", resp.StatusCode, body)
 	}
 }
+
+func TestAuthGitHubBeginAndFinalizeEndpoints(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("WATCHTOWER_GITHUB_CLIENT_ID", "client-id")
+
+	origTransport := http.DefaultTransport
+	withDefaultTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.URL.Host == "github.com" && req.URL.Path == "/login/device/code":
+			return jsonResponse(http.StatusOK, `{"device_code":"device","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","expires_in":900,"interval":1}`), nil
+		case req.URL.Host == "github.com" && req.URL.Path == "/login/oauth/access_token":
+			return jsonResponse(http.StatusOK, `{"access_token":"token","token_type":"bearer"}`), nil
+		case req.URL.Host == "api.github.com" && req.URL.Path == "/user":
+			return jsonResponse(http.StatusOK, `{"login":"jdoe","name":"Jane Doe"}`), nil
+		default:
+			return origTransport.RoundTrip(req)
+		}
+	}))
+
+	srv, base := startTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	application := newAuthTestApp()
+	t.Cleanup(func() {
+		if err := application.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+	RegisterAuthAPI(srv.API(), application)
+
+	beginResp := postJSON(t, base, "/api/v1/auth/github/begin", nil)
+	defer beginResp.Body.Close()
+	if beginResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(beginResp.Body)
+		t.Fatalf("begin expected 200, got %d: %s", beginResp.StatusCode, body)
+	}
+
+	var begin dto.GitHubAuthBeginResult
+	if err := json.NewDecoder(beginResp.Body).Decode(&begin); err != nil {
+		t.Fatalf("Decode(begin) error = %v", err)
+	}
+	finalizeResp := postJSON(t, base, "/api/v1/auth/github/finalize", map[string]string{"flow_id": begin.FlowID})
+	defer finalizeResp.Body.Close()
+	if finalizeResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(finalizeResp.Body)
+		t.Fatalf("finalize expected 200, got %d: %s", finalizeResp.StatusCode, body)
+	}
+
+	var finalized dto.GitHubAuthFinalizeResult
+	if err := json.NewDecoder(finalizeResp.Body).Decode(&finalized); err != nil {
+		t.Fatalf("Decode(finalize) error = %v", err)
+	}
+	if !finalized.GitHub.Authenticated || finalized.GitHub.Username != "jdoe" {
+		t.Fatalf("unexpected finalized identity: %+v", finalized.GitHub)
+	}
+}

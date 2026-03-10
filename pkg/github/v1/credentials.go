@@ -1,0 +1,59 @@
+// SPDX-FileCopyrightText: 2026 - gboutry
+// SPDX-License-Identifier: Apache-2.0
+
+package v1
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+const credentialFile = "github-credentials.json"
+
+// CredentialsPath returns the default path for cached GitHub credentials.
+func CredentialsPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "sunbeam-watchtower", credentialFile)
+}
+
+// SaveCredentialsFile persists credentials to the given cache file path.
+func SaveCredentialsFile(path string, creds *Credentials) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("creating config dir: %w", err)
+	}
+
+	data, err := json.MarshalIndent(creds, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling credentials: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("writing credentials: %w", err)
+	}
+	return nil
+}
+
+// LoadCredentialsFile loads credentials from the given cache file path.
+func LoadCredentialsFile(path string) (*Credentials, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading credentials: %w", err)
+	}
+
+	var creds Credentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return nil, fmt.Errorf("parsing credentials: %w", err)
+	}
+	if creds.AccessToken == "" {
+		return nil, nil
+	}
+	return &creds, nil
+}

@@ -314,7 +314,7 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 	model.ops.rows = model.dashboard.ops
 	model.ops.events = []dto.OperationEvent{{Time: now, Type: "info", Message: "queued"}}
 	model.auth.status = model.dashboard.auth
-	model.auth.begin = &dto.LaunchpadAuthBeginResult{FlowID: "flow-1", AuthorizeURL: "https://example.test/auth"}
+	model.auth.launchpadBegin = &dto.LaunchpadAuthBeginResult{FlowID: "flow-1", AuthorizeURL: "https://example.test/auth"}
 	model.cache.status = &frontend.CacheStatusResponse{
 		Git: struct {
 			Directory string
@@ -442,7 +442,7 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		overlay overlayKind
 		want    string
 	}{
-		{name: "auth", overlay: overlayAuth, want: "Authorize URL:"},
+		{name: "auth", overlay: overlayAuth, want: "Launchpad authorize URL:"},
 		{name: "operations", overlay: overlayOperations, want: "Events"},
 		{name: "cache", overlay: overlayCache, want: "Release entries: 1"},
 		{name: "logs", overlay: overlayLogs, want: "Session Logs:"},
@@ -861,7 +861,7 @@ func TestReadOnlyLogoutIsDenied(t *testing.T) {
 	session := newReadOnlyEmbeddedTestSession(t)
 	defer session.Close()
 
-	msg := logoutAuthCmd(session)()
+	msg := logoutLaunchpadAuthCmd(session)()
 	result, ok := msg.(actionDeniedMsg)
 	if !ok {
 		t.Fatalf("msg = %T, want actionDeniedMsg", msg)

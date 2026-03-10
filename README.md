@@ -140,7 +140,7 @@ The config file lives at `~/.config/sunbeam-watchtower/config.yaml` by default. 
 | Section     | Description |
 |-------------|-------------|
 | `launchpad` | Launchpad settings (`default_owner`, `use_keyring`, default `series`, `development_focus`) |
-| `github`    | GitHub settings (`use_keyring`) |
+| `github`    | GitHub settings (`client_id`, `use_keyring`) |
 | `gerrit`    | Gerrit settings (`hosts` list with `url` entries) |
 | `projects`  | List of tracked projects |
 | `build`     | Build pipeline settings (`default_prefix`, `timeout_minutes`, `artifacts_dir`) |
@@ -589,15 +589,29 @@ Git cache data is stored at `$XDG_CACHE_HOME/sunbeam-watchtower/repos/` (default
 
 ### `watchtower auth`
 
-Manage Launchpad authentication. Required for bug tracking, reviews on Launchpad, and builds.
+Manage provider authentication. Launchpad auth is required for Launchpad-backed bugs, Launchpad reviews, and builds. GitHub auth is optional, but it raises GitHub API rate limits for review and commit browsing plus `cache sync reviews`.
 
 ```bash
-# Interactive browser-based OAuth login
-watchtower auth login
-
-# Check authentication status
+# Check aggregated auth status
 watchtower auth status
+
+# Launchpad browser-based OAuth login/logout
+watchtower auth launchpad login
+watchtower auth launchpad logout
+
+# GitHub device-flow login/logout
+watchtower auth github login
+watchtower auth github logout
 ```
+
+GitHub auth uses an OAuth app client ID resolved in this order:
+
+- `WATCHTOWER_GITHUB_CLIENT_ID`
+- `github.client_id` in config
+
+If either `GH_TOKEN` or `GITHUB_TOKEN` is set, Watchtower uses that GitHub credential source first and reports it as an environment-backed auth source in `auth status`. In that mode, `watchtower auth github login` and `watchtower auth github logout` are blocked to avoid creating shadowed file-backed state.
+
+`github.use_keyring` is reserved for future support and is not implemented yet. If enabled, GitHub auth mutation flows fail with a clear error instead of silently falling back to file storage.
 
 ### `watchtower config`
 

@@ -39,3 +39,27 @@ func (c *Client) AuthLaunchpadLogout(ctx context.Context) (*dto.LaunchpadAuthLog
 	err := c.post(ctx, "/api/v1/auth/launchpad/logout", nil, &result)
 	return &result, err
 }
+
+// AuthGitHubBegin starts a GitHub auth flow.
+func (c *Client) AuthGitHubBegin(ctx context.Context) (*dto.GitHubAuthBeginResult, error) {
+	var result dto.GitHubAuthBeginResult
+	err := c.post(ctx, "/api/v1/auth/github/begin", nil, &result)
+	return &result, err
+}
+
+// AuthGitHubFinalize completes a pending GitHub auth flow.
+func (c *Client) AuthGitHubFinalize(
+	ctx context.Context,
+	flowID string,
+) (*dto.GitHubAuthFinalizeResult, error) {
+	var result dto.GitHubAuthFinalizeResult
+	err := c.post(ctx, "/api/v1/auth/github/finalize", map[string]string{"flow_id": flowID}, &result)
+	return &result, err
+}
+
+// AuthGitHubLogout clears persisted GitHub credentials.
+func (c *Client) AuthGitHubLogout(ctx context.Context) (*dto.GitHubAuthLogoutResult, error) {
+	var result dto.GitHubAuthLogoutResult
+	err := c.post(ctx, "/api/v1/auth/github/logout", nil, &result)
+	return &result, err
+}

@@ -61,8 +61,14 @@ type App struct {
 	lpCredsOnce  sync.Once
 	lpCredsStore port.LaunchpadCredentialStore
 
+	ghCredsOnce  sync.Once
+	ghCredsStore port.GitHubCredentialStore
+
 	lpFlowOnce  sync.Once
 	lpFlowStore port.LaunchpadPendingAuthFlowStore
+
+	ghFlowOnce  sync.Once
+	ghFlowStore port.GitHubPendingAuthFlowStore
 
 	excusesOnce  sync.Once
 	excusesCache *excusescache.Cache
@@ -133,6 +139,11 @@ func (a *App) Close() error {
 		}
 	}
 	if closer, ok := a.lpFlowStore.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if closer, ok := a.ghFlowStore.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
 			errs = append(errs, err)
 		}

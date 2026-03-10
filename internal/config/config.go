@@ -22,7 +22,8 @@ type LaunchpadConfig struct {
 
 // GitHubConfig holds GitHub-specific settings.
 type GitHubConfig struct {
-	UseKeyring bool `mapstructure:"use_keyring" yaml:"use_keyring"`
+	UseKeyring bool   `mapstructure:"use_keyring" yaml:"use_keyring"`
+	ClientID   string `mapstructure:"client_id" yaml:"client_id,omitempty"`
 }
 
 // GerritHost represents a single Gerrit instance.
