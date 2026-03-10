@@ -4,7 +4,11 @@
 package app
 
 import (
+	"os"
+	"time"
+
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/credentials"
+	ghadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/githubauth"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/launchpad"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	authsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/auth"
@@ -24,12 +28,28 @@ func (a *App) LaunchpadCredentialStore() port.LaunchpadCredentialStore {
 	return a.lpCredsStore
 }
 
+// GitHubCredentialStore returns the shared GitHub credential store.
+func (a *App) GitHubCredentialStore() port.GitHubCredentialStore {
+	a.ghCredsOnce.Do(func() {
+		a.ghCredsStore = credentials.NewGitHubStore("")
+	})
+	return a.ghCredsStore
+}
+
 // LaunchpadPendingAuthFlowStore returns the shared pending Launchpad auth flow store.
 func (a *App) LaunchpadPendingAuthFlowStore() port.LaunchpadPendingAuthFlowStore {
 	a.lpFlowOnce.Do(func() {
 		a.lpFlowStore = newLaunchpadPendingAuthFlowStore(a.Logger, a.runtimeMode, a.stateDir)
 	})
 	return a.lpFlowStore
+}
+
+// GitHubPendingAuthFlowStore returns the shared pending GitHub auth flow store.
+func (a *App) GitHubPendingAuthFlowStore() port.GitHubPendingAuthFlowStore {
+	a.ghFlowOnce.Do(func() {
+		a.ghFlowStore = newGitHubPendingAuthFlowStore(a.Logger, a.runtimeMode, a.stateDir)
+	})
+	return a.ghFlowStore
 }
 
 // OperationStore returns the shared long-running operation store.
@@ -51,10 +71,29 @@ func (a *App) OperationService() (*opsvc.Service, error) {
 
 // AuthService creates the shared auth service.
 func (a *App) AuthService() (*authsvc.Service, error) {
-	return authsvc.NewService(
+	var githubMutableErr error
+	if a.Config != nil && a.Config.GitHub.UseKeyring {
+		githubMutableErr = authsvc.ErrGitHubKeyringNotImplemented
+	}
+	return authsvc.NewServiceWithGitHub(
 		a.LaunchpadCredentialStore(),
 		a.LaunchpadPendingAuthFlowStore(),
 		lpadapter.NewAuthenticator(lp.ConsumerKey(), a.Logger),
+		a.GitHubCredentialStore(),
+		a.GitHubPendingAuthFlowStore(),
+		ghadapter.NewAuthenticator(a.GitHubClientID(), a.Logger, a.upstreamHTTPClient("github", 30*time.Second)),
+		githubMutableErr,
 		a.Logger,
 	), nil
+}
+
+// GitHubClientID resolves the configured GitHub OAuth app client ID.
+func (a *App) GitHubClientID() string {
+	if v := os.Getenv("WATCHTOWER_GITHUB_CLIENT_ID"); v != "" {
+		return v
+	}
+	if a.Config == nil {
+		return ""
+	}
+	return a.Config.GitHub.ClientID
 }

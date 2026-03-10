@@ -69,3 +69,30 @@ func (w *AuthWorkflow) LogoutLaunchpad(ctx context.Context) (*dto.LaunchpadAuthL
 	}
 	return service.LogoutLaunchpad(ctx)
 }
+
+// BeginGitHub starts a GitHub authentication flow.
+func (w *AuthWorkflow) BeginGitHub(ctx context.Context) (*dto.GitHubAuthBeginResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.BeginGitHub(ctx)
+}
+
+// FinalizeGitHub completes a pending GitHub authentication flow.
+func (w *AuthWorkflow) FinalizeGitHub(ctx context.Context, flowID string) (*dto.GitHubAuthFinalizeResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.FinalizeGitHub(ctx, flowID)
+}
+
+// LogoutGitHub clears persisted GitHub credentials.
+func (w *AuthWorkflow) LogoutGitHub(ctx context.Context) (*dto.GitHubAuthLogoutResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.LogoutGitHub(ctx)
+}

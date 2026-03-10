@@ -11,7 +11,8 @@ type LaunchpadConfig struct {
 }
 
 type GitHubConfig struct {
-	UseKeyring bool `json:"use_keyring" yaml:"use_keyring"`
+	UseKeyring bool   `json:"use_keyring" yaml:"use_keyring"`
+	ClientID   string `json:"client_id,omitempty" yaml:"client_id,omitempty"`
 }
 
 type GerritHost struct {

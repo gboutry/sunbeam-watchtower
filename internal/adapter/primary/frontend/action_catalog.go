@@ -46,6 +46,9 @@ const (
 	ActionAuthLaunchpadBegin    ActionID = "auth.launchpad.begin"
 	ActionAuthLaunchpadFinalize ActionID = "auth.launchpad.finalize"
 	ActionAuthLaunchpadLogout   ActionID = "auth.launchpad.logout"
+	ActionAuthGitHubBegin       ActionID = "auth.github.begin"
+	ActionAuthGitHubFinalize    ActionID = "auth.github.finalize"
+	ActionAuthGitHubLogout      ActionID = "auth.github.logout"
 	ActionBuildTrigger          ActionID = "build.trigger"
 	ActionBuildList             ActionID = "build.list"
 	ActionBuildDownload         ActionID = "build.download"
@@ -120,6 +123,9 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionAuthLaunchpadBegin:    descriptor(ActionAuthLaunchpadBegin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Begin Launchpad authentication."),
 	ActionAuthLaunchpadFinalize: descriptor(ActionAuthLaunchpadFinalize, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Finalize Launchpad authentication."),
 	ActionAuthLaunchpadLogout:   descriptor(ActionAuthLaunchpadLogout, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Clear persisted Launchpad credentials."),
+	ActionAuthGitHubBegin:       descriptor(ActionAuthGitHubBegin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Begin GitHub authentication."),
+	ActionAuthGitHubFinalize:    descriptor(ActionAuthGitHubFinalize, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Finalize GitHub authentication."),
+	ActionAuthGitHubLogout:      descriptor(ActionAuthGitHubLogout, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Clear persisted GitHub credentials."),
 	ActionBuildTrigger:          descriptor(ActionBuildTrigger, "build", "build", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Trigger builds for a project."),
 	ActionBuildList:             descriptor(ActionBuildList, "build", "build", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List builds."),
 	ActionBuildDownload:         descriptor(ActionBuildDownload, "build", "build", MutabilityRead, LocalEffectWrite, RuntimeEmbeddedOK, ExportPolicyAllowed, "Download build artifacts to the local machine."),

@@ -111,3 +111,52 @@ func TestAuthClientWorkflowLogoutLaunchpad(t *testing.T) {
 		t.Fatalf("LogoutLaunchpad() = %+v, want cleared /tmp/launchpad-creds", got)
 	}
 }
+
+func TestAuthClientWorkflowLoginGitHub(t *testing.T) {
+	var finalizedFlowID string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/github/begin":
+			_ = json.NewEncoder(w).Encode(dto.GitHubAuthBeginResult{
+				FlowID:          "flow-123",
+				UserCode:        "ABCD-EFGH",
+				VerificationURI: "https://github.com/login/device",
+				IntervalSeconds: 5,
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/github/finalize":
+			var body struct {
+				FlowID string `json:"flow_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("Decode(finalize) error = %v", err)
+			}
+			finalizedFlowID = body.FlowID
+			_ = json.NewEncoder(w).Encode(dto.GitHubAuthFinalizeResult{
+				GitHub: dto.GitHubAuthStatus{
+					Authenticated: true,
+					Username:      "jdoe",
+				},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	workflow := NewAuthClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
+	got, err := workflow.LoginGitHub(context.Background(), func(ctx context.Context, begin *dto.GitHubAuthBeginResult) error {
+		if begin.UserCode != "ABCD-EFGH" {
+			t.Fatalf("begin.UserCode = %q, want ABCD-EFGH", begin.UserCode)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("LoginGitHub() error = %v", err)
+	}
+	if finalizedFlowID != "flow-123" {
+		t.Fatalf("finalized flow_id = %q, want flow-123", finalizedFlowID)
+	}
+	if got.Finalized == nil || !got.Finalized.GitHub.Authenticated {
+		t.Fatalf("LoginGitHub() = %+v, want authenticated result", got)
+	}
+}

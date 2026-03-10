@@ -50,6 +50,19 @@ func newLaunchpadClient(store port.LaunchpadCredentialStore, logger *slog.Logger
 	return lp.NewClient(record.Credentials, logger, httpClient)
 }
 
+func newGitHubClient(store port.GitHubCredentialStore, logger *slog.Logger, httpClient *http.Client) *github.Client {
+	client := github.NewClient(httpClient)
+	record, err := store.Load(context.Background())
+	if err != nil {
+		logger.Warn("failed to load GitHub credentials", "error", err)
+		return client
+	}
+	if record == nil || record.Credentials == nil || record.Credentials.AccessToken == "" {
+		return client
+	}
+	return client.WithAuthToken(record.Credentials.AccessToken)
+}
+
 // NewLaunchpadForge creates a LaunchpadForge client, or nil if no auth is available.
 func NewLaunchpadForge(store port.LaunchpadCredentialStore, logger *slog.Logger) *forge.LaunchpadForge {
 	client := newLaunchpadClient(store, logger, nil)
@@ -133,7 +146,7 @@ func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
 		switch code.Forge {
 		case "github":
 			if ghClient == nil {
-				ghClient = forge.NewGitHubForge(github.NewClient(a.upstreamHTTPClient("github", 30*time.Second)))
+				ghClient = forge.NewGitHubForge(newGitHubClient(a.GitHubCredentialStore(), a.Logger, a.upstreamHTTPClient("github", 30*time.Second)))
 			}
 			pf = review.ProjectForge{
 				Forge:     ghClient,

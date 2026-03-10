@@ -44,6 +44,28 @@ type AuthLaunchpadLogoutOutput struct {
 	Body dto.LaunchpadAuthLogoutResult
 }
 
+// AuthGitHubBeginOutput is the response for beginning a GitHub auth flow.
+type AuthGitHubBeginOutput struct {
+	Body dto.GitHubAuthBeginResult
+}
+
+// AuthGitHubFinalizeInput is the request body for finalizing a GitHub auth flow.
+type AuthGitHubFinalizeInput struct {
+	Body struct {
+		FlowID string `json:"flow_id" doc:"Opaque flow ID returned by /api/v1/auth/github/begin"`
+	}
+}
+
+// AuthGitHubFinalizeOutput is the response for completing a GitHub auth flow.
+type AuthGitHubFinalizeOutput struct {
+	Body dto.GitHubAuthFinalizeResult
+}
+
+// AuthGitHubLogoutOutput is the response for logging out from GitHub.
+type AuthGitHubLogoutOutput struct {
+	Body dto.GitHubAuthLogoutResult
+}
+
 // RegisterAuthAPI registers authentication endpoints on the given huma API.
 func RegisterAuthAPI(api huma.API, application *app.App) {
 	facade := frontend.NewServerFacade(application)
@@ -125,6 +147,85 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		}
 
 		out := &AuthLaunchpadLogoutOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-github-begin",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/github/begin",
+		Summary:     "Begin GitHub authentication",
+		Description: "Starts a GitHub device flow and returns the verification URI, user code, and an opaque flow ID.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, _ *struct{}) (*AuthGitHubBeginOutput, error) {
+		result, err := facade.Auth().BeginGitHub(ctx)
+		if err != nil {
+			switch {
+			case errors.Is(err, authsvc.ErrGitHubEnvironmentCredentials):
+				return nil, huma.Error400BadRequest(err.Error())
+			case errors.Is(err, authsvc.ErrGitHubClientIDRequired), errors.Is(err, authsvc.ErrGitHubKeyringNotImplemented):
+				return nil, huma.Error500InternalServerError(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to begin GitHub auth: %v", err))
+			}
+		}
+
+		out := &AuthGitHubBeginOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-github-finalize",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/github/finalize",
+		Summary:     "Finalize GitHub authentication",
+		Description: "Polls the GitHub device flow using the opaque flow ID returned by begin.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, input *AuthGitHubFinalizeInput) (*AuthGitHubFinalizeOutput, error) {
+		result, err := facade.Auth().FinalizeGitHub(ctx, input.Body.FlowID)
+		if err != nil {
+			switch {
+			case errors.Is(err, authsvc.ErrGitHubAuthFlowNotFound):
+				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, authsvc.ErrGitHubAuthFlowExpired), errors.Is(err, authsvc.ErrGitHubAccessDenied):
+				return nil, huma.Error400BadRequest(err.Error())
+			case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+				return nil, huma.Error400BadRequest(err.Error())
+			case errors.Is(err, authsvc.ErrGitHubKeyringNotImplemented):
+				return nil, huma.Error500InternalServerError(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to finalize GitHub auth: %v", err))
+			}
+		}
+
+		out := &AuthGitHubFinalizeOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-github-logout",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/github/logout",
+		Summary:     "Logout from GitHub",
+		Description: "Clears persisted GitHub credentials when they are file-backed.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, _ *struct{}) (*AuthGitHubLogoutOutput, error) {
+		result, err := facade.Auth().LogoutGitHub(ctx)
+		if err != nil {
+			switch {
+			case errors.Is(err, authsvc.ErrGitHubEnvironmentCredentials):
+				return nil, huma.Error400BadRequest(err.Error())
+			case errors.Is(err, authsvc.ErrGitHubKeyringNotImplemented):
+				return nil, huma.Error500InternalServerError(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to logout from GitHub: %v", err))
+			}
+		}
+
+		out := &AuthGitHubLogoutOutput{}
 		out.Body = *result
 		return out, nil
 	})
