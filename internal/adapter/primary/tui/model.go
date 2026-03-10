@@ -198,6 +198,7 @@ type formModalModel struct {
 	optionIndices []int
 	resetValues   []string
 	selected      [][]string
+	selectedSets  []map[string]bool
 	active        int
 	errorMsg      string
 	scroll        int
@@ -2975,6 +2976,7 @@ func newFormModal(title string, fields []fieldDef) formModalModel {
 	optionIndices := make([]int, 0, len(fields))
 	resetValues := make([]string, 0, len(fields))
 	selected := make([][]string, 0, len(fields))
+	selectedSets := make([]map[string]bool, 0, len(fields))
 	for i, field := range fields {
 		input := textinput.New()
 		input.Placeholder = field.placeholder
@@ -2998,18 +3000,21 @@ func newFormModal(title string, fields []fieldDef) formModalModel {
 				}
 			}
 			enumOptions = uniqueSortedStrings(enumOptions...)
-			selectedValues = orderedSelection(enumOptions, selectedValues)
+			selectedSet := stringSet(selectedValues)
+			selectedValues = orderedSelectionFromSet(enumOptions, selectedSet)
 			input.ShowSuggestions = false
-			input.SetValue(strings.Join(selectedValues, ", "))
+			input.SetValue(multiSelectDisplay(selectedValues))
 			kinds = append(kinds, fieldKindMultiSelect)
 			options = append(options, enumOptions)
 			selected = append(selected, append([]string(nil), selectedValues...))
+			selectedSets = append(selectedSets, selectedSet)
 			optionIndices = append(optionIndices, formOptionIndexForMulti(enumOptions, selectedValues))
 		} else if kind == fieldKindEnum {
 			input.ShowSuggestions = false
 			kinds = append(kinds, fieldKindEnum)
 			options = append(options, enumOptions)
 			selected = append(selected, nil)
+			selectedSets = append(selectedSets, nil)
 			optionIndices = append(optionIndices, formOptionIndex(enumOptions, field.value))
 		} else if len(field.suggestions) > 0 {
 			input.ShowSuggestions = true
@@ -3017,11 +3022,13 @@ func newFormModal(title string, fields []fieldDef) formModalModel {
 			kinds = append(kinds, fieldKindText)
 			options = append(options, append([]string(nil), field.suggestions...))
 			selected = append(selected, nil)
+			selectedSets = append(selectedSets, nil)
 			optionIndices = append(optionIndices, -1)
 		} else {
 			kinds = append(kinds, fieldKindText)
 			options = append(options, nil)
 			selected = append(selected, nil)
+			selectedSets = append(selectedSets, nil)
 			optionIndices = append(optionIndices, -1)
 		}
 		if i == 0 {
@@ -3038,6 +3045,7 @@ func newFormModal(title string, fields []fieldDef) formModalModel {
 		optionIndices: optionIndices,
 		resetValues:   resetValues,
 		selected:      selected,
+		selectedSets:  selectedSets,
 		visualAnchor:  -1,
 	}
 }
@@ -3226,8 +3234,9 @@ func (m *formModalModel) reset() {
 			m.optionIndices[i] = formOptionIndex(m.options[i], m.fields[i].Value())
 		}
 		if i < len(m.options) && m.kinds[i] == fieldKindMultiSelect {
-			m.selected[i] = orderedSelection(m.options[i], splitCSV(m.fields[i].Value()))
-			m.fields[i].SetValue(strings.Join(m.selected[i], ", "))
+			m.selectedSets[i] = stringSet(splitCSV(m.resetValues[i]))
+			m.selected[i] = orderedSelectionFromSet(m.options[i], m.selectedSets[i])
+			m.fields[i].SetValue(multiSelectDisplay(m.selected[i]))
 			m.optionIndices[i] = formOptionIndexForMulti(m.options[i], m.selected[i])
 		}
 	}
@@ -3288,13 +3297,16 @@ func (m *formModalModel) toggleActiveMultiSelection() {
 	}
 	m.clearVisualMode()
 	value := opts[idx]
-	if containsString(m.selected[m.active], value) {
-		m.selected[m.active] = removeStringValue(m.selected[m.active], value)
-	} else {
-		m.selected[m.active] = append(m.selected[m.active], value)
+	if m.selectedSets[m.active] == nil {
+		m.selectedSets[m.active] = make(map[string]bool)
 	}
-	m.selected[m.active] = orderedSelection(opts, m.selected[m.active])
-	m.fields[m.active].SetValue(strings.Join(m.selected[m.active], ", "))
+	if m.selectedSets[m.active][value] {
+		delete(m.selectedSets[m.active], value)
+	} else {
+		m.selectedSets[m.active][value] = true
+	}
+	m.selected[m.active] = orderedSelectionFromSet(opts, m.selectedSets[m.active])
+	m.fields[m.active].SetValue(multiSelectDisplay(m.selected[m.active]))
 }
 
 func (m *formModalModel) clearActiveMultiSelection() {
@@ -3302,7 +3314,8 @@ func (m *formModalModel) clearActiveMultiSelection() {
 		return
 	}
 	m.selected[m.active] = nil
-	m.fields[m.active].SetValue("")
+	m.selectedSets[m.active] = nil
+	m.fields[m.active].SetValue(multiSelectDisplay(nil))
 	m.clearVisualMode()
 }
 
@@ -3348,14 +3361,14 @@ func (m *formModalModel) applyVisualSelection() {
 	if start > end {
 		start, end = end, start
 	}
-	selection := append([]string(nil), m.selected[m.active]...)
 	for _, option := range opts[start : end+1] {
-		if !containsString(selection, option) {
-			selection = append(selection, option)
+		if m.selectedSets[m.active] == nil {
+			m.selectedSets[m.active] = make(map[string]bool)
 		}
+		m.selectedSets[m.active][option] = true
 	}
-	m.selected[m.active] = orderedSelection(opts, selection)
-	m.fields[m.active].SetValue(strings.Join(m.selected[m.active], ", "))
+	m.selected[m.active] = orderedSelectionFromSet(opts, m.selectedSets[m.active])
+	m.fields[m.active].SetValue(multiSelectDisplay(m.selected[m.active]))
 }
 
 func formOptionIndex(options []string, value string) int {
@@ -3410,7 +3423,12 @@ func renderFormModal(t theme, modal formModalModel, totalWidth, totalHeight int)
 		if i == modal.active {
 			style = t.inputFocused
 		}
-		fieldLines = append(fieldLines, style.Render(field.View()))
+		fieldForRender := field
+		fieldForRender.Width = maxInt(8, innerWidth-2)
+		if modal.kinds[i] == fieldKindMultiSelect {
+			fieldForRender.SetValue(multiSelectDisplay(modal.selected[i]))
+		}
+		fieldLines = append(fieldLines, fitLine(style.Render(fieldForRender.View()), innerWidth))
 		if modal.kinds[i] == fieldKindEnum && i == modal.active && len(modal.options[i]) > 0 {
 			for j, option := range modal.options[i] {
 				line := "  " + option
@@ -3423,9 +3441,10 @@ func renderFormModal(t theme, modal formModalModel, totalWidth, totalHeight int)
 			}
 		}
 		if modal.kinds[i] == fieldKindMultiSelect && i == modal.active && len(modal.options[i]) > 0 {
+			selectedSet := modal.selectedSets[i]
 			for j, option := range modal.options[i] {
 				marker := "[ ]"
-				if containsString(modal.selected[i], option) {
+				if selectedSet[option] {
 					marker = "[x]"
 				}
 				line := fmt.Sprintf("  %s %s", marker, option)
@@ -3435,7 +3454,7 @@ func renderFormModal(t theme, modal formModalModel, totalWidth, totalHeight int)
 					line = t.selectedRow.Render(line)
 				case modal.visualMode && modal.visualAnchor >= 0 && withinVisualRange(modal.visualAnchor, modal.optionIndices[i], j):
 					line = t.info.Render(line)
-				case containsString(modal.selected[i], option):
+				case selectedSet[option]:
 					line = t.success.Render(line)
 				default:
 					line = t.subtle.Render(line)
@@ -4079,22 +4098,12 @@ func dryRunLabel(dryRun bool) string {
 	return "apply"
 }
 
-func removeStringValue(values []string, want string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if value != want {
-			out = append(out, value)
-		}
-	}
-	return out
-}
-
-func orderedSelection(options []string, selected []string) []string {
+func orderedSelectionFromSet(options []string, selected map[string]bool) []string {
 	if len(selected) == 0 {
 		return nil
 	}
 	present := make(map[string]bool, len(selected))
-	for _, value := range selected {
+	for value := range selected {
 		if value != "" {
 			present[value] = true
 		}
@@ -4106,12 +4115,12 @@ func orderedSelection(options []string, selected []string) []string {
 			delete(present, option)
 		}
 	}
-	for _, value := range selected {
-		if present[value] {
-			out = append(out, value)
-			delete(present, value)
-		}
+	extras := make([]string, 0, len(present))
+	for value := range present {
+		extras = append(extras, value)
 	}
+	sort.Strings(extras)
+	out = append(out, extras...)
 	return out
 }
 
@@ -4120,6 +4129,36 @@ func withinVisualRange(anchor, cursor, idx int) bool {
 		anchor, cursor = cursor, anchor
 	}
 	return idx >= anchor && idx <= cursor
+}
+
+func stringSet(values []string) map[string]bool {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out[value] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func multiSelectDisplay(selected []string) string {
+	switch len(selected) {
+	case 0:
+		return ""
+	case 1:
+		return selected[0]
+	case 2:
+		return selected[0] + ", " + selected[1]
+	default:
+		return fmt.Sprintf("%s, %s (+%d more)", selected[0], selected[1], len(selected)-2)
+	}
 }
 
 func selectedBuild(rows []dto.Build, idx int) *dto.Build {

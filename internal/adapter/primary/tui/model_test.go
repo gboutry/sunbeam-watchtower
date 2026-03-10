@@ -1098,6 +1098,9 @@ func TestFormHelpersSupportMultiSelectVisualRange(t *testing.T) {
 	if got := form.values()[0]; got != "alpha, beta, gamma" {
 		t.Fatalf("multi-select after visual G = %q, want all values", got)
 	}
+	if got := form.fields[0].Value(); got != "alpha, beta (+1 more)" {
+		t.Fatalf("display after visual G = %q, want compact summary", got)
+	}
 	if !form.visualMode {
 		t.Fatal("visualMode = false, want true after v/G")
 	}
