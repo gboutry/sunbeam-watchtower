@@ -174,10 +174,15 @@ type logsModalModel struct {
 }
 
 type formModalModel struct {
-	title    string
-	fields   []textinput.Model
-	active   int
-	errorMsg string
+	title         string
+	fields        []textinput.Model
+	kinds         []fieldKind
+	options       [][]string
+	optionIndices []int
+	resetValues   []string
+	active        int
+	errorMsg      string
+	scroll        int
 }
 
 type promptModel struct {
@@ -1022,7 +1027,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pendingG = false
 		}
 		switch msg.String() {
-		case "esc", "q", "?":
+		case "esc", "q", "ctrl+c", "?":
 			m.overlay = overlayNone
 			m.overlayScroll = 0
 		case "pgdown", "ctrl+d", "down", "j":
@@ -1037,7 +1042,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayAuth:
 		m.pendingG = false
 		switch msg.String() {
-		case "esc", "q":
+		case "esc", "q", "ctrl+c":
 			if m.auth.githubCancel != nil {
 				m.auth.githubCancel()
 				m.auth.githubCancel = nil
@@ -1099,7 +1104,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pendingG = false
 		}
 		switch msg.String() {
-		case "esc", "q":
+		case "esc", "q", "ctrl+c":
 			m.overlay = overlayNone
 			m.overlayScroll = 0
 			return m, nil
@@ -1145,7 +1150,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pendingG = false
 		}
 		switch msg.String() {
-		case "esc", "q", "r":
+		case "esc", "q", "ctrl+c", "r":
 			if msg.String() == "r" {
 				return m, loadCacheCmd(m.session)
 			}
@@ -1178,7 +1183,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pendingG = false
 		}
 		switch msg.String() {
-		case "esc", "q":
+		case "esc", "q", "ctrl+c":
 			m.overlay = overlayNone
 			m.overlayScroll = 0
 			return m, nil
@@ -1196,7 +1201,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayServer:
 		m.pendingG = false
 		switch msg.String() {
-		case "esc", "q":
+		case "esc", "q", "ctrl+c":
 			m.overlay = overlayNone
 			m.overlayScroll = 0
 			return m, nil
@@ -1210,7 +1215,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayPrompt:
 		m.pendingG = false
 		switch msg.String() {
-		case "esc", "q":
+		case "esc", "q", "ctrl+c":
 			m.overlay = overlayNone
 			m.overlayScroll = 0
 			m.deferred = deferredAction{}
@@ -1534,26 +1539,38 @@ func (m rootModel) renderOverlay(base string) string {
 	case overlayPrompt:
 		content = m.renderPrompt()
 	case overlayBuildFilters:
-		content = renderFormModal(m.theme, m.buildFilterForm)
+		content = renderFormModal(m.theme, m.buildFilterForm, m.width, m.height)
 	case overlayReleaseFilters:
-		content = renderFormModal(m.theme, m.releaseFilterForm)
+		content = renderFormModal(m.theme, m.releaseFilterForm, m.width, m.height)
 	case overlayBuildTrigger:
-		content = renderFormModal(m.theme, m.buildTriggerForm)
+		content = renderFormModal(m.theme, m.buildTriggerForm, m.width, m.height)
 	case overlayPackageFilters:
-		content = renderFormModal(m.theme, m.packageFilterForm)
+		content = renderFormModal(m.theme, m.packageFilterForm, m.width, m.height)
 	case overlayBugFilters:
-		content = renderFormModal(m.theme, m.bugFilterForm)
+		content = renderFormModal(m.theme, m.bugFilterForm, m.width, m.height)
 	case overlayReviewFilters:
-		content = renderFormModal(m.theme, m.reviewFilterForm)
+		content = renderFormModal(m.theme, m.reviewFilterForm, m.width, m.height)
 	case overlayCommitFilters:
-		content = renderFormModal(m.theme, m.commitFilterForm)
+		content = renderFormModal(m.theme, m.commitFilterForm, m.width, m.height)
 	case overlayProjectFilters:
-		content = renderFormModal(m.theme, m.projectFilterForm)
+		content = renderFormModal(m.theme, m.projectFilterForm, m.width, m.height)
+	}
+	if isCenteredFormOverlay(m.overlay) {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 	}
 	if fullscreen {
 		return renderViewport(content, m.height-1, m.overlayScroll)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, base, renderViewport(content, maxInt(8, m.height/3), m.overlayScroll))
+}
+
+func isCenteredFormOverlay(kind overlayKind) bool {
+	switch kind {
+	case overlayBuildFilters, overlayReleaseFilters, overlayBuildTrigger, overlayPackageFilters, overlayBugFilters, overlayReviewFilters, overlayCommitFilters, overlayProjectFilters:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m rootModel) renderHelp() string {
@@ -1573,10 +1590,10 @@ func (m rootModel) renderHelp() string {
 		"r refresh  q quit  esc close overlay",
 		"",
 		"Forms",
-		"Up/Down cycle autocomplete suggestions",
-		"Tab accepts a suggestion when shown, otherwise moves forward",
-		"Shift+Tab moves backward between fields",
-		"Enter moves forward or submits on the last field",
+		"Tab / Shift+Tab move between fields",
+		"Enter applies filters immediately",
+		"Text fields keep autocomplete suggestions",
+		"Enum fields use picker lists instead of free-text autocomplete",
 		"",
 		"Embedded rule",
 		"Auth, build trigger, and operation cancel prompt before switching to the local daemon.",
@@ -2101,23 +2118,23 @@ func clearToastLater() tea.Cmd {
 
 func newBuildFilterForm(filters buildsFilters) formModalModel {
 	return newFormModal("Build Filters", []fieldDef{
-		{placeholder: "project", value: filters.project},
-		{placeholder: "state", value: filters.state},
-		{placeholder: "active (true/false)", value: fmt.Sprintf("%t", filters.active)},
-		{placeholder: "source (remote|local)", value: filters.source},
+		{placeholder: "project", value: filters.project, resetValue: ""},
+		{placeholder: "state", value: filters.state, resetValue: ""},
+		{placeholder: "active", value: fmt.Sprintf("%t", filters.active), resetValue: "true", kind: fieldKindEnum, suggestions: []string{"false", "true"}},
+		{placeholder: "source", value: filters.source, resetValue: "remote", kind: fieldKindEnum, suggestions: []string{"remote", "local"}},
 	})
 }
 
 func newReleaseFilterForm(session *runtimeadapter.Session, releases releasesModel) formModalModel {
 	suggestions := releaseFilterSuggestions(session, releases)
 	return newFormModal("Release Filters", []fieldDef{
-		{placeholder: "project", value: releases.filters.project, suggestions: suggestions.projects},
-		{placeholder: "artifact type", value: releases.filters.artifactType, suggestions: suggestions.artifactTypes},
-		{placeholder: "risk", value: releases.filters.risk, suggestions: suggestions.risks},
-		{placeholder: "track", value: releases.filters.track, suggestions: suggestions.tracks},
-		{placeholder: "branch", value: releases.filters.branch, suggestions: suggestions.branches},
-		{placeholder: "target profile", value: releases.filters.targetProfile, suggestions: suggestions.targetProfiles},
-		{placeholder: "all targets (true/false)", value: fmt.Sprintf("%t", releases.filters.allTargets), suggestions: []string{"false", "true"}},
+		{placeholder: "project", value: releases.filters.project, resetValue: "", suggestions: suggestions.projects},
+		{placeholder: "artifact type", value: releases.filters.artifactType, resetValue: "", suggestions: suggestions.artifactTypes, kind: fieldKindEnum},
+		{placeholder: "risk", value: releases.filters.risk, resetValue: "", suggestions: suggestions.risks, kind: fieldKindEnum},
+		{placeholder: "track", value: releases.filters.track, resetValue: "", suggestions: suggestions.tracks},
+		{placeholder: "branch", value: releases.filters.branch, resetValue: "", suggestions: suggestions.branches},
+		{placeholder: "target profile", value: releases.filters.targetProfile, resetValue: "", suggestions: suggestions.targetProfiles, kind: fieldKindEnum},
+		{placeholder: "all targets", value: fmt.Sprintf("%t", releases.filters.allTargets), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
 	})
 }
 
@@ -2127,10 +2144,10 @@ func newBuildTriggerForm(session *runtimeadapter.Session) formModalModel {
 		project = session.Config.Projects[0].Name
 	}
 	return newFormModal("Trigger Build", []fieldDef{
-		{placeholder: "project", value: project},
-		{placeholder: "artifacts (comma separated)", value: ""},
-		{placeholder: "source (remote|local)", value: "remote"},
-		{placeholder: "local path", value: "."},
+		{placeholder: "project", value: project, resetValue: project},
+		{placeholder: "artifacts (comma separated)", value: "", resetValue: ""},
+		{placeholder: "source", value: "remote", resetValue: "remote", suggestions: []string{"remote", "local"}, kind: fieldKindEnum},
+		{placeholder: "local path", value: ".", resetValue: "."},
 	})
 }
 
@@ -2185,73 +2202,221 @@ func releaseFilterSuggestions(session *runtimeadapter.Session, releases releases
 type fieldDef struct {
 	placeholder string
 	value       string
+	resetValue  string
 	suggestions []string
+	kind        fieldKind
 }
+
+type fieldKind int
+
+const (
+	fieldKindText fieldKind = iota
+	fieldKindEnum
+)
 
 func newFormModal(title string, fields []fieldDef) formModalModel {
 	models := make([]textinput.Model, 0, len(fields))
+	kinds := make([]fieldKind, 0, len(fields))
+	options := make([][]string, 0, len(fields))
+	optionIndices := make([]int, 0, len(fields))
+	resetValues := make([]string, 0, len(fields))
 	for i, field := range fields {
 		input := textinput.New()
 		input.Placeholder = field.placeholder
 		input.SetValue(field.value)
-		if len(field.suggestions) > 0 {
+		kind := field.kind
+		var enumOptions []string
+		if kind == fieldKindEnum {
+			enumOptions = uniqueSortedStrings(field.suggestions...)
+			if field.value != "" && !containsString(enumOptions, field.value) {
+				enumOptions = append([]string{field.value}, enumOptions...)
+			}
+			if len(enumOptions) == 0 {
+				kind = fieldKindText
+			}
+		}
+		if kind == fieldKindEnum {
+			input.ShowSuggestions = false
+			kinds = append(kinds, fieldKindEnum)
+			options = append(options, enumOptions)
+			optionIndices = append(optionIndices, formOptionIndex(enumOptions, field.value))
+		} else if len(field.suggestions) > 0 {
 			input.ShowSuggestions = true
 			input.SetSuggestions(field.suggestions)
+			kinds = append(kinds, fieldKindText)
+			options = append(options, append([]string(nil), field.suggestions...))
+			optionIndices = append(optionIndices, -1)
+		} else {
+			kinds = append(kinds, fieldKindText)
+			options = append(options, nil)
+			optionIndices = append(optionIndices, -1)
 		}
 		if i == 0 {
 			input.Focus()
 		}
 		models = append(models, input)
+		resetValues = append(resetValues, field.resetValue)
 	}
 	return formModalModel{
-		title:  title,
-		fields: models,
+		title:         title,
+		fields:        models,
+		kinds:         kinds,
+		options:       options,
+		optionIndices: optionIndices,
+		resetValues:   resetValues,
 	}
 }
 
 func updateFormModal(msg tea.KeyMsg, modal *formModalModel, onSubmit func([]string) tea.Cmd, onCancel func()) tea.Cmd {
 	switch msg.String() {
-	case "esc", "q":
+	case "esc", "q", "ctrl+c":
 		onCancel()
 		return nil
 	case "tab":
-		if acceptFormSuggestion(modal) {
+		if modal.activeFieldKind() == fieldKindText && acceptFormSuggestion(modal) {
 			return nil
 		}
-		if modal.active == len(modal.fields)-1 {
-			values := make([]string, 0, len(modal.fields))
-			for _, field := range modal.fields {
-				values = append(values, field.Value())
-			}
-			return onSubmit(values)
-		}
-		modal.fields[modal.active].Blur()
-		modal.active++
-		modal.fields[modal.active].Focus()
+		modal.moveActiveField(1)
 		return nil
 	case "enter":
-		if modal.active == len(modal.fields)-1 {
-			values := make([]string, 0, len(modal.fields))
-			for _, field := range modal.fields {
-				values = append(values, field.Value())
-			}
-			return onSubmit(values)
-		}
-		modal.fields[modal.active].Blur()
-		modal.active++
-		modal.fields[modal.active].Focus()
+		return onSubmit(modal.values())
+	case "ctrl+r":
+		modal.reset()
 		return nil
 	case "shift+tab":
-		if modal.active > 0 {
-			modal.fields[modal.active].Blur()
-			modal.active--
-			modal.fields[modal.active].Focus()
+		modal.moveActiveField(-1)
+		return nil
+	case " ":
+		if modal.activeFieldKind() == fieldKindEnum {
+			modal.applyActiveEnumSelection()
+			return nil
 		}
+	case "up", "k":
+		if modal.activeFieldKind() == fieldKindEnum {
+			modal.stepActiveEnum(-1)
+			return nil
+		}
+	case "down", "j":
+		if modal.activeFieldKind() == fieldKindEnum {
+			modal.stepActiveEnum(1)
+			return nil
+		}
+	case "backspace", "delete":
+		if modal.activeFieldKind() == fieldKindEnum {
+			modal.fields[modal.active].SetValue("")
+			return nil
+		}
+	}
+	if modal.activeFieldKind() == fieldKindEnum {
 		return nil
 	}
 	var cmd tea.Cmd
 	modal.fields[modal.active], cmd = modal.fields[modal.active].Update(msg)
 	return cmd
+}
+
+func (m *formModalModel) values() []string {
+	values := make([]string, 0, len(m.fields))
+	for _, field := range m.fields {
+		values = append(values, field.Value())
+	}
+	return values
+}
+
+func (m *formModalModel) activeFieldKind() fieldKind {
+	if m == nil || m.active < 0 || m.active >= len(m.kinds) {
+		return fieldKindText
+	}
+	return m.kinds[m.active]
+}
+
+func (m *formModalModel) moveActiveField(delta int) {
+	if m == nil || len(m.fields) == 0 || delta == 0 {
+		return
+	}
+	next := clampIndex(m.active+delta, len(m.fields))
+	if next == m.active {
+		return
+	}
+	m.fields[m.active].Blur()
+	m.active = next
+	m.fields[m.active].Focus()
+	m.scroll = maxInt(0, m.fieldScrollAnchor(m.active))
+}
+
+func (m *formModalModel) fieldScrollAnchor(idx int) int {
+	if idx <= 0 {
+		return 0
+	}
+	anchor := 0
+	for i := 0; i < idx; i++ {
+		anchor += 2
+	}
+	return maxInt(0, anchor-2)
+}
+
+func (m *formModalModel) stepActiveEnum(delta int) {
+	if m == nil || m.activeFieldKind() != fieldKindEnum || delta == 0 {
+		return
+	}
+	opts := m.options[m.active]
+	if len(opts) == 0 {
+		return
+	}
+	idx := m.optionIndices[m.active]
+	if idx < 0 || idx >= len(opts) {
+		idx = formOptionIndex(opts, m.fields[m.active].Value())
+	}
+	idx += delta
+	if idx < 0 {
+		idx = len(opts) - 1
+	}
+	if idx >= len(opts) {
+		idx = 0
+	}
+	m.optionIndices[m.active] = idx
+	m.fields[m.active].SetValue(opts[idx])
+}
+
+func (m *formModalModel) applyActiveEnumSelection() {
+	if m == nil || m.activeFieldKind() != fieldKindEnum {
+		return
+	}
+	opts := m.options[m.active]
+	idx := m.optionIndices[m.active]
+	if idx >= 0 && idx < len(opts) {
+		m.fields[m.active].SetValue(opts[idx])
+	}
+}
+
+func (m *formModalModel) reset() {
+	if m == nil {
+		return
+	}
+	for i := range m.fields {
+		if i < len(m.resetValues) {
+			m.fields[i].SetValue(m.resetValues[i])
+		} else {
+			m.fields[i].SetValue("")
+		}
+		if i < len(m.options) && m.kinds[i] == fieldKindEnum {
+			m.optionIndices[i] = formOptionIndex(m.options[i], m.fields[i].Value())
+		}
+	}
+	m.errorMsg = ""
+	m.scroll = maxInt(0, m.fieldScrollAnchor(m.active))
+}
+
+func formOptionIndex(options []string, value string) int {
+	for i, option := range options {
+		if option == value {
+			return i
+		}
+	}
+	if len(options) == 0 {
+		return -1
+	}
+	return 0
 }
 
 func acceptFormSuggestion(modal *formModalModel) bool {
@@ -2268,22 +2433,59 @@ func acceptFormSuggestion(modal *formModalModel) bool {
 	return true
 }
 
-func renderFormModal(t theme, modal formModalModel) string {
-	lines := []string{t.panelTitle.Render(modal.title)}
+func renderFormModal(t theme, modal formModalModel, totalWidth, totalHeight int) string {
+	modalWidth := minInt(maxInt(60, totalWidth-8), 88)
+	if totalWidth <= 64 {
+		modalWidth = maxInt(28, totalWidth-4)
+	}
+	modalHeight := minInt(maxInt(36, totalHeight-4), 48)
+	innerWidth := innerPanelWidth(t.panel, modalWidth)
+	fieldLines := make([]string, 0, len(modal.fields)*4)
 	for i, field := range modal.fields {
-		label := field.Placeholder
-		value := field.View()
+		fieldLines = append(fieldLines, field.Placeholder)
 		style := t.input
 		if i == modal.active {
 			style = t.inputFocused
 		}
-		lines = append(lines, label, style.Render(value))
+		fieldLines = append(fieldLines, style.Render(field.View()))
+		if modal.kinds[i] == fieldKindEnum && i == modal.active && len(modal.options[i]) > 0 {
+			for j, option := range modal.options[i] {
+				line := "  " + option
+				if j == modal.optionIndices[i] {
+					line = t.selectedRow.Render(fitLine(line, innerWidth))
+				} else {
+					line = t.subtle.Render(fitLine(line, innerWidth))
+				}
+				fieldLines = append(fieldLines, line)
+			}
+		}
 	}
+	errorLines := []string{""}
 	if modal.errorMsg != "" {
-		lines = append(lines, t.errorText.Render(modal.errorMsg))
+		errorLines = wrapTextLines(modal.errorMsg, innerWidth)
 	}
-	lines = append(lines, "", "[Up/Down] suggestions  [Tab] accept/next  [Enter] next/submit  [Esc] cancel")
-	return t.panel.Width(70).Render(strings.Join(lines, "\n"))
+	help := "[Tab/Shift+Tab] move  [Enter] apply  [Ctrl+R] reset  [Esc] cancel"
+	if modal.activeFieldKind() == fieldKindEnum {
+		help = "[Up/Down] pick  [Space] select  [Tab/Shift+Tab] move  [Enter] apply  [Ctrl+R] reset  [Esc] cancel"
+	} else if len(modal.fields) > 0 && modal.fields[modal.active].ShowSuggestions {
+		help = "[Up/Down] suggestions  [Tab] accept/move  [Enter] apply  [Ctrl+R] reset  [Esc] cancel"
+	}
+	helpLines := wrapTextLines(help, innerWidth)
+	bodyHeight := maxInt(8, modalHeight-(5+len(errorLines)+len(helpLines)))
+	fieldBlock := renderViewport(strings.Join(fieldLines, "\n"), bodyHeight, modal.scroll)
+	lines := []string{t.panelTitle.Render(modal.title), "", fieldBlock, ""}
+	for _, line := range errorLines {
+		if line == "" {
+			lines = append(lines, "")
+			continue
+		}
+		lines = append(lines, t.errorText.Render(line))
+	}
+	lines = append(lines, "")
+	for _, line := range helpLines {
+		lines = append(lines, t.subtle.Render(line))
+	}
+	return t.panel.Width(innerWidth).MaxWidth(modalWidth).Height(modalHeight).Render(strings.Join(lines, "\n"))
 }
 
 func renderBuildRows(t theme, rows []dto.Build, selected int, width int) string {
@@ -2567,6 +2769,59 @@ func fitLine(text string, width int) string {
 		out = append(out, r)
 	}
 	return string(out) + "…"
+}
+
+func wrapTextLines(text string, width int) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+	paragraphs := strings.Split(text, "\n")
+	lines := make([]string, 0, len(paragraphs))
+	for _, paragraph := range paragraphs {
+		if strings.TrimSpace(paragraph) == "" {
+			lines = append(lines, "")
+			continue
+		}
+		words := strings.Fields(paragraph)
+		if len(words) == 0 {
+			lines = append(lines, "")
+			continue
+		}
+		current := words[0]
+		if lipgloss.Width(current) > width {
+			lines = append(lines, fitLine(current, width))
+			current = ""
+		}
+		for _, word := range words[1:] {
+			if current == "" {
+				if lipgloss.Width(word) > width {
+					lines = append(lines, fitLine(word, width))
+					continue
+				}
+				current = word
+				continue
+			}
+			candidate := current + " " + word
+			if lipgloss.Width(candidate) <= width {
+				current = candidate
+				continue
+			}
+			lines = append(lines, current)
+			if lipgloss.Width(word) > width {
+				lines = append(lines, fitLine(word, width))
+				current = ""
+				continue
+			}
+			current = word
+		}
+		if current != "" {
+			lines = append(lines, current)
+		}
+	}
+	if len(lines) == 0 {
+		return []string{""}
+	}
+	return lines
 }
 
 func truncateToWidth(text string, width int) string {

@@ -746,14 +746,14 @@ func renderWarningsInline(t theme, warnings []string, width int) string {
 func renderPackages(theme theme, width int, model packagesModel) string {
 	const gap = 1
 	listWidth, detailWidth := splitColumns(width, gap)
-	header := theme.panelTitle.Render("Filters") + "\n" + renderPackagesFilterSummary(model.filters)
+	header := renderPackageModeTabs(theme, model.filters.mode) + "\n\n" + theme.panelTitle.Render("Filters") + "\n" + renderPackagesFilterSummary(model.filters)
 	if warnings := renderPackagesPrompt(theme, model, innerPanelWidth(theme.panel, listWidth)); warnings != "" {
 		header += "\n\n" + warnings
 	}
 	list := renderPackagesRows(theme, model, innerPanelWidth(theme.panel, listWidth))
 	detail := renderPackagesDetail(theme, model, innerPanelWidth(theme.panel, detailWidth))
 	if width >= 120 {
-		left := renderPanel(theme.panel, listWidth, theme.panelTitle.Render("Packages / "+packageModeName(model.filters.mode)), header+"\n\n"+list)
+		left := renderPanel(theme.panel, listWidth, theme.panelTitle.Render("Packages"), header+"\n\n"+list)
 		right := renderPanel(theme.panel, detailWidth, theme.panelTitle.Render("Detail"), detail)
 		return lipJoin(left, right, gap)
 	}
@@ -855,6 +855,22 @@ func renderPackagesFilterSummary(filters packagesFilters) string {
 		return fmt.Sprintf("mode=Inventory  distro=%s  release=%s  suite=%s  component=%s  backport=%s",
 			emptyAsAny(filters.distro), emptyAsAny(filters.release), emptyAsAny(filters.suite), emptyAsAny(filters.component), emptyAsAny(filters.backport))
 	}
+}
+
+func renderPackageModeTabs(t theme, active packageMode) string {
+	tabs := []string{
+		renderInlineModeTab(t, "Inventory", active == packageModeInventory),
+		renderInlineModeTab(t, "Diff", active == packageModeDiff),
+		renderInlineModeTab(t, "Excuses", active == packageModeExcuses),
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+}
+
+func renderInlineModeTab(t theme, label string, active bool) string {
+	if active {
+		return t.tabActive.Render(label)
+	}
+	return t.tab.Render(label)
 }
 
 func renderPackagesPrompt(t theme, model packagesModel, width int) string {
@@ -1634,144 +1650,161 @@ func clampIndex(idx, size int) int {
 
 func newPackageFilterForm(session *runtimeadapter.Session, model packagesModel) formModalModel {
 	s := packageFilterSuggestions(session, model)
-	return newFormModal("Package Filters", []fieldDef{
-		{placeholder: "mode (inventory|diff|excuses)", value: strings.ToLower(packageModeName(model.filters.mode)), suggestions: []string{"inventory", "diff", "excuses"}},
-		{placeholder: "set", value: model.filters.set, suggestions: s.sets},
-		{placeholder: "distro", value: model.filters.distro, suggestions: s.distros},
-		{placeholder: "release", value: model.filters.release, suggestions: s.releases},
-		{placeholder: "suite", value: model.filters.suite, suggestions: s.suites},
-		{placeholder: "component", value: model.filters.component, suggestions: s.components},
-		{placeholder: "backport", value: defaultString(model.filters.backport, "none"), suggestions: s.backports},
-		{placeholder: "merge (true/false)", value: fmt.Sprintf("%t", model.filters.merge), suggestions: []string{"false", "true"}},
-		{placeholder: "upstream release", value: model.filters.upstreamRelease},
-		{placeholder: "behind upstream (true/false)", value: fmt.Sprintf("%t", model.filters.behindUpstream), suggestions: []string{"false", "true"}},
-		{placeholder: "only in", value: model.filters.onlyIn},
-		{placeholder: "constraints", value: model.filters.constraints},
-		{placeholder: "tracker", value: model.filters.tracker, suggestions: s.trackers},
-		{placeholder: "name", value: model.filters.name, suggestions: s.names},
-		{placeholder: "team", value: model.filters.team, suggestions: s.teams},
-		{placeholder: "ftbfs (true/false)", value: fmt.Sprintf("%t", model.filters.ftbfs), suggestions: []string{"false", "true"}},
-		{placeholder: "autopkgtest (true/false)", value: fmt.Sprintf("%t", model.filters.autopkgtest), suggestions: []string{"false", "true"}},
-		{placeholder: "blocked by", value: model.filters.blockedBy},
-		{placeholder: "bugged (true/false)", value: fmt.Sprintf("%t", model.filters.bugged), suggestions: []string{"false", "true"}},
-		{placeholder: "min age", value: model.filters.minAge},
-		{placeholder: "max age", value: model.filters.maxAge},
-		{placeholder: "limit", value: model.filters.limit},
-		{placeholder: "reverse (true/false)", value: fmt.Sprintf("%t", model.filters.reverse), suggestions: []string{"false", "true"}},
-	})
+	switch model.filters.mode {
+	case packageModeDiff:
+		return newFormModal("Package Filters / Diff", []fieldDef{
+			{placeholder: "set", value: model.filters.set, resetValue: "", suggestions: s.sets},
+			{placeholder: "distro", value: model.filters.distro, resetValue: "", suggestions: s.distros},
+			{placeholder: "release", value: model.filters.release, resetValue: "", suggestions: s.releases},
+			{placeholder: "suite", value: model.filters.suite, resetValue: "", suggestions: s.suites},
+			{placeholder: "backport", value: defaultString(model.filters.backport, "none"), resetValue: "none", suggestions: s.backports},
+			{placeholder: "merge", value: fmt.Sprintf("%t", model.filters.merge), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "upstream release", value: model.filters.upstreamRelease, resetValue: ""},
+			{placeholder: "behind upstream", value: fmt.Sprintf("%t", model.filters.behindUpstream), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "only in", value: model.filters.onlyIn, resetValue: ""},
+			{placeholder: "constraints", value: model.filters.constraints, resetValue: ""},
+		})
+	case packageModeExcuses:
+		return newFormModal("Package Filters / Excuses", []fieldDef{
+			{placeholder: "tracker", value: model.filters.tracker, resetValue: "", suggestions: s.trackers, kind: fieldKindEnum},
+			{placeholder: "name", value: model.filters.name, resetValue: "", suggestions: s.names},
+			{placeholder: "component", value: model.filters.component, resetValue: "", suggestions: s.components},
+			{placeholder: "team", value: model.filters.team, resetValue: "", suggestions: s.teams},
+			{placeholder: "ftbfs", value: fmt.Sprintf("%t", model.filters.ftbfs), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "autopkgtest", value: fmt.Sprintf("%t", model.filters.autopkgtest), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "blocked by", value: model.filters.blockedBy, resetValue: ""},
+			{placeholder: "bugged", value: fmt.Sprintf("%t", model.filters.bugged), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+			{placeholder: "min age", value: model.filters.minAge, resetValue: ""},
+			{placeholder: "max age", value: model.filters.maxAge, resetValue: ""},
+			{placeholder: "limit", value: model.filters.limit, resetValue: ""},
+			{placeholder: "reverse", value: fmt.Sprintf("%t", model.filters.reverse), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+		})
+	default:
+		return newFormModal("Package Filters / Inventory", []fieldDef{
+			{placeholder: "distro", value: model.filters.distro, resetValue: "", suggestions: s.distros},
+			{placeholder: "release", value: model.filters.release, resetValue: "", suggestions: s.releases},
+			{placeholder: "suite", value: model.filters.suite, resetValue: "", suggestions: s.suites},
+			{placeholder: "component", value: model.filters.component, resetValue: "", suggestions: s.components},
+			{placeholder: "backport", value: defaultString(model.filters.backport, "none"), resetValue: "none", suggestions: s.backports},
+		})
+	}
 }
 
 func newBugFilterForm(session *runtimeadapter.Session, model bugsModel) formModalModel {
 	s := bugFilterSuggestions(session, model)
 	return newFormModal("Bug Filters", []fieldDef{
-		{placeholder: "project", value: model.filters.project, suggestions: s.projects},
-		{placeholder: "status", value: model.filters.status, suggestions: s.statuses},
-		{placeholder: "importance", value: model.filters.importance, suggestions: s.importances},
-		{placeholder: "assignee", value: model.filters.assignee, suggestions: s.assignees},
-		{placeholder: "tag", value: model.filters.tag, suggestions: s.tags},
-		{placeholder: "since", value: model.filters.since},
-		{placeholder: "merge (true/false)", value: fmt.Sprintf("%t", model.filters.merge), suggestions: []string{"false", "true"}},
+		{placeholder: "project", value: model.filters.project, resetValue: "", suggestions: s.projects},
+		{placeholder: "status", value: model.filters.status, resetValue: "", suggestions: s.statuses, kind: fieldKindEnum},
+		{placeholder: "importance", value: model.filters.importance, resetValue: "", suggestions: s.importances, kind: fieldKindEnum},
+		{placeholder: "assignee", value: model.filters.assignee, resetValue: "", suggestions: s.assignees},
+		{placeholder: "tag", value: model.filters.tag, resetValue: "", suggestions: s.tags},
+		{placeholder: "since", value: model.filters.since, resetValue: ""},
+		{placeholder: "merge", value: fmt.Sprintf("%t", model.filters.merge), resetValue: "true", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
 	})
 }
 
 func newReviewFilterForm(session *runtimeadapter.Session, model reviewsModel) formModalModel {
 	s := reviewFilterSuggestions(session, model)
 	return newFormModal("Review Filters", []fieldDef{
-		{placeholder: "project", value: model.filters.project, suggestions: s.projects},
-		{placeholder: "forge", value: model.filters.forge, suggestions: s.forges},
-		{placeholder: "state", value: model.filters.state, suggestions: s.states},
-		{placeholder: "author", value: model.filters.author, suggestions: s.authors},
-		{placeholder: "since", value: model.filters.since},
+		{placeholder: "project", value: model.filters.project, resetValue: "", suggestions: s.projects},
+		{placeholder: "forge", value: model.filters.forge, resetValue: "", suggestions: s.forges, kind: fieldKindEnum},
+		{placeholder: "state", value: model.filters.state, resetValue: "", suggestions: s.states, kind: fieldKindEnum},
+		{placeholder: "author", value: model.filters.author, resetValue: "", suggestions: s.authors},
+		{placeholder: "since", value: model.filters.since, resetValue: ""},
 	})
 }
 
 func newCommitFilterForm(session *runtimeadapter.Session, model commitsModel) formModalModel {
 	s := commitFilterSuggestions(session, model)
 	return newFormModal("Commit Filters", []fieldDef{
-		{placeholder: "mode (log|track)", value: strings.ToLower(commitModeName(model.filters.mode)), suggestions: []string{"log", "track"}},
-		{placeholder: "project", value: model.filters.project, suggestions: s.projects},
-		{placeholder: "forge", value: model.filters.forge, suggestions: s.forges},
-		{placeholder: "branch", value: model.filters.branch, suggestions: s.branches},
-		{placeholder: "author", value: model.filters.author, suggestions: s.authors},
-		{placeholder: "include mrs (true/false)", value: fmt.Sprintf("%t", model.filters.includeMRs), suggestions: []string{"false", "true"}},
-		{placeholder: "bug id", value: model.filters.bugID},
+		{placeholder: "mode", value: strings.ToLower(commitModeName(model.filters.mode)), resetValue: strings.ToLower(commitModeName(model.filters.mode)), suggestions: []string{"log", "track"}, kind: fieldKindEnum},
+		{placeholder: "project", value: model.filters.project, resetValue: "", suggestions: s.projects},
+		{placeholder: "forge", value: model.filters.forge, resetValue: "", suggestions: s.forges, kind: fieldKindEnum},
+		{placeholder: "branch", value: model.filters.branch, resetValue: "", suggestions: s.branches},
+		{placeholder: "author", value: model.filters.author, resetValue: "", suggestions: s.authors},
+		{placeholder: "include mrs", value: fmt.Sprintf("%t", model.filters.includeMRs), resetValue: "false", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+		{placeholder: "bug id", value: model.filters.bugID, resetValue: ""},
 	})
 }
 
 func newProjectFilterForm(model projectsModel) formModalModel {
 	s := projectFilterSuggestions(model)
 	return newFormModal("Project Filters", []fieldDef{
-		{placeholder: "name", value: model.filters.name, suggestions: s.names},
-		{placeholder: "artifact type", value: model.filters.artifactType, suggestions: s.artifactTypes},
-		{placeholder: "code forge", value: model.filters.codeForge, suggestions: s.codeForges},
-		{placeholder: "bug forge", value: model.filters.bugForge, suggestions: s.bugForges},
-		{placeholder: "has build (any|true|false)", value: defaultString(model.filters.hasBuild, "any"), suggestions: s.bools},
-		{placeholder: "has release (any|true|false)", value: defaultString(model.filters.hasRelease, "any"), suggestions: s.bools},
+		{placeholder: "name", value: model.filters.name, resetValue: "", suggestions: s.names},
+		{placeholder: "artifact type", value: model.filters.artifactType, resetValue: "", suggestions: s.artifactTypes, kind: fieldKindEnum},
+		{placeholder: "code forge", value: model.filters.codeForge, resetValue: "", suggestions: s.codeForges, kind: fieldKindEnum},
+		{placeholder: "bug forge", value: model.filters.bugForge, resetValue: "", suggestions: s.bugForges, kind: fieldKindEnum},
+		{placeholder: "has build", value: defaultString(model.filters.hasBuild, "any"), resetValue: "any", suggestions: s.bools, kind: fieldKindEnum},
+		{placeholder: "has release", value: defaultString(model.filters.hasRelease, "any"), resetValue: "any", suggestions: s.bools, kind: fieldKindEnum},
 	})
 }
 
 func (m rootModel) updatePackageFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	cmd := updateFormModal(msg, &m.packageFilterForm, func(values []string) tea.Cmd {
-		mode, err := parsePackageMode(values[0])
-		if err != nil {
-			m.packageFilterForm.errorMsg = err.Error()
-			return nil
+		filters := m.packages.filters
+		switch m.packages.filters.mode {
+		case packageModeDiff:
+			merge, err := strconv.ParseBool(strings.TrimSpace(values[5]))
+			if err != nil {
+				m.packageFilterForm.errorMsg = "merge must be true or false"
+				return nil
+			}
+			behind, err := strconv.ParseBool(strings.TrimSpace(values[7]))
+			if err != nil {
+				m.packageFilterForm.errorMsg = "behind upstream must be true or false"
+				return nil
+			}
+			filters.set = strings.TrimSpace(values[0])
+			filters.distro = strings.TrimSpace(values[1])
+			filters.release = strings.TrimSpace(values[2])
+			filters.suite = strings.TrimSpace(values[3])
+			filters.backport = strings.TrimSpace(values[4])
+			filters.merge = merge
+			filters.upstreamRelease = strings.TrimSpace(values[6])
+			filters.behindUpstream = behind
+			filters.onlyIn = strings.TrimSpace(values[8])
+			filters.constraints = strings.TrimSpace(values[9])
+		case packageModeExcuses:
+			ftbfs, err := strconv.ParseBool(strings.TrimSpace(values[4]))
+			if err != nil {
+				m.packageFilterForm.errorMsg = "ftbfs must be true or false"
+				return nil
+			}
+			autopkgtest, err := strconv.ParseBool(strings.TrimSpace(values[5]))
+			if err != nil {
+				m.packageFilterForm.errorMsg = "autopkgtest must be true or false"
+				return nil
+			}
+			bugged, err := strconv.ParseBool(strings.TrimSpace(values[7]))
+			if err != nil {
+				m.packageFilterForm.errorMsg = "bugged must be true or false"
+				return nil
+			}
+			reverse, err := strconv.ParseBool(strings.TrimSpace(values[11]))
+			if err != nil {
+				m.packageFilterForm.errorMsg = "reverse must be true or false"
+				return nil
+			}
+			filters.tracker = strings.TrimSpace(values[0])
+			filters.name = strings.TrimSpace(values[1])
+			filters.component = strings.TrimSpace(values[2])
+			filters.team = strings.TrimSpace(values[3])
+			filters.ftbfs = ftbfs
+			filters.autopkgtest = autopkgtest
+			filters.blockedBy = strings.TrimSpace(values[6])
+			filters.bugged = bugged
+			filters.minAge = strings.TrimSpace(values[8])
+			filters.maxAge = strings.TrimSpace(values[9])
+			filters.limit = strings.TrimSpace(values[10])
+			filters.reverse = reverse
+		default:
+			filters.distro = strings.TrimSpace(values[0])
+			filters.release = strings.TrimSpace(values[1])
+			filters.suite = strings.TrimSpace(values[2])
+			filters.component = strings.TrimSpace(values[3])
+			filters.backport = strings.TrimSpace(values[4])
 		}
-		merge, err := strconv.ParseBool(strings.TrimSpace(values[7]))
-		if err != nil {
-			m.packageFilterForm.errorMsg = "merge must be true or false"
-			return nil
-		}
-		behind, err := strconv.ParseBool(strings.TrimSpace(values[9]))
-		if err != nil {
-			m.packageFilterForm.errorMsg = "behind upstream must be true or false"
-			return nil
-		}
-		ftbfs, err := strconv.ParseBool(strings.TrimSpace(values[15]))
-		if err != nil {
-			m.packageFilterForm.errorMsg = "ftbfs must be true or false"
-			return nil
-		}
-		autopkgtest, err := strconv.ParseBool(strings.TrimSpace(values[16]))
-		if err != nil {
-			m.packageFilterForm.errorMsg = "autopkgtest must be true or false"
-			return nil
-		}
-		bugged, err := strconv.ParseBool(strings.TrimSpace(values[18]))
-		if err != nil {
-			m.packageFilterForm.errorMsg = "bugged must be true or false"
-			return nil
-		}
-		reverse, err := strconv.ParseBool(strings.TrimSpace(values[22]))
-		if err != nil {
-			m.packageFilterForm.errorMsg = "reverse must be true or false"
-			return nil
-		}
-		m.packages.filters = packagesFilters{
-			mode:            mode,
-			set:             strings.TrimSpace(values[1]),
-			distro:          strings.TrimSpace(values[2]),
-			release:         strings.TrimSpace(values[3]),
-			suite:           strings.TrimSpace(values[4]),
-			component:       strings.TrimSpace(values[5]),
-			backport:        strings.TrimSpace(values[6]),
-			merge:           merge,
-			upstreamRelease: strings.TrimSpace(values[8]),
-			behindUpstream:  behind,
-			onlyIn:          strings.TrimSpace(values[10]),
-			constraints:     strings.TrimSpace(values[11]),
-			tracker:         strings.TrimSpace(values[12]),
-			name:            strings.TrimSpace(values[13]),
-			team:            strings.TrimSpace(values[14]),
-			ftbfs:           ftbfs,
-			autopkgtest:     autopkgtest,
-			blockedBy:       strings.TrimSpace(values[17]),
-			bugged:          bugged,
-			minAge:          strings.TrimSpace(values[19]),
-			maxAge:          strings.TrimSpace(values[20]),
-			limit:           strings.TrimSpace(values[21]),
-			reverse:         reverse,
-		}
+		m.packages.filters = filters
 		m.packages.index = 0
 		m.packages.clearDetails()
 		m.overlay = overlayNone
