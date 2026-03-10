@@ -8,6 +8,7 @@ import (
 
 	distro "github.com/gboutry/sunbeam-watchtower/pkg/distro/v1"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
 func TestRenderReleaseList_ColorizesTableOutput(t *testing.T) {
@@ -97,5 +98,31 @@ func TestWriteWarningLine_PlainWhenDisabled(t *testing.T) {
 	}
 	if !strings.Contains(got, "warning: partial tracker failure") {
 		t.Fatalf("unexpected warning output: %q", got)
+	}
+}
+
+func TestRenderBugTasks_TableStripsLaunchpadPrefixAndQuotes(t *testing.T) {
+	var out bytes.Buffer
+	err := renderBugTasks(&out, "table", newOutputStyler(false), []forge.BugTask{{
+		Project:    "snap-openstack",
+		BugID:      "2134598",
+		Status:     "Triaged",
+		Importance: "Medium",
+		Title:      `Bug #2134598 in OpenStack Snap: "Fix bootstrap race in update flow"`,
+		URL:        "https://bugs.launchpad.net/bugs/2134598",
+	}})
+	if err != nil {
+		t.Fatalf("renderBugTasks() error = %v", err)
+	}
+
+	got := out.String()
+	if strings.Contains(got, `Bug #2134598 in OpenStack Snap:`) {
+		t.Fatalf("expected Launchpad bug prefix to be stripped: %q", got)
+	}
+	if strings.Contains(got, `"Fix bootstrap race in update flow"`) {
+		t.Fatalf("expected surrounding quotes to be stripped: %q", got)
+	}
+	if !strings.Contains(got, "Fix bootstrap race in update flow") {
+		t.Fatalf("expected cleaned bug title in output: %q", got)
 	}
 }
