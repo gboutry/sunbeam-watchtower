@@ -170,6 +170,25 @@ func TestRenderCommitRowsTruncatesToSingleLineInNarrowPane(t *testing.T) {
 	}
 }
 
+func TestPackageFilterFormIsModeSpecific(t *testing.T) {
+	session := newEmbeddedTestSession(t)
+	defer session.Close()
+
+	inventory := newPackageFilterForm(session, packagesModel{filters: packagesFilters{mode: packageModeInventory}})
+	diff := newPackageFilterForm(session, packagesModel{filters: packagesFilters{mode: packageModeDiff}})
+	excuses := newPackageFilterForm(session, packagesModel{filters: packagesFilters{mode: packageModeExcuses}})
+
+	if got := len(inventory.fields); got != 5 {
+		t.Fatalf("inventory filter field count = %d, want 5", got)
+	}
+	if got := len(diff.fields); got != 10 {
+		t.Fatalf("diff filter field count = %d, want 10", got)
+	}
+	if got := len(excuses.fields); got != 12 {
+		t.Fatalf("excuses filter field count = %d, want 12", got)
+	}
+}
+
 func TestBuildTriggerRequestFromValuesAlwaysAsync(t *testing.T) {
 	req, err := buildTriggerRequestFromValues([]string{"demo", "rock,charm", "remote", ""})
 	if err != nil {
@@ -318,13 +337,16 @@ func TestReleaseFilterFormAutocompleteUsesReleaseData(t *testing.T) {
 	})
 
 	assertSuggestionsContain(t, form.fields[0].AvailableSuggestions(), "demo")
-	assertSuggestionsContain(t, form.fields[1].AvailableSuggestions(), "charm")
-	assertSuggestionsContain(t, form.fields[2].AvailableSuggestions(), "stable")
+	if form.kinds[1] != fieldKindEnum || form.kinds[2] != fieldKindEnum || form.kinds[5] != fieldKindEnum || form.kinds[6] != fieldKindEnum {
+		t.Fatalf("release form enum kinds not configured: %v", form.kinds)
+	}
+	assertSuggestionsContain(t, form.options[1], "charm")
+	assertSuggestionsContain(t, form.options[2], "stable")
 	assertSuggestionsContain(t, form.fields[3].AvailableSuggestions(), "2024.1")
 	assertSuggestionsContain(t, form.fields[4].AvailableSuggestions(), "risc-v")
-	assertSuggestionsContain(t, form.fields[5].AvailableSuggestions(), "noble-and-newer")
-	assertSuggestionsContain(t, form.fields[6].AvailableSuggestions(), "true")
-	assertSuggestionsContain(t, form.fields[6].AvailableSuggestions(), "false")
+	assertSuggestionsContain(t, form.options[5], "noble-and-newer")
+	assertSuggestionsContain(t, form.options[6], "true")
+	assertSuggestionsContain(t, form.options[6], "false")
 }
 
 func TestVimMotionGGAndGJumpReleases(t *testing.T) {
@@ -803,6 +825,16 @@ func TestPackagesAndCommitsSubmodeNavigation(t *testing.T) {
 	if model.commits.filters.mode != commitModeTrack {
 		t.Fatalf("commit mode after ] = %v, want track", model.commits.filters.mode)
 	}
+
+	model.activeView = viewPackages
+	model.width = 120
+	model.height = 40
+	rendered := model.renderPackages()
+	for _, want := range []string{"Inventory", "Diff", "Excuses"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("renderPackages missing mode tab %q:\n%s", want, rendered)
+		}
+	}
 }
 
 func TestPromptRenderingForPackagesDiffAndCommitTrack(t *testing.T) {
@@ -826,7 +858,7 @@ func TestPromptRenderingForPackagesDiffAndCommitTrack(t *testing.T) {
 func TestFormHelpersAndUtilityRendering(t *testing.T) {
 	form := newFormModal("Release Filters", []fieldDef{
 		{placeholder: "project", value: "de", suggestions: []string{"demo", "demo2"}},
-		{placeholder: "track", value: "2024.1"},
+		{placeholder: "artifact type", value: "snap", suggestions: []string{"snap", "rock", "charm"}, kind: fieldKindEnum},
 	})
 	if ok := acceptFormSuggestion(&form); !ok {
 		t.Fatal("acceptFormSuggestion() = false, want true")
@@ -847,6 +879,14 @@ func TestFormHelpersAndUtilityRendering(t *testing.T) {
 		t.Fatalf("form.active = %d, want 1", form.active)
 	}
 
+	_ = updateFormModal(tea.KeyMsg{Type: tea.KeyDown}, &form, func(values []string) tea.Cmd {
+		submitted = append([]string(nil), values...)
+		return nil
+	}, func() {})
+	if got := form.fields[1].Value(); got != "charm" {
+		t.Fatalf("enum field value after down = %q, want charm", got)
+	}
+
 	_ = updateFormModal(tea.KeyMsg{Type: tea.KeyEnter}, &form, func(values []string) tea.Cmd {
 		submitted = append([]string(nil), values...)
 		return nil
@@ -855,10 +895,16 @@ func TestFormHelpersAndUtilityRendering(t *testing.T) {
 		t.Fatalf("submitted len = %d, want 2", len(submitted))
 	}
 
-	renderedForm := renderFormModal(newTheme(), form)
-	for _, want := range []string{"Release Filters", "suggestions"} {
+	renderedForm := renderFormModal(newTheme(), form, 120, 40)
+	for _, want := range []string{"Release Filters", "artifact type", "pick"} {
 		if !strings.Contains(renderedForm, want) {
 			t.Fatalf("renderFormModal missing %q:\n%s", want, renderedForm)
+		}
+	}
+	narrowRenderedForm := renderFormModal(newTheme(), form, 64, 40)
+	for _, want := range []string{"Ctrl+R", "Esc"} {
+		if !strings.Contains(narrowRenderedForm, want) {
+			t.Fatalf("narrow renderFormModal missing %q:\n%s", want, narrowRenderedForm)
 		}
 	}
 
@@ -909,6 +955,47 @@ func TestFormHelpersAndUtilityRendering(t *testing.T) {
 	}
 }
 
+func TestCtrlRResetsFormFieldsToDefaults(t *testing.T) {
+	form := newFormModal("Bug Filters", []fieldDef{
+		{placeholder: "project", value: "demo", resetValue: ""},
+		{placeholder: "merge", value: "false", resetValue: "true", suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+	})
+	form.fields[0].SetValue("openstack")
+	form.fields[0].Blur()
+	form.active = 1
+	form.fields[1].Focus()
+	form.fields[1].SetValue("false")
+	form.optionIndices[1] = formOptionIndex(form.options[1], "false")
+	form.errorMsg = "stale error"
+
+	cancelled := false
+	_ = updateFormModal(tea.KeyMsg{Type: tea.KeyCtrlR}, &form, func(values []string) tea.Cmd {
+		t.Fatalf("ctrl+r should not submit form: %v", values)
+		return nil
+	}, func() {
+		cancelled = true
+	})
+
+	if cancelled {
+		t.Fatal("ctrl+r cancelled modal, want reset only")
+	}
+	if got := form.fields[0].Value(); got != "" {
+		t.Fatalf("project after ctrl+r = %q, want empty", got)
+	}
+	if got := form.fields[1].Value(); got != "true" {
+		t.Fatalf("merge after ctrl+r = %q, want true", got)
+	}
+	if got := form.optionIndices[1]; got != formOptionIndex(form.options[1], "true") {
+		t.Fatalf("merge option index after ctrl+r = %d, want reset index", got)
+	}
+	if form.errorMsg != "" {
+		t.Fatalf("errorMsg after ctrl+r = %q, want empty", form.errorMsg)
+	}
+	if form.active != 1 {
+		t.Fatalf("active field after ctrl+r = %d, want 1", form.active)
+	}
+}
+
 func TestEmbeddedAuthLoginPromptsForUpgrade(t *testing.T) {
 	session := newEmbeddedTestSession(t)
 	defer session.Close()
@@ -924,6 +1011,25 @@ func TestEmbeddedAuthLoginPromptsForUpgrade(t *testing.T) {
 	model = next.(rootModel)
 	if model.overlay != overlayPrompt {
 		t.Fatalf("overlay = %v, want prompt", model.overlay)
+	}
+}
+
+func TestCtrlCCancelsOpenModals(t *testing.T) {
+	model := newRootModel(nil, true)
+	model.overlay = overlayBugFilters
+	model.bugFilterForm = newBugFilterForm(nil, bugsModel{})
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	model = next.(rootModel)
+	if model.overlay != overlayNone {
+		t.Fatalf("overlay after ctrl+c on filter modal = %v, want none", model.overlay)
+	}
+
+	model.overlay = overlayAuth
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	model = next.(rootModel)
+	if model.overlay != overlayNone {
+		t.Fatalf("overlay after ctrl+c on auth modal = %v, want none", model.overlay)
 	}
 }
 
