@@ -43,6 +43,7 @@ const (
 	overlayAuth
 	overlayOperations
 	overlayCache
+	overlaySync
 	overlayLogs
 	overlayServer
 	overlayPrompt
@@ -54,6 +55,10 @@ const (
 	overlayReviewFilters
 	overlayCommitFilters
 	overlayProjectFilters
+	overlayProjectSync
+	overlayBugSync
+	overlayCacheSync
+	overlayCacheClear
 )
 
 type deferredActionKind int
@@ -156,9 +161,19 @@ type authModalModel struct {
 }
 
 type cacheModalModel struct {
-	status *frontend.CacheStatusResponse
-	loaded bool
-	err    string
+	status      *frontend.CacheStatusResponse
+	selected    cacheActionTarget
+	lastAction  string
+	lastSummary []string
+	loaded      bool
+	err         string
+}
+
+type syncModalModel struct {
+	selected    syncActionTarget
+	lastAction  string
+	lastSummary []string
+	err         string
 }
 
 type serverModalModel struct {
@@ -193,6 +208,25 @@ type promptModel struct {
 	accept string
 	reject string
 }
+
+type syncActionTarget int
+
+const (
+	syncActionProject syncActionTarget = iota
+	syncActionBug
+)
+
+type cacheActionTarget int
+
+const (
+	cacheActionGit cacheActionTarget = iota
+	cacheActionPackages
+	cacheActionUpstream
+	cacheActionBugs
+	cacheActionExcuses
+	cacheActionReleases
+	cacheActionReviews
+)
 
 type releaseFilterOptions struct {
 	projects       []string
@@ -278,6 +312,24 @@ type cacheLoadedMsg struct {
 	err    error
 }
 
+type projectSyncFinishedMsg struct {
+	req    frontend.ProjectSyncRequest
+	result *frontend.ProjectSyncResponse
+	err    error
+}
+
+type bugSyncFinishedMsg struct {
+	req    frontend.BugSyncRequest
+	result *frontend.BugSyncResponse
+	err    error
+}
+
+type cacheMutationFinishedMsg struct {
+	action  string
+	summary []string
+	err     error
+}
+
 type localServerStatusMsg struct {
 	status runtimeadapter.LocalServerStatus
 	err    error
@@ -341,6 +393,7 @@ type rootModel struct {
 	ops       operationsDrawerModel
 	auth      authModalModel
 	cache     cacheModalModel
+	syncModal syncModalModel
 	logsModal logsModalModel
 	server    serverModalModel
 
@@ -352,6 +405,10 @@ type rootModel struct {
 	reviewFilterForm  formModalModel
 	commitFilterForm  formModalModel
 	projectFilterForm formModalModel
+	projectSyncForm   formModalModel
+	bugSyncForm       formModalModel
+	cacheSyncForm     formModalModel
+	cacheClearForm    formModalModel
 	prompt            promptModel
 	deferred          deferredAction
 }
@@ -660,6 +717,39 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.cache.status = msg.status
 		}
+	case projectSyncFinishedMsg:
+		if msg.err != nil {
+			m.syncModal.err = msg.err.Error()
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.syncModal.err = ""
+		m.syncModal.lastAction = fmt.Sprintf("Project sync (%s)", dryRunLabel(msg.req.DryRun))
+		m.syncModal.lastSummary = summarizeProjectSyncResult(msg.result)
+		m.setToast("Project sync completed", "success")
+		return m, clearToastLater()
+	case bugSyncFinishedMsg:
+		if msg.err != nil {
+			m.syncModal.err = msg.err.Error()
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.syncModal.err = ""
+		m.syncModal.lastAction = fmt.Sprintf("Bug sync (%s)", dryRunLabel(msg.req.DryRun))
+		m.syncModal.lastSummary = summarizeBugSyncResult(msg.result)
+		m.setToast("Bug sync completed", "success")
+		return m, clearToastLater()
+	case cacheMutationFinishedMsg:
+		if msg.err != nil {
+			m.cache.err = msg.err.Error()
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.cache.err = ""
+		m.cache.lastAction = msg.action
+		m.cache.lastSummary = append([]string(nil), msg.summary...)
+		m.setToast(msg.action, "success")
+		return m, tea.Batch(clearToastLater(), loadCacheCmd(m.session))
 	case localServerStatusMsg:
 		m.server.loaded = msg.err == nil
 		m.server.err = errString(msg.err)
@@ -769,7 +859,12 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
 	case "c":
 		m.overlay = overlayCache
+		m.overlayScroll = 0
 		return m, loadCacheCmd(m.session)
+	case "u":
+		m.overlay = overlaySync
+		m.overlayScroll = 0
+		return m, nil
 	case "l":
 		m.overlay = overlayLogs
 		m.overlayScroll = 0
@@ -1153,34 +1248,52 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case overlayCache:
 		switch msg.String() {
-		case "g":
-			if m.pendingG {
-				m.pendingG = false
-				m.overlayScroll = 0
-				return m, nil
-			}
-			m.pendingG = true
-			return m, nil
-		case "G":
-			m.pendingG = false
-			m.overlayScroll = viewportEndOffset()
-			return m, nil
-		default:
-			m.pendingG = false
-		}
-		switch msg.String() {
-		case "esc", "q", "ctrl+c", "r":
-			if msg.String() == "r" {
-				return m, loadCacheCmd(m.session)
-			}
+		case "esc", "q", "ctrl+c":
 			m.overlay = overlayNone
 			m.overlayScroll = 0
-		case "pgdown", "ctrl+d", "down", "j":
-			m.overlayScroll += m.scrollStep()
-		case "pgup", "ctrl+u", "up", "k":
-			m.overlayScroll -= m.scrollStep()
-			if m.overlayScroll < 0 {
-				m.overlayScroll = 0
+			return m, nil
+		case "r":
+			return m, loadCacheCmd(m.session)
+		case "up", "k":
+			if m.cache.selected > cacheActionGit {
+				m.cache.selected--
+			}
+		case "down", "j":
+			if m.cache.selected < cacheActionReviews {
+				m.cache.selected++
+			}
+		case "s":
+			m.cacheSyncForm = newCacheSyncForm(m.session, m.cache.selected)
+			m.overlay = overlayCacheSync
+			return m, nil
+		case "x":
+			m.cacheClearForm = newCacheClearForm(m.session, m.cache.selected)
+			m.overlay = overlayCacheClear
+			return m, nil
+		}
+		return m, nil
+	case overlaySync:
+		switch msg.String() {
+		case "esc", "q", "ctrl+c":
+			m.overlay = overlayNone
+			m.overlayScroll = 0
+			return m, nil
+		case "up", "k":
+			if m.syncModal.selected > syncActionProject {
+				m.syncModal.selected--
+			}
+		case "down", "j":
+			if m.syncModal.selected < syncActionBug {
+				m.syncModal.selected++
+			}
+		case "enter":
+			switch m.syncModal.selected {
+			case syncActionProject:
+				m.projectSyncForm = newProjectSyncForm(m.session)
+				m.overlay = overlayProjectSync
+			case syncActionBug:
+				m.bugSyncForm = newBugSyncForm(m.session)
+				m.overlay = overlayBugSync
 			}
 		}
 		return m, nil
@@ -1271,6 +1384,18 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayProjectFilters:
 		m.pendingG = false
 		return m.updateProjectFilterForm(msg)
+	case overlayProjectSync:
+		m.pendingG = false
+		return m.updateProjectSyncForm(msg)
+	case overlayBugSync:
+		m.pendingG = false
+		return m.updateBugSyncForm(msg)
+	case overlayCacheSync:
+		m.pendingG = false
+		return m.updateCacheSyncForm(msg)
+	case overlayCacheClear:
+		m.pendingG = false
+		return m.updateCacheClearForm(msg)
 	}
 	return m, nil
 }
@@ -1867,6 +1992,8 @@ func (m rootModel) renderOverlay(base string) string {
 		content = m.renderOperationsDrawer(fullscreen)
 	case overlayCache:
 		content = m.renderCacheModal()
+	case overlaySync:
+		content = m.renderSyncModal()
 	case overlayLogs:
 		content = m.renderLogsModal()
 	case overlayServer:
@@ -1889,6 +2016,14 @@ func (m rootModel) renderOverlay(base string) string {
 		content = renderFormModal(m.theme, m.commitFilterForm, m.width, m.height)
 	case overlayProjectFilters:
 		content = renderFormModal(m.theme, m.projectFilterForm, m.width, m.height)
+	case overlayProjectSync:
+		content = renderFormModal(m.theme, m.projectSyncForm, m.width, m.height)
+	case overlayBugSync:
+		content = renderFormModal(m.theme, m.bugSyncForm, m.width, m.height)
+	case overlayCacheSync:
+		content = renderFormModal(m.theme, m.cacheSyncForm, m.width, m.height)
+	case overlayCacheClear:
+		content = renderFormModal(m.theme, m.cacheClearForm, m.width, m.height)
 	}
 	if isCenteredFormOverlay(m.overlay) {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
@@ -1901,7 +2036,7 @@ func (m rootModel) renderOverlay(base string) string {
 
 func isCenteredFormOverlay(kind overlayKind) bool {
 	switch kind {
-	case overlayBuildFilters, overlayReleaseFilters, overlayBuildTrigger, overlayPackageFilters, overlayBugFilters, overlayReviewFilters, overlayCommitFilters, overlayProjectFilters:
+	case overlayBuildFilters, overlayReleaseFilters, overlayBuildTrigger, overlayPackageFilters, overlayBugFilters, overlayReviewFilters, overlayCommitFilters, overlayProjectFilters, overlayProjectSync, overlayBugSync, overlayCacheSync, overlayCacheClear:
 		return true
 	default:
 		return false
@@ -1921,7 +2056,7 @@ func (m rootModel) renderHelp() string {
 		"Enter open detail or action",
 		"/ edit filters",
 		"m or ? open this meta pane",
-		"a auth  o operations  c cache  l logs  s server",
+		"a auth  o operations  c cache  u sync  l logs  s server",
 		"r refresh  q quit  esc close overlay",
 		"",
 		"Forms",
@@ -1974,16 +2109,49 @@ func (m rootModel) renderCacheModal() string {
 	if m.cache.status == nil {
 		lines = append(lines, m.theme.subtle.Render("No cache status loaded."))
 	} else {
-		lines = append(lines,
-			fmt.Sprintf("Git repos: %d", len(m.cache.status.Git.Repos)),
-			fmt.Sprintf("Package sources: %d", len(m.cache.status.Packages.Sources)),
-			fmt.Sprintf("Bug entries: %d", len(m.cache.status.Bugs.Entries)),
-			fmt.Sprintf("Excuses entries: %d", len(m.cache.status.Excuses.Entries)),
-			fmt.Sprintf("Release entries: %d", len(m.cache.status.Releases.Entries)),
-			fmt.Sprintf("Review entries: %d", len(m.cache.status.Reviews.Entries)),
-		)
+		lines = append(lines, "")
+		for i, row := range m.cacheRows() {
+			line := fitLine(row, maxInt(40, m.width-8))
+			if cacheActionTarget(i) == m.cache.selected {
+				line = m.theme.selectedRow.Render(line)
+			}
+			lines = append(lines, line)
+		}
 	}
-	lines = append(lines, "", "[Esc] close")
+	if m.cache.lastAction != "" {
+		lines = append(lines, "", m.theme.panelTitle.Render("Last Action"), m.cache.lastAction)
+		if len(m.cache.lastSummary) == 0 {
+			lines = append(lines, m.theme.subtle.Render("(no details)"))
+		} else {
+			lines = append(lines, m.cache.lastSummary...)
+		}
+	}
+	lines = append(lines, "", "[Up/Down] select  [s] sync  [x] clear  [r] refresh  [Esc] close")
+	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
+}
+
+func (m rootModel) renderSyncModal() string {
+	lines := []string{m.theme.panelTitle.Render("Sync")}
+	if m.syncModal.err != "" {
+		lines = append(lines, m.theme.errorText.Render(m.syncModal.err))
+	}
+	lines = append(lines, "")
+	for i, row := range m.syncRows() {
+		line := fitLine(row, maxInt(40, m.width-8))
+		if syncActionTarget(i) == m.syncModal.selected {
+			line = m.theme.selectedRow.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	if m.syncModal.lastAction != "" {
+		lines = append(lines, "", m.theme.panelTitle.Render("Last Action"), m.syncModal.lastAction)
+		if len(m.syncModal.lastSummary) == 0 {
+			lines = append(lines, m.theme.subtle.Render("(no details)"))
+		} else {
+			lines = append(lines, m.syncModal.lastSummary...)
+		}
+	}
+	lines = append(lines, "", "[Up/Down] select  [Enter] open  [Esc] close")
 	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
 }
 
@@ -2228,6 +2396,55 @@ func (m rootModel) updateBuildTriggerForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m rootModel) updateProjectSyncForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.projectSyncForm, func(values []string) tea.Cmd {
+		req := frontend.ProjectSyncRequest{
+			Projects: splitCSV(values[0]),
+			DryRun:   strings.TrimSpace(values[1]) != "false",
+		}
+		m.overlay = overlaySync
+		return syncProjectsCmd(m.session, req)
+	}, func() {
+		m.overlay = overlaySync
+	})
+	return m, cmd
+}
+
+func (m rootModel) updateBugSyncForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.bugSyncForm, func(values []string) tea.Cmd {
+		req := frontend.BugSyncRequest{
+			Projects: splitCSV(values[0]),
+			Since:    strings.TrimSpace(values[1]),
+			DryRun:   strings.TrimSpace(values[2]) != "false",
+		}
+		m.overlay = overlaySync
+		return syncBugsCmd(m.session, req)
+	}, func() {
+		m.overlay = overlaySync
+	})
+	return m, cmd
+}
+
+func (m rootModel) updateCacheSyncForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.cacheSyncForm, func(values []string) tea.Cmd {
+		m.overlay = overlayCache
+		return syncCacheCmd(m.session, m.cache.selected, values)
+	}, func() {
+		m.overlay = overlayCache
+	})
+	return m, cmd
+}
+
+func (m rootModel) updateCacheClearForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.cacheClearForm, func(values []string) tea.Cmd {
+		m.overlay = overlayCache
+		return clearCacheCmd(m.session, m.cache.selected, values)
+	}, func() {
+		m.overlay = overlayCache
+	})
+	return m, cmd
+}
+
 func buildTriggerRequestFromValues(values []string) (frontend.BuildTriggerRequest, error) {
 	req := frontend.BuildTriggerRequest{
 		Project:   strings.TrimSpace(values[0]),
@@ -2406,6 +2623,125 @@ func loadLocalServerStatusCmd(session *runtimeadapter.Session) tea.Cmd {
 	})
 }
 
+func syncProjectsCmd(session *runtimeadapter.Session, req frontend.ProjectSyncRequest) tea.Cmd {
+	actionID := frontend.ActionProjectSyncApply
+	if req.DryRun {
+		actionID = frontend.ActionProjectSyncDryRun
+	}
+	return guardSessionAction(session, actionID, func() tea.Msg {
+		result, err := session.Frontend.Projects().Sync(context.Background(), req)
+		return projectSyncFinishedMsg{req: req, result: result, err: err}
+	})
+}
+
+func syncBugsCmd(session *runtimeadapter.Session, req frontend.BugSyncRequest) tea.Cmd {
+	actionID := frontend.ActionBugSyncApply
+	if req.DryRun {
+		actionID = frontend.ActionBugSyncDryRun
+	}
+	return guardSessionAction(session, actionID, func() tea.Msg {
+		result, err := session.Frontend.Bugs().Sync(context.Background(), req)
+		return bugSyncFinishedMsg{req: req, result: result, err: err}
+	})
+}
+
+func syncCacheCmd(session *runtimeadapter.Session, target cacheActionTarget, values []string) tea.Cmd {
+	actionID := cacheSyncActionID(target)
+	return guardSessionAction(session, actionID, func() tea.Msg {
+		ctx := context.Background()
+		action := "Cache sync completed"
+		var summary []string
+		var err error
+		switch target {
+		case cacheActionGit:
+			var result *frontend.CacheSyncGitResponse
+			result, err = session.Frontend.Cache().SyncGit(ctx, frontend.CacheSyncGitRequest{Project: strings.TrimSpace(firstValue(values))})
+			if err == nil {
+				action = "Git cache sync completed"
+				summary = append(summary, fmt.Sprintf("Synced: %d", result.Synced))
+				summary = append(summary, result.Warnings...)
+			}
+		case cacheActionPackages:
+			err = session.Frontend.Cache().SyncPackagesIndex(ctx, frontend.CacheSyncPackagesIndexRequest{
+				Distros:   splitCSV(firstValue(values)),
+				Releases:  splitCSV(valueAt(values, 1)),
+				Backports: splitCSV(valueAt(values, 2)),
+			})
+			if err == nil {
+				action = "Package index cache sync completed"
+				summary = []string{"Status: ok"}
+			}
+		case cacheActionUpstream:
+			var result *frontend.CacheSyncUpstreamResponse
+			result, err = session.Frontend.Cache().SyncUpstream(ctx)
+			if err == nil {
+				action = "Upstream cache sync completed"
+				summary = []string{"Status: " + result.Status}
+			}
+		case cacheActionBugs:
+			var result *frontend.CacheSyncBugsResponse
+			result, err = session.Frontend.Cache().SyncBugs(ctx, frontend.CacheSyncBugsRequest{Project: strings.TrimSpace(firstValue(values))})
+			if err == nil {
+				action = "Bug cache sync completed"
+				summary = []string{fmt.Sprintf("Synced: %d", result.Synced)}
+			}
+		case cacheActionExcuses:
+			var result *frontend.CacheSyncExcusesResponse
+			result, err = session.Frontend.Cache().SyncExcuses(ctx, frontend.CacheSyncExcusesRequest{Trackers: splitCSV(firstValue(values))})
+			if err == nil {
+				action = "Excuses cache sync completed"
+				summary = []string{"Status: " + result.Status}
+			}
+		case cacheActionReleases:
+			var result *frontend.CacheSyncReleasesResponse
+			result, err = session.Frontend.Cache().SyncReleases(ctx)
+			if err == nil {
+				action = "Release cache sync completed"
+				summary = make([]string, 0, 4+len(result.Warnings))
+				summary = append(summary,
+					"Status: "+result.Status,
+					fmt.Sprintf("Discovered: %d", result.Discovered),
+					fmt.Sprintf("Synced: %d", result.Synced),
+					fmt.Sprintf("Skipped: %d", result.Skipped),
+				)
+				summary = append(summary, result.Warnings...)
+			}
+		case cacheActionReviews:
+			var result *frontend.CacheSyncReviewsResponse
+			result, err = session.Frontend.Cache().SyncReviews(ctx, frontend.CacheSyncReviewsRequest{
+				Project: strings.TrimSpace(firstValue(values)),
+				Since:   strings.TrimSpace(valueAt(values, 1)),
+			})
+			if err == nil {
+				action = "Review cache sync completed"
+				summary = make([]string, 0, 3+len(result.Warnings))
+				summary = append(summary,
+					fmt.Sprintf("Projects: %d", result.ProjectsSynced),
+					fmt.Sprintf("Summaries: %d", result.SummariesSynced),
+					fmt.Sprintf("Details: %d", result.DetailsSynced),
+				)
+				summary = append(summary, result.Warnings...)
+			}
+		}
+		return cacheMutationFinishedMsg{action: action, summary: summary, err: err}
+	})
+}
+
+func clearCacheCmd(session *runtimeadapter.Session, target cacheActionTarget, values []string) tea.Cmd {
+	return guardSessionAction(session, frontend.ActionCacheClear, func() tea.Msg {
+		req := frontend.CacheClearRequest{Type: cacheActionTypeName(target)}
+		switch target {
+		case cacheActionGit, cacheActionBugs, cacheActionReviews:
+			req.Project = strings.TrimSpace(firstValue(values))
+		case cacheActionExcuses:
+			req.Trackers = splitCSV(firstValue(values))
+		}
+		err := session.Frontend.Cache().Clear(context.Background(), req)
+		action := fmt.Sprintf("Cleared %s cache", cacheActionDisplayName(target))
+		return cacheMutationFinishedMsg{action: action, summary: []string{"Status: ok"}, err: err}
+	})
+}
+
 func triggerBuildCmd(session *runtimeadapter.Session, req frontend.BuildTriggerRequest) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionBuildTrigger, func() tea.Msg {
 		result, err := session.Frontend.Builds().Trigger(context.Background(), req)
@@ -2484,6 +2820,84 @@ func newBuildTriggerForm(session *runtimeadapter.Session) formModalModel {
 		{placeholder: "source", value: "remote", resetValue: "remote", suggestions: []string{"remote", "local"}, kind: fieldKindEnum},
 		{placeholder: "local path", value: ".", resetValue: "."},
 	})
+}
+
+func newProjectSyncForm(session *runtimeadapter.Session) formModalModel {
+	return newFormModal("Project Sync", []fieldDef{
+		{placeholder: "projects (comma separated)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		{placeholder: "dry run", value: "true", resetValue: "true", suggestions: []string{"true", "false"}, kind: fieldKindEnum},
+	})
+}
+
+func newBugSyncForm(session *runtimeadapter.Session) formModalModel {
+	return newFormModal("Bug Sync", []fieldDef{
+		{placeholder: "projects (comma separated)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		{placeholder: "since", value: "", resetValue: ""},
+		{placeholder: "dry run", value: "true", resetValue: "true", suggestions: []string{"true", "false"}, kind: fieldKindEnum},
+	})
+}
+
+func newCacheSyncForm(session *runtimeadapter.Session, target cacheActionTarget) formModalModel {
+	switch target {
+	case cacheActionGit:
+		return newFormModal("Sync Git Cache", []fieldDef{
+			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		})
+	case cacheActionPackages:
+		return newFormModal("Sync Package Index Cache", []fieldDef{
+			{placeholder: "distros (comma separated)", value: "", resetValue: "", suggestions: distroSuggestions(session)},
+			{placeholder: "releases (comma separated)", value: "", resetValue: "", suggestions: releaseSuggestions(session)},
+			{placeholder: "backports (comma separated)", value: "", resetValue: "", suggestions: backportSuggestions(session)},
+		})
+	case cacheActionUpstream:
+		return newFormModal("Sync Upstream Cache", nil)
+	case cacheActionBugs:
+		return newFormModal("Sync Bug Cache", []fieldDef{
+			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		})
+	case cacheActionExcuses:
+		return newFormModal("Sync Excuses Cache", []fieldDef{
+			{placeholder: "trackers (comma separated)", value: "", resetValue: "", suggestions: excusesTrackerSuggestions(session)},
+		})
+	case cacheActionReleases:
+		return newFormModal("Sync Release Cache", nil)
+	case cacheActionReviews:
+		return newFormModal("Sync Review Cache", []fieldDef{
+			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+			{placeholder: "since", value: "", resetValue: ""},
+		})
+	default:
+		return newFormModal("Sync Cache", nil)
+	}
+}
+
+func newCacheClearForm(session *runtimeadapter.Session, target cacheActionTarget) formModalModel {
+	switch target {
+	case cacheActionGit:
+		return newFormModal("Clear Git Cache", []fieldDef{
+			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		})
+	case cacheActionPackages:
+		return newFormModal("Clear Package Index Cache", nil)
+	case cacheActionUpstream:
+		return newFormModal("Clear Upstream Cache", nil)
+	case cacheActionBugs:
+		return newFormModal("Clear Bug Cache", []fieldDef{
+			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		})
+	case cacheActionExcuses:
+		return newFormModal("Clear Excuses Cache", []fieldDef{
+			{placeholder: "trackers (comma separated)", value: "", resetValue: "", suggestions: excusesTrackerSuggestions(session)},
+		})
+	case cacheActionReleases:
+		return newFormModal("Clear Release Cache", nil)
+	case cacheActionReviews:
+		return newFormModal("Clear Review Cache", []fieldDef{
+			{placeholder: "project (optional)", value: "", resetValue: "", suggestions: projectSuggestions(session)},
+		})
+	default:
+		return newFormModal("Clear Cache", nil)
+	}
 }
 
 func releaseFilterSuggestions(session *runtimeadapter.Session, releases releasesModel) releaseFilterOptions {
@@ -3220,6 +3634,212 @@ func (m rootModel) scrollStep() int {
 		return 3
 	}
 	return step
+}
+
+func projectSuggestions(session *runtimeadapter.Session) []string {
+	if session == nil {
+		return nil
+	}
+	projects := make([]string, 0, len(session.Config.Projects))
+	for _, project := range session.Config.Projects {
+		projects = append(projects, project.Name)
+	}
+	return uniqueSortedStrings(projects...)
+}
+
+func distroSuggestions(session *runtimeadapter.Session) []string {
+	if session == nil {
+		return nil
+	}
+	distros := make([]string, 0, len(session.Config.Packages.Distros))
+	for name := range session.Config.Packages.Distros {
+		distros = append(distros, name)
+	}
+	return uniqueSortedStrings(distros...)
+}
+
+func releaseSuggestions(session *runtimeadapter.Session) []string {
+	if session == nil {
+		return nil
+	}
+	releases := make([]string, 0)
+	for _, distro := range session.Config.Packages.Distros {
+		for release := range distro.Releases {
+			releases = append(releases, release)
+		}
+	}
+	return uniqueSortedStrings(releases...)
+}
+
+func backportSuggestions(session *runtimeadapter.Session) []string {
+	if session == nil {
+		return nil
+	}
+	backports := make([]string, 0)
+	for _, distro := range session.Config.Packages.Distros {
+		for _, release := range distro.Releases {
+			for backport := range release.Backports {
+				backports = append(backports, backport)
+			}
+		}
+	}
+	return uniqueSortedStrings(backports...)
+}
+
+func excusesTrackerSuggestions(session *runtimeadapter.Session) []string {
+	if session == nil {
+		return nil
+	}
+	trackers := make([]string, 0)
+	for name, distro := range session.Config.Packages.Distros {
+		if distro.Excuses != nil {
+			trackers = append(trackers, name)
+		}
+	}
+	return uniqueSortedStrings(trackers...)
+}
+
+func (m rootModel) syncRows() []string {
+	return []string{
+		"Project Sync  Preview or apply Launchpad project metadata synchronization",
+		"Bug Sync      Preview or apply bug state synchronization from cached commits",
+	}
+}
+
+func (m rootModel) cacheRows() []string {
+	status := m.cache.status
+	if status == nil {
+		return []string{
+			"git           repos=0",
+			"packages      sources=0",
+			"upstream      repos=0",
+			"bugs          entries=0",
+			"excuses       entries=0",
+			"releases      entries=0",
+			"reviews       entries=0",
+		}
+	}
+	return []string{
+		fmt.Sprintf("%-13s repos=%d", "git", len(status.Git.Repos)),
+		fmt.Sprintf("%-13s sources=%d", "packages", len(status.Packages.Sources)),
+		fmt.Sprintf("%-13s repos=%d", "upstream", len(status.Upstream.Repos)),
+		fmt.Sprintf("%-13s entries=%d", "bugs", len(status.Bugs.Entries)),
+		fmt.Sprintf("%-13s entries=%d", "excuses", len(status.Excuses.Entries)),
+		fmt.Sprintf("%-13s entries=%d", "releases", len(status.Releases.Entries)),
+		fmt.Sprintf("%-13s entries=%d", "reviews", len(status.Reviews.Entries)),
+	}
+}
+
+func firstValue(values []string) string {
+	return valueAt(values, 0)
+}
+
+func valueAt(values []string, idx int) string {
+	if idx < 0 || idx >= len(values) {
+		return ""
+	}
+	return values[idx]
+}
+
+func cacheSyncActionID(target cacheActionTarget) frontend.ActionID {
+	switch target {
+	case cacheActionGit:
+		return frontend.ActionCacheSyncGit
+	case cacheActionPackages:
+		return frontend.ActionCacheSyncPackages
+	case cacheActionUpstream:
+		return frontend.ActionCacheSyncUpstream
+	case cacheActionBugs:
+		return frontend.ActionCacheSyncBugs
+	case cacheActionExcuses:
+		return frontend.ActionCacheSyncExcuses
+	case cacheActionReleases:
+		return frontend.ActionCacheSyncReleases
+	case cacheActionReviews:
+		return frontend.ActionCacheSyncReviews
+	default:
+		return frontend.ActionCacheSync
+	}
+}
+
+func cacheActionDisplayName(target cacheActionTarget) string {
+	switch target {
+	case cacheActionGit:
+		return "git"
+	case cacheActionPackages:
+		return "package index"
+	case cacheActionUpstream:
+		return "upstream"
+	case cacheActionBugs:
+		return "bug"
+	case cacheActionExcuses:
+		return "excuses"
+	case cacheActionReleases:
+		return "release"
+	case cacheActionReviews:
+		return "review"
+	default:
+		return "selected"
+	}
+}
+
+func cacheActionTypeName(target cacheActionTarget) string {
+	switch target {
+	case cacheActionGit:
+		return "git"
+	case cacheActionPackages:
+		return "packages-index"
+	case cacheActionUpstream:
+		return "upstream-repos"
+	case cacheActionBugs:
+		return "bugs"
+	case cacheActionExcuses:
+		return "excuses"
+	case cacheActionReleases:
+		return "releases"
+	case cacheActionReviews:
+		return "reviews"
+	default:
+		return ""
+	}
+}
+
+func summarizeProjectSyncResult(result *frontend.ProjectSyncResponse) []string {
+	if result == nil {
+		return nil
+	}
+	lines := []string{fmt.Sprintf("Actions: %d", len(result.Actions))}
+	for _, action := range result.Actions[:minInt(3, len(result.Actions))] {
+		lines = append(lines, fmt.Sprintf("%s  %s  %s", action.Project, action.ActionType, emptyAsDash(action.Series)))
+	}
+	for _, err := range result.Errors {
+		lines = append(lines, "warning: "+err)
+	}
+	return lines
+}
+
+func summarizeBugSyncResult(result *frontend.BugSyncResponse) []string {
+	if result == nil || result.Result == nil {
+		return nil
+	}
+	lines := []string{
+		fmt.Sprintf("Actions: %d", len(result.Result.Actions)),
+		fmt.Sprintf("Skipped: %d", result.Result.Skipped),
+	}
+	for _, action := range result.Result.Actions[:minInt(3, len(result.Result.Actions))] {
+		lines = append(lines, fmt.Sprintf("#%s  %s  %s", action.BugID, action.ActionType, emptyAsDash(action.Project)))
+	}
+	for _, warning := range result.Warnings {
+		lines = append(lines, "warning: "+warning)
+	}
+	return lines
+}
+
+func dryRunLabel(dryRun bool) string {
+	if dryRun {
+		return "dry-run"
+	}
+	return "apply"
 }
 
 func selectedBuild(rows []dto.Build, idx int) *dto.Build {

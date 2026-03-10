@@ -670,7 +670,8 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 	}{
 		{name: "auth", overlay: overlayAuth, want: "Launchpad authorize URL:"},
 		{name: "operations", overlay: overlayOperations, want: "Events"},
-		{name: "cache", overlay: overlayCache, want: "Release entries: 1"},
+		{name: "cache", overlay: overlayCache, want: "releases"},
+		{name: "sync", overlay: overlaySync, want: "Project Sync"},
 		{name: "logs", overlay: overlayLogs, want: "Session Logs:"},
 		{name: "server", overlay: overlayServer, want: "PID: 42"},
 		{name: "prompt", overlay: overlayPrompt, want: "[Enter] Yes"},
@@ -682,8 +683,24 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		{name: "review-filters", overlay: overlayReviewFilters, want: "Review Filters"},
 		{name: "commit-filters", overlay: overlayCommitFilters, want: "Commit Filters"},
 		{name: "project-filters", overlay: overlayProjectFilters, want: "Project Filters"},
+		{name: "project-sync", overlay: overlayProjectSync, want: "Project Sync"},
+		{name: "bug-sync", overlay: overlayBugSync, want: "Bug Sync"},
+		{name: "cache-sync", overlay: overlayCacheSync, want: "Sync Review Cache"},
+		{name: "cache-clear", overlay: overlayCacheClear, want: "Clear Review Cache"},
 	} {
 		model.overlay = tc.overlay
+		switch tc.overlay {
+		case overlayProjectSync:
+			model.projectSyncForm = newProjectSyncForm(nil)
+		case overlayBugSync:
+			model.bugSyncForm = newBugSyncForm(nil)
+		case overlayCacheSync:
+			model.cache.selected = cacheActionReviews
+			model.cacheSyncForm = newCacheSyncForm(nil, cacheActionReviews)
+		case overlayCacheClear:
+			model.cache.selected = cacheActionReviews
+			model.cacheClearForm = newCacheClearForm(nil, cacheActionReviews)
+		}
 		rendered := model.renderOverlay("base")
 		if !strings.Contains(rendered, tc.want) {
 			t.Fatalf("%s overlay missing %q:\n%s", tc.name, tc.want, rendered)
@@ -784,6 +801,13 @@ func TestUpdateGlobalAndOverlayNavigation(t *testing.T) {
 	}
 
 	model.overlay = overlayNone
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	model = next.(rootModel)
+	if model.overlay != overlaySync {
+		t.Fatalf("overlay = %v, want sync", model.overlay)
+	}
+
+	model.overlay = overlayNone
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
 	model = next.(rootModel)
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
@@ -839,6 +863,23 @@ func TestUpdateGlobalAndOverlayNavigation(t *testing.T) {
 	model = next.(rootModel)
 	if model.ops.index != 1 {
 		t.Fatalf("ops.index = %d, want 1", model.ops.index)
+	}
+
+	model.overlay = overlaySync
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = next.(rootModel)
+	if model.overlay != overlayProjectSync {
+		t.Fatalf("overlay = %v, want project sync form", model.overlay)
+	}
+
+	model.overlay = overlayCache
+	model.cache.status = &frontend.CacheStatusResponse{}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	model = next.(rootModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	model = next.(rootModel)
+	if model.overlay != overlayCacheSync {
+		t.Fatalf("overlay = %v, want cache sync form", model.overlay)
 	}
 }
 
@@ -1153,6 +1194,13 @@ func TestCtrlCCancelsOpenModals(t *testing.T) {
 	if model.overlay != overlayNone {
 		t.Fatalf("overlay after ctrl+c on auth modal = %v, want none", model.overlay)
 	}
+
+	model.overlay = overlaySync
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	model = next.(rootModel)
+	if model.overlay != overlayNone {
+		t.Fatalf("overlay after ctrl+c on sync modal = %v, want none", model.overlay)
+	}
 }
 
 func TestEmbeddedOperationCancelPromptsForUpgrade(t *testing.T) {
@@ -1228,6 +1276,48 @@ func TestReadOnlyOperationCancelIsDenied(t *testing.T) {
 	}
 	if result.err == nil {
 		t.Fatal("actionDeniedMsg.err = nil, want read-only denial")
+	}
+}
+
+func TestReadOnlyApplySyncAndCacheMutationsAreDenied(t *testing.T) {
+	session := newReadOnlyEmbeddedTestSession(t)
+	defer session.Close()
+
+	for _, tc := range []struct {
+		name string
+		msg  tea.Msg
+	}{
+		{name: "project sync apply", msg: syncProjectsCmd(session, frontend.ProjectSyncRequest{DryRun: false})()},
+		{name: "bug sync apply", msg: syncBugsCmd(session, frontend.BugSyncRequest{DryRun: false})()},
+		{name: "cache sync", msg: syncCacheCmd(session, cacheActionGit, []string{"demo"})()},
+		{name: "cache clear", msg: clearCacheCmd(session, cacheActionGit, []string{"demo"})()},
+	} {
+		result, ok := tc.msg.(actionDeniedMsg)
+		if !ok {
+			t.Fatalf("%s msg = %T, want actionDeniedMsg", tc.name, tc.msg)
+		}
+		if result.err == nil {
+			t.Fatalf("%s denial err = nil, want read-only denial", tc.name)
+		}
+	}
+}
+
+func TestRenderSyncAndCacheModalsIncludeLastActionSummary(t *testing.T) {
+	model := newRootModel(nil, true)
+	model.width = 120
+	model.syncModal.lastAction = "Project sync (dry-run)"
+	model.syncModal.lastSummary = []string{"Actions: 2", "demo  create_series  2025.1"}
+	syncRendered := model.renderSyncModal()
+	if !strings.Contains(syncRendered, "Project sync (dry-run)") || !strings.Contains(syncRendered, "Actions: 2") {
+		t.Fatalf("renderSyncModal missing summary:\n%s", syncRendered)
+	}
+
+	model.cache.status = &frontend.CacheStatusResponse{}
+	model.cache.lastAction = "Review cache sync completed"
+	model.cache.lastSummary = []string{"Projects: 1", "Summaries: 5"}
+	cacheRendered := model.renderCacheModal()
+	if !strings.Contains(cacheRendered, "Review cache sync completed") || !strings.Contains(cacheRendered, "Summaries: 5") {
+		t.Fatalf("renderCacheModal missing summary:\n%s", cacheRendered)
 	}
 }
 
