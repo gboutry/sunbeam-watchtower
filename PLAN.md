@@ -73,6 +73,8 @@ The following are implemented and should be treated as the current baseline:
 - initial `watchtower-tui` shell with `Dashboard`, `Builds`, `Releases`, `Packages`, `Bugs`, `Reviews`, `Commits`, and `Projects`
 - TUI meta surfaces for auth, operations, cache, logs, server/about, and shortcuts
 - TUI read-only workflow tabs for packages, bugs, reviews, commits, and config-backed project inspection, including filter forms and list/detail layouts
+- dense TUI list rows for reviews, bugs, and commits now clamp and truncate long text so narrow panes do not wrap or misalign adjacent rows
+- the TUI bug list also strips repeated Launchpad-style `Bug #... in ...:` prefixes from row titles when the row already shows project and bug ID
 
 ## Current Gaps
 

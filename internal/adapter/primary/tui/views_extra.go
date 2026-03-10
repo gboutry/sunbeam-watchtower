@@ -932,15 +932,91 @@ func renderBugRows(t theme, rows []forge.BugTask, selected int, width int) strin
 	if len(rows) == 0 {
 		return t.subtle.Render("No bug tasks.")
 	}
+	const (
+		projectColWidth    = 18
+		bugIDColWidth      = 9
+		statusColWidth     = 14
+		importanceColWidth = 10
+	)
 	lines := make([]string, 0, len(rows))
 	for i, row := range rows {
-		line := fitLine(fmt.Sprintf("%-18s  #%s  %-14s  %-10s  %s", row.Project, row.BugID, row.Status, emptyAsDash(row.Importance), row.Title), width)
+		rowWidth := width
+		if rowWidth > 2 {
+			rowWidth -= 2
+		} else if rowWidth > 1 {
+			rowWidth--
+		}
+		prefix := padRight(truncateToWidth(row.Project, projectColWidth), projectColWidth) +
+			"  " + padRight(truncateToWidth("#"+row.BugID, bugIDColWidth), bugIDColWidth) +
+			"  " + padRight(truncateToWidth(row.Status, statusColWidth), statusColWidth) +
+			"  " + padRight(truncateToWidth(emptyAsDash(row.Importance), importanceColWidth), importanceColWidth)
+		titleWidth := maxInt(1, rowWidth-lipgloss.Width(prefix)-2)
+		title := truncateToWidth(cleanBugListTitle(firstLine(row.Title), row.BugID, row.Project), titleWidth)
+		line := prefix + "  " + title
+		line = fitLine(line, rowWidth)
+		line = strings.TrimRight(line, " ")
 		if i == selected {
-			line = t.selectedRow.Render(line)
+			line = t.selectedRow.Width(rowWidth).MaxWidth(rowWidth).Render(line)
+		} else {
+			line = lipgloss.NewStyle().Width(rowWidth).MaxWidth(rowWidth).Render(line)
 		}
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func stripBugListTitlePrefix(title, bugID, project string) string {
+	title = strings.TrimSpace(title)
+	if title == "" || bugID == "" {
+		return title
+	}
+
+	genericPrefix := fmt.Sprintf("Bug #%s in ", bugID)
+	if strings.HasPrefix(title, genericPrefix) {
+		if idx := strings.Index(title[len(genericPrefix):], ": "); idx >= 0 {
+			return strings.TrimSpace(title[len(genericPrefix)+idx+2:])
+		}
+	}
+
+	prefixes := []string{
+		fmt.Sprintf("Bug #%s in %s: ", bugID, project),
+		fmt.Sprintf("Bug #%s in %s: ", bugID, humanizeBugProject(project)),
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(title, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(title, prefix))
+		}
+	}
+	return title
+}
+
+func cleanBugListTitle(title, bugID, project string) string {
+	title = stripBugListTitlePrefix(title, bugID, project)
+	title = strings.TrimSpace(title)
+	if len(title) >= 2 && strings.HasPrefix(title, "\"") && strings.HasSuffix(title, "\"") {
+		title = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(title, "\""), "\""))
+	}
+	return title
+}
+
+func humanizeBugProject(project string) string {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return project
+	}
+	parts := strings.FieldsFunc(project, func(r rune) bool {
+		return r == '-' || r == '_' || r == '/'
+	})
+	if len(parts) == 0 {
+		return project
+	}
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + part[1:]
+	}
+	return strings.Join(parts, " ")
 }
 
 func renderBugPane(t theme, bug *forge.Bug, width int) string {
@@ -974,11 +1050,33 @@ func renderReviewRows(t theme, rows []forge.MergeRequest, selected int, width in
 	if len(rows) == 0 {
 		return t.subtle.Render("No reviews.")
 	}
+	const (
+		repoColWidth   = 22
+		forgeColWidth  = 10
+		stateColWidth  = 10
+		authorColWidth = 12
+	)
 	lines := make([]string, 0, len(rows))
 	for i, row := range rows {
-		line := fitLine(fmt.Sprintf("%-22s  %-10s  %-10s  %-12s  %s", row.Repo, row.Forge.String(), row.State.String(), row.Author, row.Title), width)
+		rowWidth := width
+		if rowWidth > 2 {
+			rowWidth -= 2
+		} else if rowWidth > 1 {
+			rowWidth--
+		}
+		prefix := padRight(truncateToWidth(row.Repo, repoColWidth), repoColWidth) +
+			"  " + padRight(truncateToWidth(row.Forge.String(), forgeColWidth), forgeColWidth) +
+			"  " + padRight(truncateToWidth(row.State.String(), stateColWidth), stateColWidth) +
+			"  " + padRight(truncateToWidth(row.Author, authorColWidth), authorColWidth)
+		titleWidth := maxInt(1, rowWidth-lipgloss.Width(prefix)-2)
+		title := truncateToWidth(firstLine(row.Title), titleWidth)
+		line := prefix + "  " + title
+		line = fitLine(line, rowWidth)
+		line = strings.TrimRight(line, " ")
 		if i == selected {
-			line = t.selectedRow.Render(line)
+			line = t.selectedRow.Width(rowWidth).MaxWidth(rowWidth).Render(line)
+		} else {
+			line = lipgloss.NewStyle().Width(rowWidth).MaxWidth(rowWidth).Render(line)
 		}
 		lines = append(lines, line)
 	}
@@ -1047,11 +1145,33 @@ func renderCommitRows(t theme, rows []forge.Commit, selected int, width int) str
 	if len(rows) == 0 {
 		return t.subtle.Render("No commits.")
 	}
+	const (
+		repoColWidth   = 22
+		shaColWidth    = 10
+		dateColWidth   = 12
+		authorColWidth = 16
+	)
 	lines := make([]string, 0, len(rows))
 	for i, row := range rows {
-		line := fitLine(fmt.Sprintf("%-22s  %-10s  %-12s  %-16s  %s", row.Repo, shortSHA(row.SHA), formatListTime(row.Date), row.Author, firstLine(row.Message)), width)
+		rowWidth := width
+		if rowWidth > 2 {
+			rowWidth -= 2
+		} else if rowWidth > 1 {
+			rowWidth--
+		}
+		prefix := padRight(truncateToWidth(row.Repo, repoColWidth), repoColWidth) +
+			"  " + padRight(truncateToWidth(shortSHA(row.SHA), shaColWidth), shaColWidth) +
+			"  " + padRight(truncateToWidth(formatListTime(row.Date), dateColWidth), dateColWidth) +
+			"  " + padRight(truncateToWidth(row.Author, authorColWidth), authorColWidth)
+		messageWidth := maxInt(1, rowWidth-lipgloss.Width(prefix)-2)
+		message := truncateToWidth(firstLine(row.Message), messageWidth)
+		line := prefix + "  " + message
+		line = fitLine(line, rowWidth)
+		line = strings.TrimRight(line, " ")
 		if i == selected {
-			line = t.selectedRow.Render(line)
+			line = t.selectedRow.Width(rowWidth).MaxWidth(rowWidth).Render(line)
+		} else {
+			line = lipgloss.NewStyle().Width(rowWidth).MaxWidth(rowWidth).Render(line)
 		}
 		lines = append(lines, line)
 	}
