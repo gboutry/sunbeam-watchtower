@@ -29,6 +29,7 @@ type Cache struct {
 	db      *bbolt.DB
 	client  *http.Client
 	logger  *slog.Logger
+	closed  bool
 }
 
 // NewCache creates a new distro cache rooted at baseDir.
@@ -57,6 +58,10 @@ func NewCache(baseDir string, logger *slog.Logger, clients ...*http.Client) (*Ca
 
 // Close releases resources held by the cache.
 func (c *Cache) Close() error {
+	if c.closed {
+		return nil
+	}
+	c.closed = true
 	return c.db.Close()
 }
 
@@ -67,7 +72,7 @@ func (c *Cache) CacheDir() string {
 
 // RemoveAll closes the database and deletes the entire cache directory.
 func (c *Cache) RemoveAll() error {
-	if err := c.db.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		return fmt.Errorf("closing db before removal: %w", err)
 	}
 	return os.RemoveAll(c.baseDir)

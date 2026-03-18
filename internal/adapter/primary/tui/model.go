@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -21,6 +22,28 @@ import (
 	runtimeadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/runtime"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
+
+// cancelHolder stores a context.CancelFunc behind a pointer so it survives
+// Bubble Tea model copies.
+type cancelHolder struct {
+	mu     sync.Mutex
+	cancel context.CancelFunc
+}
+
+func (h *cancelHolder) Set(fn context.CancelFunc) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.cancel = fn
+}
+
+func (h *cancelHolder) Cancel() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.cancel != nil {
+		h.cancel()
+		h.cancel = nil
+	}
+}
 
 type viewID int
 
@@ -155,7 +178,7 @@ type authModalModel struct {
 	status         *dto.AuthStatus
 	launchpadBegin *dto.LaunchpadAuthBeginResult
 	githubBegin    *dto.GitHubAuthBeginResult
-	githubCancel   context.CancelFunc
+	githubCancel   *cancelHolder
 	loaded         bool
 	err            string
 }
@@ -402,6 +425,9 @@ type rootModel struct {
 	logsModal logsModalModel
 	server    serverModalModel
 
+	tickOpsActive  bool
+	tickLogsActive bool
+
 	buildFilterForm   formModalModel
 	releaseFilterForm formModalModel
 	buildTriggerForm  formModalModel
@@ -459,6 +485,9 @@ func newRootModelWithLogs(session *runtimeadapter.Session, noColor bool, logs *l
 		projects: projectsModel{
 			filters:  projectsFilters{},
 			defaults: projectsFilters{},
+		},
+		auth: authModalModel{
+			githubCancel: &cancelHolder{},
 		},
 	}
 	return m
@@ -681,10 +710,9 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.auth.githubBegin = msg.begin
 		m.setToast("GitHub auth started", "info")
-		cmd := finalizeGitHubAuthCmd(m.session, msg.begin.FlowID, &m.auth.githubCancel)
+		cmd := finalizeGitHubAuthCmd(m.session, msg.begin.FlowID, m.auth.githubCancel)
 		return m, tea.Batch(clearToastLater(), cmd)
 	case authGitHubFinalizeMsg:
-		m.auth.githubCancel = nil
 		if msg.err != nil {
 			m.setToast(msg.err.Error(), "error")
 			m.auth.err = msg.err.Error()
@@ -706,7 +734,7 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, clearToastLater()
 		}
 		m.auth.githubBegin = nil
-		m.auth.githubCancel = nil
+		m.auth.githubCancel.Cancel()
 		status := m.auth.status
 		if status == nil {
 			status = &dto.AuthStatus{}
@@ -822,11 +850,13 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.overlay == overlayOperations || hasRunningOperation(m.ops.rows) {
 			return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
 		}
+		m.tickOpsActive = false
 		return m, nil
 	case tickLogsMsg:
 		if m.overlay == overlayLogs {
 			return m, tea.Batch(loadLogsCmd(m.session, m.logs), tickLogsCmd())
 		}
+		m.tickLogsActive = false
 		return m, nil
 	case clearToastMsg:
 		m.toast = toastState{}
@@ -861,7 +891,12 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, loadAuthStatusCmd(m.session)
 	case "o":
 		m.overlay = overlayOperations
-		return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
+		cmds := []tea.Cmd{loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index))}
+		if !m.tickOpsActive {
+			m.tickOpsActive = true
+			cmds = append(cmds, tickOperationsCmd())
+		}
+		return m, tea.Batch(cmds...)
 	case "c":
 		m.overlay = overlayCache
 		m.overlayScroll = 0
@@ -873,7 +908,12 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "l":
 		m.overlay = overlayLogs
 		m.overlayScroll = 0
-		return m, tea.Batch(loadLogsCmd(m.session, m.logs), tickLogsCmd())
+		cmds := []tea.Cmd{loadLogsCmd(m.session, m.logs)}
+		if !m.tickLogsActive {
+			m.tickLogsActive = true
+			cmds = append(cmds, tickLogsCmd())
+		}
+		return m, tea.Batch(cmds...)
 	case "s":
 		m.overlay = overlayServer
 		return m, loadLocalServerStatusCmd(m.session)
@@ -1094,7 +1134,12 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case 1:
 				m.overlay = overlayOperations
 				m.overlayScroll = 0
-				return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
+				cmds := []tea.Cmd{loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index))}
+				if !m.tickOpsActive {
+					m.tickOpsActive = true
+					cmds = append(cmds, tickOperationsCmd())
+				}
+				return m, tea.Batch(cmds...)
 			case 2:
 				m.activeView = viewBuilds
 			case 3:
@@ -1162,10 +1207,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pendingG = false
 		switch msg.String() {
 		case "esc", "q", "ctrl+c":
-			if m.auth.githubCancel != nil {
-				m.auth.githubCancel()
-				m.auth.githubCancel = nil
-			}
+			m.auth.githubCancel.Cancel()
 			m.overlay = overlayNone
 			m.overlayScroll = 0
 			return m, nil
@@ -2570,12 +2612,10 @@ func beginGitHubAuthCmd(session *runtimeadapter.Session) tea.Cmd {
 	})
 }
 
-func finalizeGitHubAuthCmd(session *runtimeadapter.Session, flowID string, cancelSlot *context.CancelFunc) tea.Cmd {
+func finalizeGitHubAuthCmd(session *runtimeadapter.Session, flowID string, holder *cancelHolder) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionAuthGitHubFinalize, func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
-		if cancelSlot != nil {
-			*cancelSlot = cancel
-		}
+		holder.Set(cancel)
 		defer cancel()
 		result, err := session.Frontend.Auth().FinalizeGitHub(ctx, flowID)
 		return authGitHubFinalizeMsg{result: result, err: err}

@@ -126,10 +126,20 @@ func (o BugTaskSearchOpts) values() url.Values {
 		v.Add("order_by", s)
 	}
 	if o.CreatedSince != "" {
-		v.Set("created_since", o.CreatedSince)
+		utc, err := mustBeUTC(o.CreatedSince)
+		if err != nil {
+			v.Set("created_since", o.CreatedSince) // pass through, let LP reject
+		} else {
+			v.Set("created_since", utc)
+		}
 	}
 	if o.ModifiedSince != "" {
-		v.Set("modified_since", o.ModifiedSince)
+		utc, err := mustBeUTC(o.ModifiedSince)
+		if err != nil {
+			v.Set("modified_since", o.ModifiedSince) // pass through, let LP reject
+		} else {
+			v.Set("modified_since", utc)
+		}
 	}
 	if o.OmitDuplicates {
 		v.Set("omit_duplicates", "true")

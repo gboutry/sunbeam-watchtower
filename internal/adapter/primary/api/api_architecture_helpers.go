@@ -13,7 +13,7 @@ func isFrontendValidationError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, frontend.ErrNoBugTrackerConfigured) || errors.Is(err, frontend.ErrInvalidBugSyncSince) {
+	if errors.Is(err, frontend.ErrInvalidBugSyncSince) {
 		return true
 	}
 	msg := err.Error()

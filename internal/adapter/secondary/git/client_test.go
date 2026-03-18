@@ -6,6 +6,7 @@ package git_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,5 +121,45 @@ func TestAddAndRemoveRemote(t *testing.T) {
 	}
 	if _, err := repo.Remote("upstream"); err == nil {
 		t.Error("expected remote upstream to be removed")
+	}
+}
+
+func TestPush_DetachedHEAD(t *testing.T) {
+	c := adapter.NewClient(nil)
+	dir := initTestRepo(t)
+
+	// Detach HEAD by checking out the commit hash directly.
+	repo, err := gogit.PlainOpen(dir)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatalf("head: %v", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("worktree: %v", err)
+	}
+	if err := wt.Checkout(&gogit.CheckoutOptions{Hash: head.Hash()}); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+
+	err = c.Push(dir, "origin", "HEAD", "refs/heads/main", false)
+	if err == nil {
+		t.Fatal("expected error for detached HEAD push")
+	}
+	if got := err.Error(); !strings.Contains(got, "detached") {
+		t.Fatalf("expected detached HEAD error, got: %v", err)
+	}
+}
+
+func TestPush_NonexistentRemote(t *testing.T) {
+	c := adapter.NewClient(nil)
+	dir := initTestRepo(t)
+
+	err := c.Push(dir, "nonexistent", "refs/heads/master", "refs/heads/main", false)
+	if err == nil {
+		t.Fatal("expected error for nonexistent remote")
 	}
 }
