@@ -1110,3 +1110,28 @@ func TestValidateSignalConfig_SamplingRatioIgnoredWhenNotAllowed(t *testing.T) {
 		t.Fatalf("validateSignalConfig() with allowSampling=false and SamplingRatio=2.0 should return nil, got: %v", err)
 	}
 }
+
+func TestValidate_CollaboratorsEmptyTeam(t *testing.T) {
+	cfg := &Config{
+		Collaborators: &CollaboratorsConfig{LaunchpadTeam: ""},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should error for empty launchpad_team")
+	}
+}
+
+func TestValidate_CollaboratorsValid(t *testing.T) {
+	cfg := &Config{
+		Collaborators: &CollaboratorsConfig{LaunchpadTeam: "ubuntu-openstack"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() error: %v", err)
+	}
+}
+
+func TestValidate_CollaboratorsNil(t *testing.T) {
+	cfg := &Config{}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() should pass with nil collaborators: %v", err)
+	}
+}
