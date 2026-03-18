@@ -49,7 +49,7 @@ func RegisterProjectsAPI(api huma.API, application *app.App) {
 		})
 		if err != nil {
 			if errors.Is(err, app.ErrLaunchpadAuthRequired) {
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.NewError(http.StatusUnauthorized, err.Error())
 			}
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("sync failed: %v", err))
 		}
@@ -74,7 +74,7 @@ func RegisterProjectsAPI(api huma.API, application *app.App) {
 		})
 		if err != nil {
 			if errors.Is(err, app.ErrLaunchpadAuthRequired) {
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.NewError(http.StatusUnauthorized, err.Error())
 			}
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("async sync failed: %v", err))
 		}

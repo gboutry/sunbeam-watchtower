@@ -32,6 +32,7 @@ var _ port.ReviewCache = (*Cache)(nil)
 type Cache struct {
 	baseDir string
 	db      *bbolt.DB
+	closed  bool
 }
 
 // NewCache creates a new review cache rooted at baseDir.
@@ -203,13 +204,19 @@ func (c *Cache) Remove(_ context.Context, forgeType forge.ForgeType, project str
 }
 
 func (c *Cache) RemoveAll(_ context.Context) error {
-	if err := c.db.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		return fmt.Errorf("closing review cache db: %w", err)
 	}
 	return os.RemoveAll(c.baseDir)
 }
 
-func (c *Cache) Close() error { return c.db.Close() }
+func (c *Cache) Close() error {
+	if c.closed {
+		return nil
+	}
+	c.closed = true
+	return c.db.Close()
+}
 
 func (c *Cache) CacheDir() string { return c.baseDir }
 

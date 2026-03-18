@@ -586,7 +586,7 @@ func filterBehindUpstreamResults(results []dto.PackageDiffResult, sources []dto.
 		behind := false
 		for _, src := range sources {
 			for _, sp := range r.Versions[src.Name] {
-				if sp.Version != "" && sp.Version < r.Upstream {
+				if sp.Version != "" && distro.CompareVersions(sp.Version, r.Upstream) < 0 {
 					behind = true
 					break
 				}

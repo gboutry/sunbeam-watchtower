@@ -76,7 +76,12 @@ func (o PublishedSourceOpts) values() url.Values {
 		v.Set("order_by_date", "true")
 	}
 	if o.CreatedSinceDate != "" {
-		v.Set("created_since_date", o.CreatedSinceDate)
+		utc, err := mustBeUTC(o.CreatedSinceDate)
+		if err != nil {
+			v.Set("created_since_date", o.CreatedSinceDate)
+		} else {
+			v.Set("created_since_date", utc)
+		}
 	}
 	return v
 }
@@ -128,7 +133,12 @@ func (o PublishedBinaryOpts) values() url.Values {
 		v.Set("order_by_date", "true")
 	}
 	if o.CreatedSinceDate != "" {
-		v.Set("created_since_date", o.CreatedSinceDate)
+		utc, err := mustBeUTC(o.CreatedSinceDate)
+		if err != nil {
+			v.Set("created_since_date", o.CreatedSinceDate)
+		} else {
+			v.Set("created_since_date", utc)
+		}
 	}
 	return v
 }

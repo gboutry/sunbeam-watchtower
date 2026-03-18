@@ -1056,7 +1056,7 @@ func validateSignalConfig(prefix string, cfg OTelSignalConfig, allowSampling boo
 	if cfg.Protocol != "" && cfg.Protocol != "grpc" && cfg.Protocol != "http" {
 		return fmt.Errorf("%s.protocol must be grpc or http", prefix)
 	}
-	if allowSampling && cfg.SamplingRatio < 0 || cfg.SamplingRatio > 1 {
+	if allowSampling && (cfg.SamplingRatio < 0 || cfg.SamplingRatio > 1) {
 		return fmt.Errorf("%s.sampling_ratio must be between 0 and 1", prefix)
 	}
 	return nil

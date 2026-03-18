@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
@@ -237,4 +238,14 @@ func (c *Client) resolveURL(path string) string {
 		return path
 	}
 	return APIBaseURL + path
+}
+
+// mustBeUTC parses an RFC 3339 date string, converts it to UTC, and
+// re-formats it. Launchpad rejects date parameters with non-UTC offsets.
+func mustBeUTC(s string) (string, error) {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return "", fmt.Errorf("invalid date %q: %w", s, err)
+	}
+	return t.UTC().Format(time.RFC3339), nil
 }

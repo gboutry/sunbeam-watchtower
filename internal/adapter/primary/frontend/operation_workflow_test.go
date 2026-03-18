@@ -5,16 +5,93 @@ package frontend
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/operationstore"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
+var _ port.OperationStore = (*fakeOperationStore)(nil)
+
+type fakeOperationStore struct {
+	mu     sync.RWMutex
+	jobs   map[string]dto.OperationJob
+	events map[string][]dto.OperationEvent
+}
+
+func newFakeOperationStore() *fakeOperationStore {
+	return &fakeOperationStore{
+		jobs:   make(map[string]dto.OperationJob),
+		events: make(map[string][]dto.OperationEvent),
+	}
+}
+
+func (s *fakeOperationStore) Create(_ context.Context, job dto.OperationJob) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.jobs[job.ID]; exists {
+		return fmt.Errorf("operation job %q already exists", job.ID)
+	}
+	s.jobs[job.ID] = job
+	return nil
+}
+
+func (s *fakeOperationStore) Get(_ context.Context, id string) (*dto.OperationJob, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	job, ok := s.jobs[id]
+	if !ok {
+		return nil, nil
+	}
+	return &job, nil
+}
+
+func (s *fakeOperationStore) List(_ context.Context) ([]dto.OperationJob, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	jobs := make([]dto.OperationJob, 0, len(s.jobs))
+	for _, job := range s.jobs {
+		jobs = append(jobs, job)
+	}
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].CreatedAt.After(jobs[j].CreatedAt)
+	})
+	return jobs, nil
+}
+
+func (s *fakeOperationStore) Update(_ context.Context, job dto.OperationJob) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.jobs[job.ID]; !exists {
+		return fmt.Errorf("operation job %q not found", job.ID)
+	}
+	s.jobs[job.ID] = job
+	return nil
+}
+
+func (s *fakeOperationStore) AppendEvent(_ context.Context, id string, event dto.OperationEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.jobs[id]; !exists {
+		return fmt.Errorf("operation job %q not found", id)
+	}
+	s.events[id] = append(s.events[id], event)
+	return nil
+}
+
+func (s *fakeOperationStore) Events(_ context.Context, id string) ([]dto.OperationEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]dto.OperationEvent(nil), s.events[id]...), nil
+}
+
 func TestOperationWorkflowStartListGetCancel(t *testing.T) {
-	service := opsvc.NewService(operationstore.NewMemoryStore(), discardFrontendLogger())
+	service := opsvc.NewService(newFakeOperationStore(), discardFrontendLogger())
 	workflow := NewOperationWorkflowFromService(service)
 
 	blocked := make(chan struct{})

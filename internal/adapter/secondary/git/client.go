@@ -15,6 +15,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
@@ -85,6 +86,9 @@ func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) erro
 		if err != nil {
 			return fmt.Errorf("resolve HEAD for %s: %w", path, err)
 		}
+		if head.Type() == plumbing.HashReference {
+			return fmt.Errorf("HEAD is detached in %s; cannot push from a detached HEAD", path)
+		}
 		localRef = head.Name().String()
 		c.logger.Debug("resolved HEAD", "path", path, "ref", localRef)
 	}
@@ -94,7 +98,11 @@ func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) erro
 		return fmt.Errorf("get remote %s for %s: %w", remote, path, err)
 	}
 
-	remoteURL := r.Config().URLs[0]
+	urls := r.Config().URLs
+	if len(urls) == 0 {
+		return fmt.Errorf("remote %s for %s has no configured URLs", remote, path)
+	}
+	remoteURL := urls[0]
 	sshUser, err := sshUserFromURL(remoteURL)
 	if err != nil {
 		return fmt.Errorf("determine SSH user for remote URL %s: %w", remoteURL, err)

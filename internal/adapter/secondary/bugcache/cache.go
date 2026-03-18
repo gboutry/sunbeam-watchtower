@@ -302,8 +302,15 @@ func (c *Cache) Status(_ context.Context) ([]dto.BugCacheStatus, error) {
 // Used for write-through after status updates.
 func (c *Cache) UpdateTask(_ context.Context, forgeType forge.ForgeType, task *forge.BugTask) error {
 	return c.db.Update(func(tx *bbolt.Tx) error {
+		type pendingUpdate struct {
+			bucket []byte
+			key    []byte
+			data   []byte
+		}
+		var updates []pendingUpdate
+
 		prefix := tasksBucketPrefix + forgeType.String() + ":"
-		return tx.ForEach(func(name []byte, bkt *bbolt.Bucket) error {
+		if err := tx.ForEach(func(name []byte, bkt *bbolt.Bucket) error {
 			if !strings.HasPrefix(string(name), prefix) {
 				return nil
 			}
@@ -319,9 +326,27 @@ func (c *Cache) UpdateTask(_ context.Context, forgeType forge.ForgeType, task *f
 				if err != nil {
 					return fmt.Errorf("marshalling updated task: %w", err)
 				}
-				return bkt.Put(k, data)
+				updates = append(updates, pendingUpdate{
+					bucket: append([]byte(nil), name...),
+					key:    append([]byte(nil), k...),
+					data:   data,
+				})
+				return nil
 			})
-		})
+		}); err != nil {
+			return err
+		}
+
+		for _, u := range updates {
+			bkt := tx.Bucket(u.bucket)
+			if bkt == nil {
+				continue
+			}
+			if err := bkt.Put(u.key, u.data); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

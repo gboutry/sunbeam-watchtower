@@ -122,7 +122,7 @@ func TestCacheStatus_IncludesExcusesSection(t *testing.T) {
 	}
 }
 
-func TestProjectsSync_AuthRequiredReturns422(t *testing.T) {
+func TestProjectsSync_AuthRequiredReturns401(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("LP_ACCESS_TOKEN", "")
@@ -146,7 +146,7 @@ func TestProjectsSync_AuthRequiredReturns422(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
 	}
 }

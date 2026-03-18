@@ -94,7 +94,10 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	if err != nil {
 		return req, fmt.Errorf("resolve HEAD SHA: %w", err)
 	}
-	shortSHA := sha[:8]
+	shortSHA := sha
+	if len(shortSHA) > 8 {
+		shortSHA = shortSHA[:8]
+	}
 
 	artifactNames := req.Artifacts
 	if len(artifactNames) == 0 {

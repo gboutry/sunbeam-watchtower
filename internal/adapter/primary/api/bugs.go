@@ -95,7 +95,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BugGetInput) (*BugGetOutput, error) {
 		bug, err := facade.Bugs().Show(ctx, input.ID)
 		if err != nil {
-			return nil, huma.Error404NotFound(fmt.Sprintf("bug %s not found", input.ID), err)
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to fetch bug %s: %v", input.ID, err))
 		}
 
 		out := &BugGetOutput{}
@@ -118,7 +118,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 		if err != nil {
 			switch {
 			case errors.Is(err, frontend.ErrNoBugTrackerConfigured):
-				return nil, huma.Error422UnprocessableEntity(err.Error())
+				return nil, huma.Error500InternalServerError(err.Error())
 			case errors.Is(err, frontend.ErrInvalidBugSyncSince):
 				return nil, huma.Error400BadRequest(err.Error())
 			default:

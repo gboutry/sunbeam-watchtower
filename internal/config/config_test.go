@@ -1103,3 +1103,10 @@ func TestTUIHelperFunctions(t *testing.T) {
 		t.Fatal("containsOneOf() = true, want false")
 	}
 }
+
+func TestValidateSignalConfig_SamplingRatioIgnoredWhenNotAllowed(t *testing.T) {
+	cfg := OTelSignalConfig{SamplingRatio: 2.0}
+	if err := validateSignalConfig("test", cfg, false); err != nil {
+		t.Fatalf("validateSignalConfig() with allowSampling=false and SamplingRatio=2.0 should return nil, got: %v", err)
+	}
+}

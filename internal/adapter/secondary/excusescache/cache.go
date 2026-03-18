@@ -35,6 +35,7 @@ type Cache struct {
 	db      *bbolt.DB
 	client  *http.Client
 	logger  *slog.Logger
+	closed  bool
 }
 
 type trackerMeta struct {
@@ -69,14 +70,20 @@ func NewCache(baseDir string, sources []dto.ExcusesSource, logger *slog.Logger, 
 }
 
 // Close releases resources held by the cache.
-func (c *Cache) Close() error { return c.db.Close() }
+func (c *Cache) Close() error {
+	if c.closed {
+		return nil
+	}
+	c.closed = true
+	return c.db.Close()
+}
 
 // CacheDir returns the base cache directory.
 func (c *Cache) CacheDir() string { return c.baseDir }
 
 // RemoveAll deletes the entire excuses cache.
 func (c *Cache) RemoveAll() error {
-	if err := c.db.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		return fmt.Errorf("closing db before removal: %w", err)
 	}
 	return os.RemoveAll(c.baseDir)
@@ -84,14 +91,17 @@ func (c *Cache) RemoveAll() error {
 
 // Remove deletes cached data for a specific tracker.
 func (c *Cache) Remove(tracker string) error {
-	return c.db.Update(func(tx *bbolt.Tx) error {
+	if err := c.db.Update(func(tx *bbolt.Tx) error {
 		_ = tx.DeleteBucket(recordsBucketName(tracker))
 		b := tx.Bucket([]byte(metaBucket))
 		if b != nil {
 			_ = b.Delete([]byte(tracker))
 		}
-		return os.RemoveAll(c.rawDir(tracker))
-	})
+		return nil
+	}); err != nil {
+		return err
+	}
+	return os.RemoveAll(c.rawDir(tracker))
 }
 
 // Update downloads, parses, and indexes one excuses tracker.

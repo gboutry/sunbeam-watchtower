@@ -25,6 +25,7 @@ const snapshotsBucket = "snapshots"
 type Cache struct {
 	baseDir string
 	db      *bbolt.DB
+	closed  bool
 }
 
 // NewCache creates a release cache rooted at baseDir.
@@ -119,7 +120,7 @@ func (c *Cache) Remove(project string, name string, artifactType dto.ArtifactTyp
 
 // RemoveAll clears all release cache data.
 func (c *Cache) RemoveAll() error {
-	if err := c.db.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		return fmt.Errorf("closing release cache db: %w", err)
 	}
 	return os.RemoveAll(c.baseDir)
@@ -129,7 +130,13 @@ func (c *Cache) RemoveAll() error {
 func (c *Cache) CacheDir() string { return c.baseDir }
 
 // Close releases the underlying DB.
-func (c *Cache) Close() error { return c.db.Close() }
+func (c *Cache) Close() error {
+	if c.closed {
+		return nil
+	}
+	c.closed = true
+	return c.db.Close()
+}
 
 func snapshotKey(project string, name string, artifactType dto.ArtifactType) string {
 	return project + ":" + artifactType.String() + ":" + name
