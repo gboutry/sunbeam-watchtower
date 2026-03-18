@@ -11,6 +11,7 @@ type OperationKind string
 const (
 	OperationKindBuildTrigger OperationKind = "build.trigger"
 	OperationKindProjectSync  OperationKind = "project.sync"
+	OperationKindTeamSync     OperationKind = "team.sync"
 )
 
 // OperationState describes the lifecycle state of an operation job.
