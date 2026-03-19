@@ -247,7 +247,8 @@ type TUIConfig struct {
 
 // CollaboratorsConfig holds settings for team-to-store collaborator sync.
 type CollaboratorsConfig struct {
-	LaunchpadTeam string `mapstructure:"launchpad_team" yaml:"launchpad_team"`
+	LaunchpadTeam  string `mapstructure:"launchpad_team" yaml:"launchpad_team"`
+	EmailOverrides string `mapstructure:"email_overrides" yaml:"email_overrides,omitempty"`
 }
 
 // ProjectConfig defines a project tracked across forges.
