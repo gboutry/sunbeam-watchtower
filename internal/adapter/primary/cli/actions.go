@@ -55,6 +55,11 @@ func commandActionID(cmd *cobra.Command, args []string) frontend.ActionID {
 			return frontend.ActionBugSyncDryRun
 		}
 		return frontend.ActionBugSyncApply
+	case "team.sync":
+		if dryRun, _ := cmd.Flags().GetBool("dry-run"); dryRun {
+			return frontend.ActionTeamSyncDryRun
+		}
+		return frontend.ActionTeamSyncApply
 	case "cache.sync":
 		return cacheSyncActionID(args)
 	default:
