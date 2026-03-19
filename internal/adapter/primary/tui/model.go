@@ -80,6 +80,7 @@ const (
 	overlayProjectFilters
 	overlayProjectSync
 	overlayBugSync
+	overlayTeamSync
 	overlayCacheSync
 	overlayCacheClear
 )
@@ -242,6 +243,7 @@ type syncActionTarget int
 const (
 	syncActionProject syncActionTarget = iota
 	syncActionBug
+	syncActionTeam
 )
 
 type cacheActionTarget int
@@ -352,6 +354,12 @@ type bugSyncFinishedMsg struct {
 	err    error
 }
 
+type teamSyncFinishedMsg struct {
+	req    dto.TeamSyncRequest
+	result *frontend.TeamSyncResponse
+	err    error
+}
+
 type cacheMutationFinishedMsg struct {
 	action  string
 	summary []string
@@ -438,6 +446,7 @@ type rootModel struct {
 	projectFilterForm formModalModel
 	projectSyncForm   formModalModel
 	bugSyncForm       formModalModel
+	teamSyncForm      formModalModel
 	cacheSyncForm     formModalModel
 	cacheClearForm    formModalModel
 	prompt            promptModel
@@ -771,6 +780,17 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncModal.lastAction = fmt.Sprintf("Bug sync (%s)", dryRunLabel(msg.req.DryRun))
 		m.syncModal.lastSummary = summarizeBugSyncResult(msg.result)
 		m.setToast("Bug sync completed", "success")
+		return m, clearToastLater()
+	case teamSyncFinishedMsg:
+		if msg.err != nil {
+			m.syncModal.err = msg.err.Error()
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.syncModal.err = ""
+		m.syncModal.lastAction = fmt.Sprintf("Team sync (%s)", dryRunLabel(msg.req.DryRun))
+		m.syncModal.lastSummary = summarizeTeamSyncResult(msg.result)
+		m.setToast("Team sync completed", "success")
 		return m, clearToastLater()
 	case cacheMutationFinishedMsg:
 		if msg.err != nil {
@@ -1330,7 +1350,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.syncModal.selected--
 			}
 		case "down", "j":
-			if m.syncModal.selected < syncActionBug {
+			if m.syncModal.selected < syncActionTeam {
 				m.syncModal.selected++
 			}
 		case "enter":
@@ -1341,6 +1361,9 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case syncActionBug:
 				m.bugSyncForm = newBugSyncForm(m.session)
 				m.overlay = overlayBugSync
+			case syncActionTeam:
+				m.teamSyncForm = newTeamSyncForm(m.session)
+				m.overlay = overlayTeamSync
 			}
 		}
 		return m, nil
@@ -1437,6 +1460,9 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayBugSync:
 		m.pendingG = false
 		return m.updateBugSyncForm(msg)
+	case overlayTeamSync:
+		m.pendingG = false
+		return m.updateTeamSyncForm(msg)
 	case overlayCacheSync:
 		m.pendingG = false
 		return m.updateCacheSyncForm(msg)
@@ -2067,6 +2093,8 @@ func (m rootModel) renderOverlay(base string) string {
 		content = renderFormModal(m.theme, m.projectSyncForm, m.width, m.height)
 	case overlayBugSync:
 		content = renderFormModal(m.theme, m.bugSyncForm, m.width, m.height)
+	case overlayTeamSync:
+		content = renderFormModal(m.theme, m.teamSyncForm, m.width, m.height)
 	case overlayCacheSync:
 		content = renderFormModal(m.theme, m.cacheSyncForm, m.width, m.height)
 	case overlayCacheClear:
@@ -2083,7 +2111,7 @@ func (m rootModel) renderOverlay(base string) string {
 
 func isCenteredFormOverlay(kind overlayKind) bool {
 	switch kind {
-	case overlayBuildFilters, overlayReleaseFilters, overlayBuildTrigger, overlayPackageFilters, overlayBugFilters, overlayReviewFilters, overlayCommitFilters, overlayProjectFilters, overlayProjectSync, overlayBugSync, overlayCacheSync, overlayCacheClear:
+	case overlayBuildFilters, overlayReleaseFilters, overlayBuildTrigger, overlayPackageFilters, overlayBugFilters, overlayReviewFilters, overlayCommitFilters, overlayProjectFilters, overlayProjectSync, overlayBugSync, overlayTeamSync, overlayCacheSync, overlayCacheClear:
 		return true
 	default:
 		return false
@@ -2472,6 +2500,20 @@ func (m rootModel) updateBugSyncForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m rootModel) updateTeamSyncForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.teamSyncForm, func(values []string) tea.Cmd {
+		req := dto.TeamSyncRequest{
+			Projects: splitCSV(values[0]),
+			DryRun:   strings.TrimSpace(values[1]) != "false",
+		}
+		m.overlay = overlaySync
+		return syncTeamsCmd(m.session, req)
+	}, func() {
+		m.overlay = overlaySync
+	})
+	return m, cmd
+}
+
 func (m rootModel) updateCacheSyncForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	cmd := updateFormModal(msg, &m.cacheSyncForm, func(values []string) tea.Cmd {
 		m.overlay = overlayCache
@@ -2690,6 +2732,17 @@ func syncBugsCmd(session *runtimeadapter.Session, req frontend.BugSyncRequest) t
 	})
 }
 
+func syncTeamsCmd(session *runtimeadapter.Session, req dto.TeamSyncRequest) tea.Cmd {
+	actionID := frontend.ActionTeamSyncApply
+	if req.DryRun {
+		actionID = frontend.ActionTeamSyncDryRun
+	}
+	return guardSessionAction(session, actionID, func() tea.Msg {
+		result, err := session.Frontend.Teams().Sync(context.Background(), req)
+		return teamSyncFinishedMsg{req: req, result: result, err: err}
+	})
+}
+
 func syncCacheCmd(session *runtimeadapter.Session, target cacheActionTarget, values []string) tea.Cmd {
 	actionID := cacheSyncActionID(target)
 	return guardSessionAction(session, actionID, func() tea.Msg {
@@ -2878,6 +2931,13 @@ func newBugSyncForm(session *runtimeadapter.Session) formModalModel {
 	return newFormModal("Bug Sync", []fieldDef{
 		{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		{placeholder: "since", value: "", resetValue: ""},
+		{placeholder: "dry run", value: "true", resetValue: "true", suggestions: []string{"true", "false"}, kind: fieldKindEnum},
+	})
+}
+
+func newTeamSyncForm(session *runtimeadapter.Session) formModalModel {
+	return newFormModal("Team Sync", []fieldDef{
+		{placeholder: "projects", value: "", resetValue: "", suggestions: projectSuggestions(session), kind: fieldKindMultiSelect},
 		{placeholder: "dry run", value: "true", resetValue: "true", suggestions: []string{"true", "false"}, kind: fieldKindEnum},
 	})
 }
@@ -3999,6 +4059,7 @@ func (m rootModel) syncRows() []string {
 	return []string{
 		"Project Sync  Preview or apply Launchpad project metadata synchronization",
 		"Bug Sync      Preview or apply bug state synchronization from cached commits",
+		"Team Sync     Preview or apply team collaborator synchronization to store artifacts",
 	}
 }
 
@@ -4124,6 +4185,20 @@ func summarizeBugSyncResult(result *frontend.BugSyncResponse) []string {
 	}
 	for _, action := range result.Result.Actions[:minInt(3, len(result.Result.Actions))] {
 		lines = append(lines, fmt.Sprintf("#%s  %s  %s", action.BugID, action.ActionType, emptyAsDash(action.Project)))
+	}
+	for _, warning := range result.Warnings {
+		lines = append(lines, "warning: "+warning)
+	}
+	return lines
+}
+
+func summarizeTeamSyncResult(result *frontend.TeamSyncResponse) []string {
+	if result == nil {
+		return nil
+	}
+	lines := []string{fmt.Sprintf("Artifacts: %d", len(result.Artifacts))}
+	for _, artifact := range result.Artifacts[:minInt(3, len(result.Artifacts))] {
+		lines = append(lines, fmt.Sprintf("%s  %s  invited=%d  extra=%d", artifact.Project, artifact.ArtifactType, len(artifact.Invited), len(artifact.Extra)))
 	}
 	for _, warning := range result.Warnings {
 		lines = append(lines, "warning: "+warning)
