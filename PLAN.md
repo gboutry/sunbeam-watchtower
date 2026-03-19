@@ -80,7 +80,7 @@ The following are implemented and should be treated as the current baseline:
 - `watchtower.yaml` can now declare TUI startup presets, including `tui.default_pane`, per-pane default filters, and explicit startup modes for Packages and Commits
 - the TUI now exposes meta-overlay mutation workflows for cache sync/clear plus project and bug sync, while keeping those write actions out of the read-only content tabs
 - the TUI form system now supports reusable multi-select fields with `Space` toggles and visual-range `v` + `gg`/`G` motions for known finite multi-value inputs, and cache sync/clear for git/bugs/reviews now accepts multiple projects end to end instead of single-project bodies only
-- team collaborator sync is partially wired: action catalog entries (`team.sync.dry_run`, `team.sync.apply`), CLI action selector, client transport (`pkg/client`), client-side frontend workflow, and `ClientFacade.Teams()` are in place; server-side workflow and async facade wiring are deferred to composition root wiring
+- team collaborator sync is fully wired end-to-end: the `TeamSyncService()` lazy factory in `internal/app` adapts the LP client to `port.LaunchpadTeamProvider` and constructs the `teamsync.Service` with snap/charm store collaborator managers; the server-side `TeamServerWorkflow.Sync` builds sync targets from config and delegates to the service; the async `Facade.StartTeamSync` now runs the real sync inside the operation runner with per-artifact progress reporting; store auth tokens are still placeholder-empty (deferred to store authentication wiring)
 
 ## Current Gaps
 

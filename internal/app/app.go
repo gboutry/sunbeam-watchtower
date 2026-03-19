@@ -20,6 +20,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/teamsync"
 )
 
 var ErrLaunchpadAuthRequired = errors.New("launchpad authentication required")
@@ -91,6 +92,10 @@ type App struct {
 	telemetryOnce sync.Once
 	telemetry     *oteladapter.Telemetry
 	telemetryErr  error
+
+	teamSyncServiceOnce sync.Once
+	teamSyncService     *teamsync.Service
+	teamSyncServiceErr  error
 }
 
 // NewApp creates a new App instance.
