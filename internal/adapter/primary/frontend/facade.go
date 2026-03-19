@@ -115,6 +115,27 @@ func (f *Facade) StartBuildTrigger(ctx context.Context, opts BuildTriggerOptions
 	})
 }
 
+// StartTeamSync starts an async team-sync workflow.
+func (f *Facade) StartTeamSync(ctx context.Context, opts TeamSyncOptions) (*dto.OperationJob, error) {
+	attributes := map[string]string{}
+	if opts.DryRun {
+		attributes["dry_run"] = "true"
+	}
+	if len(opts.Projects) > 0 {
+		attributes["projects"] = fmt.Sprintf("%d", len(opts.Projects))
+	}
+
+	return f.operations.Start(ctx, dto.OperationKindTeamSync, attributes, func(runCtx context.Context, reporter *opsvc.Reporter) (string, error) {
+		reporter.Event("starting team collaborator sync")
+		reporter.Progress(dto.OperationProgress{
+			Phase:         "syncing",
+			Message:       "checking team members against store collaborators",
+			Indeterminate: true,
+		})
+		return "team sync queued (service not yet wired)", nil
+	})
+}
+
 // StartProjectSync starts an async project-sync workflow.
 func (f *Facade) StartProjectSync(ctx context.Context, opts ProjectSyncOptions) (*dto.OperationJob, error) {
 	projectService, err := f.application.ProjectService()

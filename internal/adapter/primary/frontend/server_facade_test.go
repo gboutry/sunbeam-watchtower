@@ -36,4 +36,7 @@ func TestNewServerFacadeProvidesWorkflows(t *testing.T) {
 	if facade.Config() == nil {
 		t.Fatal("Config() = nil")
 	}
+	if facade.Teams() == nil {
+		t.Fatal("Teams() = nil")
+	}
 }
