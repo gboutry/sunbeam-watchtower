@@ -69,13 +69,29 @@ func (a *App) OperationService() (*opsvc.Service, error) {
 	return a.operationService, nil
 }
 
+// SnapStoreCredentialStore returns the shared Snap Store credential store.
+func (a *App) SnapStoreCredentialStore() port.SnapStoreCredentialStore {
+	a.snapStoreCredsOnce.Do(func() {
+		a.snapStoreCredsStore = credentials.NewSnapStoreStore("")
+	})
+	return a.snapStoreCredsStore
+}
+
+// CharmhubCredentialStore returns the shared Charmhub credential store.
+func (a *App) CharmhubCredentialStore() port.CharmhubCredentialStore {
+	a.charmhubCredsOnce.Do(func() {
+		a.charmhubCredsStore = credentials.NewCharmhubStore("")
+	})
+	return a.charmhubCredsStore
+}
+
 // AuthService creates the shared auth service.
 func (a *App) AuthService() (*authsvc.Service, error) {
 	var githubMutableErr error
 	if a.Config != nil && a.Config.GitHub.UseKeyring {
 		githubMutableErr = authsvc.ErrGitHubKeyringNotImplemented
 	}
-	return authsvc.NewServiceWithGitHub(
+	return authsvc.NewServiceWithStores(
 		a.LaunchpadCredentialStore(),
 		a.LaunchpadPendingAuthFlowStore(),
 		lpadapter.NewAuthenticator(lp.ConsumerKey(), a.Logger),
@@ -83,6 +99,8 @@ func (a *App) AuthService() (*authsvc.Service, error) {
 		a.GitHubPendingAuthFlowStore(),
 		ghadapter.NewAuthenticator(a.GitHubClientID(), a.Logger, a.upstreamHTTPClient("github", 30*time.Second)),
 		githubMutableErr,
+		a.SnapStoreCredentialStore(),
+		a.CharmhubCredentialStore(),
 		a.Logger,
 	), nil
 }

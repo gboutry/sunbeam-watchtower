@@ -155,6 +155,42 @@ func (w *AuthClientWorkflow) LogoutGitHub(ctx context.Context) (*dto.GitHubAuthL
 	return apiClient.AuthGitHubLogout(ctx)
 }
 
+// LoginSnapStore saves a pre-obtained Snap Store macaroon through the API.
+func (w *AuthClientWorkflow) LoginSnapStore(ctx context.Context, macaroon string) (*dto.SnapStoreAuthLoginResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthSnapStoreLogin(ctx, macaroon)
+}
+
+// LogoutSnapStore clears persisted Snap Store credentials through the API.
+func (w *AuthClientWorkflow) LogoutSnapStore(ctx context.Context) (*dto.SnapStoreAuthLogoutResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthSnapStoreLogout(ctx)
+}
+
+// LoginCharmhub saves a pre-obtained Charmhub macaroon through the API.
+func (w *AuthClientWorkflow) LoginCharmhub(ctx context.Context, macaroon string) (*dto.CharmhubAuthLoginResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthCharmhubLogin(ctx, macaroon)
+}
+
+// LogoutCharmhub clears persisted Charmhub credentials through the API.
+func (w *AuthClientWorkflow) LogoutCharmhub(ctx context.Context) (*dto.CharmhubAuthLogoutResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthCharmhubLogout(ctx)
+}
+
 func (w *AuthClientWorkflow) resolveClient() (*ClientTransport, error) {
 	if w.client == nil {
 		return nil, errors.New("auth client workflow requires an API client")

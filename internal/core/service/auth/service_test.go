@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
@@ -819,5 +821,260 @@ func TestFinalizeGitHubReturnsDeleteError(t *testing.T) {
 	_, err := svc.FinalizeGitHub(context.Background(), "flow-123")
 	if err == nil || !strings.Contains(err.Error(), "deleting completed github auth flow") {
 		t.Fatalf("FinalizeGitHub() error = %v, want deleting completed github auth flow", err)
+	}
+}
+
+// fakeStoreCredentialStore is a test double for SnapStoreCredentialStore / CharmhubCredentialStore.
+type fakeStoreCredentialStore struct {
+	record   *dto.StoreCredentialRecord
+	loadErr  error
+	saveErr  error
+	clearErr error
+}
+
+func (s *fakeStoreCredentialStore) Load(context.Context) (*dto.StoreCredentialRecord, error) {
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
+	if s.record == nil {
+		return nil, nil
+	}
+	recordCopy := *s.record
+	return &recordCopy, nil
+}
+
+func (s *fakeStoreCredentialStore) Save(_ context.Context, macaroon string) (*dto.StoreCredentialRecord, error) {
+	if s.saveErr != nil {
+		return nil, s.saveErr
+	}
+	s.record = &dto.StoreCredentialRecord{
+		Macaroon: macaroon,
+		Source:   "file",
+		Path:     "/tmp/store-creds.json",
+	}
+	return s.Load(context.Background())
+}
+
+func (s *fakeStoreCredentialStore) Clear(context.Context) error {
+	if s.clearErr != nil {
+		return s.clearErr
+	}
+	s.record = nil
+	return nil
+}
+
+func newServiceWithStores(snapStore, charmhubStore *fakeStoreCredentialStore) *Service {
+	var ss port.SnapStoreCredentialStore
+	if snapStore != nil {
+		ss = snapStore
+	}
+	var cs port.CharmhubCredentialStore
+	if charmhubStore != nil {
+		cs = charmhubStore
+	}
+	return NewServiceWithStores(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		nil, nil, nil, nil,
+		ss,
+		cs,
+		testLogger(),
+	)
+}
+
+func TestLoginSnapStoreSavesCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	svc := newServiceWithStores(store, nil)
+
+	result, err := svc.LoginSnapStore(context.Background(), "my-macaroon")
+	if err != nil {
+		t.Fatalf("LoginSnapStore() error = %v", err)
+	}
+	if !result.SnapStore.Authenticated {
+		t.Fatal("expected authenticated status after login")
+	}
+	if store.record == nil || store.record.Macaroon != "my-macaroon" {
+		t.Fatalf("expected macaroon to be saved, got %+v", store.record)
+	}
+}
+
+func TestLoginSnapStoreRejectsEnvironmentCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{
+		record: &dto.StoreCredentialRecord{Macaroon: "env-mac", Source: "environment"},
+	}
+	svc := newServiceWithStores(store, nil)
+
+	_, err := svc.LoginSnapStore(context.Background(), "new-mac")
+	if !errors.Is(err, ErrSnapStoreEnvironmentCredentials) {
+		t.Fatalf("LoginSnapStore() error = %v, want %v", err, ErrSnapStoreEnvironmentCredentials)
+	}
+}
+
+func TestLoginSnapStoreRejectsNilStore(t *testing.T) {
+	svc := newServiceWithStores(nil, nil)
+
+	_, err := svc.LoginSnapStore(context.Background(), "mac")
+	if err == nil {
+		t.Fatal("expected error when store is nil")
+	}
+}
+
+func TestLogoutSnapStoreClearsCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{
+		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "file", Path: "/tmp/store-creds.json"},
+	}
+	svc := newServiceWithStores(store, nil)
+
+	result, err := svc.LogoutSnapStore(context.Background())
+	if err != nil {
+		t.Fatalf("LogoutSnapStore() error = %v", err)
+	}
+	if !result.Cleared {
+		t.Fatal("expected cleared result")
+	}
+	if store.record != nil {
+		t.Fatal("expected store record to be cleared")
+	}
+}
+
+func TestLogoutSnapStoreRejectsEnvironmentCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{
+		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "environment"},
+	}
+	svc := newServiceWithStores(store, nil)
+
+	_, err := svc.LogoutSnapStore(context.Background())
+	if !errors.Is(err, ErrSnapStoreEnvironmentCredentials) {
+		t.Fatalf("LogoutSnapStore() error = %v, want %v", err, ErrSnapStoreEnvironmentCredentials)
+	}
+}
+
+func TestLogoutSnapStoreNoCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	svc := newServiceWithStores(store, nil)
+
+	result, err := svc.LogoutSnapStore(context.Background())
+	if err != nil {
+		t.Fatalf("LogoutSnapStore() error = %v", err)
+	}
+	if result.Cleared {
+		t.Fatal("expected not cleared when no credentials exist")
+	}
+}
+
+func TestLoginCharmhubSavesCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	svc := newServiceWithStores(nil, store)
+
+	result, err := svc.LoginCharmhub(context.Background(), "my-macaroon")
+	if err != nil {
+		t.Fatalf("LoginCharmhub() error = %v", err)
+	}
+	if !result.Charmhub.Authenticated {
+		t.Fatal("expected authenticated status after login")
+	}
+	if store.record == nil || store.record.Macaroon != "my-macaroon" {
+		t.Fatalf("expected macaroon to be saved, got %+v", store.record)
+	}
+}
+
+func TestLoginCharmhubRejectsEnvironmentCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{
+		record: &dto.StoreCredentialRecord{Macaroon: "env-mac", Source: "environment"},
+	}
+	svc := newServiceWithStores(nil, store)
+
+	_, err := svc.LoginCharmhub(context.Background(), "new-mac")
+	if !errors.Is(err, ErrCharmhubEnvironmentCredentials) {
+		t.Fatalf("LoginCharmhub() error = %v, want %v", err, ErrCharmhubEnvironmentCredentials)
+	}
+}
+
+func TestLoginCharmhubRejectsNilStore(t *testing.T) {
+	svc := newServiceWithStores(nil, nil)
+
+	_, err := svc.LoginCharmhub(context.Background(), "mac")
+	if err == nil {
+		t.Fatal("expected error when store is nil")
+	}
+}
+
+func TestLogoutCharmhubClearsCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{
+		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "file", Path: "/tmp/charmhub-creds.json"},
+	}
+	svc := newServiceWithStores(nil, store)
+
+	result, err := svc.LogoutCharmhub(context.Background())
+	if err != nil {
+		t.Fatalf("LogoutCharmhub() error = %v", err)
+	}
+	if !result.Cleared {
+		t.Fatal("expected cleared result")
+	}
+	if store.record != nil {
+		t.Fatal("expected store record to be cleared")
+	}
+}
+
+func TestLogoutCharmhubRejectsEnvironmentCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{
+		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "environment"},
+	}
+	svc := newServiceWithStores(nil, store)
+
+	_, err := svc.LogoutCharmhub(context.Background())
+	if !errors.Is(err, ErrCharmhubEnvironmentCredentials) {
+		t.Fatalf("LogoutCharmhub() error = %v, want %v", err, ErrCharmhubEnvironmentCredentials)
+	}
+}
+
+func TestLogoutCharmhubNoCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	svc := newServiceWithStores(nil, store)
+
+	result, err := svc.LogoutCharmhub(context.Background())
+	if err != nil {
+		t.Fatalf("LogoutCharmhub() error = %v", err)
+	}
+	if result.Cleared {
+		t.Fatal("expected not cleared when no credentials exist")
+	}
+}
+
+func TestStatusReportsStoreAuthentication(t *testing.T) {
+	snapStore := &fakeStoreCredentialStore{
+		record: &dto.StoreCredentialRecord{Macaroon: "snap-mac", Source: "file", Path: "/tmp/snap.json"},
+	}
+	charmhubStore := &fakeStoreCredentialStore{
+		record: &dto.StoreCredentialRecord{Macaroon: "charm-mac", Source: "environment"},
+	}
+	svc := newServiceWithStores(snapStore, charmhubStore)
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.SnapStore.Authenticated || status.SnapStore.Source != "file" {
+		t.Fatalf("Status().SnapStore = %+v", status.SnapStore)
+	}
+	if !status.Charmhub.Authenticated || status.Charmhub.Source != "environment" {
+		t.Fatalf("Status().Charmhub = %+v", status.Charmhub)
+	}
+}
+
+func TestStatusReportsUnauthenticatedStoresWhenNil(t *testing.T) {
+	svc := newServiceWithStores(nil, nil)
+
+	status, err := svc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.SnapStore.Authenticated {
+		t.Fatal("expected unauthenticated Snap Store when store is nil")
+	}
+	if status.Charmhub.Authenticated {
+		t.Fatal("expected unauthenticated Charmhub when store is nil")
 	}
 }

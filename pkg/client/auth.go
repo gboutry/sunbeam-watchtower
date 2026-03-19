@@ -63,3 +63,31 @@ func (c *Client) AuthGitHubLogout(ctx context.Context) (*dto.GitHubAuthLogoutRes
 	err := c.post(ctx, "/api/v1/auth/github/logout", nil, &result)
 	return &result, err
 }
+
+// AuthSnapStoreLogin saves a pre-obtained Snap Store macaroon.
+func (c *Client) AuthSnapStoreLogin(ctx context.Context, macaroon string) (*dto.SnapStoreAuthLoginResult, error) {
+	var result dto.SnapStoreAuthLoginResult
+	err := c.post(ctx, "/api/v1/auth/snapstore/login", map[string]string{"macaroon": macaroon}, &result)
+	return &result, err
+}
+
+// AuthSnapStoreLogout clears persisted Snap Store credentials.
+func (c *Client) AuthSnapStoreLogout(ctx context.Context) (*dto.SnapStoreAuthLogoutResult, error) {
+	var result dto.SnapStoreAuthLogoutResult
+	err := c.post(ctx, "/api/v1/auth/snapstore/logout", nil, &result)
+	return &result, err
+}
+
+// AuthCharmhubLogin saves a pre-obtained Charmhub macaroon.
+func (c *Client) AuthCharmhubLogin(ctx context.Context, macaroon string) (*dto.CharmhubAuthLoginResult, error) {
+	var result dto.CharmhubAuthLoginResult
+	err := c.post(ctx, "/api/v1/auth/charmhub/login", map[string]string{"macaroon": macaroon}, &result)
+	return &result, err
+}
+
+// AuthCharmhubLogout clears persisted Charmhub credentials.
+func (c *Client) AuthCharmhubLogout(ctx context.Context) (*dto.CharmhubAuthLogoutResult, error) {
+	var result dto.CharmhubAuthLogoutResult
+	err := c.post(ctx, "/api/v1/auth/charmhub/logout", nil, &result)
+	return &result, err
+}

@@ -96,3 +96,39 @@ func (w *AuthWorkflow) LogoutGitHub(ctx context.Context) (*dto.GitHubAuthLogoutR
 	}
 	return service.LogoutGitHub(ctx)
 }
+
+// LoginSnapStore saves a pre-obtained Snap Store macaroon.
+func (w *AuthWorkflow) LoginSnapStore(ctx context.Context, macaroon string) (*dto.SnapStoreAuthLoginResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.LoginSnapStore(ctx, macaroon)
+}
+
+// LogoutSnapStore clears persisted Snap Store credentials.
+func (w *AuthWorkflow) LogoutSnapStore(ctx context.Context) (*dto.SnapStoreAuthLogoutResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.LogoutSnapStore(ctx)
+}
+
+// LoginCharmhub saves a pre-obtained Charmhub macaroon.
+func (w *AuthWorkflow) LoginCharmhub(ctx context.Context, macaroon string) (*dto.CharmhubAuthLoginResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.LoginCharmhub(ctx, macaroon)
+}
+
+// LogoutCharmhub clears persisted Charmhub credentials.
+func (w *AuthWorkflow) LogoutCharmhub(ctx context.Context) (*dto.CharmhubAuthLogoutResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.LogoutCharmhub(ctx)
+}

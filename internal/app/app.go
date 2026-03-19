@@ -65,6 +65,12 @@ type App struct {
 	ghCredsOnce  sync.Once
 	ghCredsStore port.GitHubCredentialStore
 
+	snapStoreCredsOnce  sync.Once
+	snapStoreCredsStore port.SnapStoreCredentialStore
+
+	charmhubCredsOnce  sync.Once
+	charmhubCredsStore port.CharmhubCredentialStore
+
 	lpFlowOnce  sync.Once
 	lpFlowStore port.LaunchpadPendingAuthFlowStore
 

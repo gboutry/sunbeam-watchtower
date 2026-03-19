@@ -47,6 +47,14 @@ var (
 	ErrGitHubAccessDenied = errors.New("github device flow access denied")
 	// ErrGitHubKeyringNotImplemented indicates github.use_keyring is not yet supported.
 	ErrGitHubKeyringNotImplemented = errors.New("github keyring storage is not implemented yet")
+	// ErrSnapStoreEnvironmentCredentials indicates login/logout cannot alter env-provided credentials.
+	ErrSnapStoreEnvironmentCredentials = errors.New(
+		"snap store credentials are provided by environment variables and cannot be modified",
+	)
+	// ErrCharmhubEnvironmentCredentials indicates login/logout cannot alter env-provided credentials.
+	ErrCharmhubEnvironmentCredentials = errors.New(
+		"charmhub credentials are provided by environment variables and cannot be modified",
+	)
 )
 
 // Service exposes application-surface authentication workflows.
@@ -59,6 +67,9 @@ type Service struct {
 	githubFlows      port.GitHubPendingAuthFlowStore
 	githubAuth       port.GitHubAuthenticator
 	githubMutableErr error
+
+	snapStoreStore port.SnapStoreCredentialStore
+	charmhubStore  port.CharmhubCredentialStore
 
 	logger    *slog.Logger
 	now       func() time.Time
@@ -96,6 +107,27 @@ func NewServiceWithGitHub(
 	githubMutableErr error,
 	logger *slog.Logger,
 ) *Service {
+	return NewServiceWithStores(
+		launchpadStore, launchpadFlows, launchpadAuth,
+		githubStore, githubFlows, githubAuth, githubMutableErr,
+		nil, nil,
+		logger,
+	)
+}
+
+// NewServiceWithStores creates a new auth service with Launchpad, GitHub, and store auth support.
+func NewServiceWithStores(
+	launchpadStore port.LaunchpadCredentialStore,
+	launchpadFlows port.LaunchpadPendingAuthFlowStore,
+	launchpadAuth port.LaunchpadAuthenticator,
+	githubStore port.GitHubCredentialStore,
+	githubFlows port.GitHubPendingAuthFlowStore,
+	githubAuth port.GitHubAuthenticator,
+	githubMutableErr error,
+	snapStoreStore port.SnapStoreCredentialStore,
+	charmhubStore port.CharmhubCredentialStore,
+	logger *slog.Logger,
+) *Service {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
@@ -107,6 +139,8 @@ func NewServiceWithGitHub(
 		githubFlows:      githubFlows,
 		githubAuth:       githubAuth,
 		githubMutableErr: githubMutableErr,
+		snapStoreStore:   snapStoreStore,
+		charmhubStore:    charmhubStore,
 		logger:           logger,
 		now:              time.Now,
 		newFlowID:        randomFlowID,
@@ -137,9 +171,14 @@ func (s *Service) Status(ctx context.Context) (*dto.AuthStatus, error) {
 		return nil, err
 	}
 
+	snapStoreStatus := s.snapStoreStatus(ctx)
+	charmhubStatus := s.charmhubStatus(ctx)
+
 	return &dto.AuthStatus{
 		Launchpad: *launchpadStatus,
 		GitHub:    *githubStatus,
+		SnapStore: *snapStoreStatus,
+		Charmhub:  *charmhubStatus,
 	}, nil
 }
 
@@ -406,6 +445,136 @@ func (s *Service) githubStatus(
 		status.DisplayName = identity.Login
 	}
 	return status, nil
+}
+
+// LoginSnapStore saves a pre-obtained Snap Store macaroon.
+func (s *Service) LoginSnapStore(ctx context.Context, macaroon string) (*dto.SnapStoreAuthLoginResult, error) {
+	if s.snapStoreStore == nil {
+		return nil, fmt.Errorf("snap store credential store not configured")
+	}
+	record, err := s.snapStoreStore.Load(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading snap store credentials: %w", err)
+	}
+	if record != nil && record.Source == "environment" {
+		return nil, ErrSnapStoreEnvironmentCredentials
+	}
+
+	saved, err := s.snapStoreStore.Save(ctx, macaroon)
+	if err != nil {
+		return nil, fmt.Errorf("saving snap store credentials: %w", err)
+	}
+	return &dto.SnapStoreAuthLoginResult{
+		SnapStore: dto.SnapStoreAuthStatus{
+			Authenticated:   true,
+			Source:          saved.Source,
+			CredentialsPath: saved.Path,
+		},
+	}, nil
+}
+
+// LogoutSnapStore clears persisted Snap Store credentials.
+func (s *Service) LogoutSnapStore(ctx context.Context) (*dto.SnapStoreAuthLogoutResult, error) {
+	if s.snapStoreStore == nil {
+		return &dto.SnapStoreAuthLogoutResult{}, nil
+	}
+	record, err := s.snapStoreStore.Load(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading snap store credentials: %w", err)
+	}
+	if record == nil {
+		return &dto.SnapStoreAuthLogoutResult{}, nil
+	}
+	if record.Source == "environment" {
+		return nil, ErrSnapStoreEnvironmentCredentials
+	}
+	if err := s.snapStoreStore.Clear(ctx); err != nil {
+		return nil, fmt.Errorf("clearing snap store credentials: %w", err)
+	}
+	return &dto.SnapStoreAuthLogoutResult{
+		Cleared:         true,
+		CredentialsPath: record.Path,
+	}, nil
+}
+
+// LoginCharmhub saves a pre-obtained Charmhub macaroon.
+func (s *Service) LoginCharmhub(ctx context.Context, macaroon string) (*dto.CharmhubAuthLoginResult, error) {
+	if s.charmhubStore == nil {
+		return nil, fmt.Errorf("charmhub credential store not configured")
+	}
+	record, err := s.charmhubStore.Load(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading charmhub credentials: %w", err)
+	}
+	if record != nil && record.Source == "environment" {
+		return nil, ErrCharmhubEnvironmentCredentials
+	}
+
+	saved, err := s.charmhubStore.Save(ctx, macaroon)
+	if err != nil {
+		return nil, fmt.Errorf("saving charmhub credentials: %w", err)
+	}
+	return &dto.CharmhubAuthLoginResult{
+		Charmhub: dto.CharmhubAuthStatus{
+			Authenticated:   true,
+			Source:          saved.Source,
+			CredentialsPath: saved.Path,
+		},
+	}, nil
+}
+
+// LogoutCharmhub clears persisted Charmhub credentials.
+func (s *Service) LogoutCharmhub(ctx context.Context) (*dto.CharmhubAuthLogoutResult, error) {
+	if s.charmhubStore == nil {
+		return &dto.CharmhubAuthLogoutResult{}, nil
+	}
+	record, err := s.charmhubStore.Load(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading charmhub credentials: %w", err)
+	}
+	if record == nil {
+		return &dto.CharmhubAuthLogoutResult{}, nil
+	}
+	if record.Source == "environment" {
+		return nil, ErrCharmhubEnvironmentCredentials
+	}
+	if err := s.charmhubStore.Clear(ctx); err != nil {
+		return nil, fmt.Errorf("clearing charmhub credentials: %w", err)
+	}
+	return &dto.CharmhubAuthLogoutResult{
+		Cleared:         true,
+		CredentialsPath: record.Path,
+	}, nil
+}
+
+func (s *Service) snapStoreStatus(_ context.Context) *dto.SnapStoreAuthStatus {
+	status := &dto.SnapStoreAuthStatus{}
+	if s.snapStoreStore == nil {
+		return status
+	}
+	record, err := s.snapStoreStore.Load(context.Background())
+	if err != nil || record == nil {
+		return status
+	}
+	status.Authenticated = true
+	status.Source = record.Source
+	status.CredentialsPath = record.Path
+	return status
+}
+
+func (s *Service) charmhubStatus(_ context.Context) *dto.CharmhubAuthStatus {
+	status := &dto.CharmhubAuthStatus{}
+	if s.charmhubStore == nil {
+		return status
+	}
+	record, err := s.charmhubStore.Load(context.Background())
+	if err != nil || record == nil {
+		return status
+	}
+	status.Authenticated = true
+	status.Source = record.Source
+	status.CredentialsPath = record.Path
+	return status
 }
 
 func randomFlowID() (string, error) {

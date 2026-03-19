@@ -6,6 +6,7 @@ package port
 import (
 	"context"
 
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
@@ -52,4 +53,18 @@ type GitHubPendingAuthFlowStore interface {
 	Put(ctx context.Context, flow *gh.PendingAuthFlow) error
 	Get(ctx context.Context, id string) (*gh.PendingAuthFlow, error)
 	Delete(ctx context.Context, id string) error
+}
+
+// SnapStoreCredentialStore manages persisted Snap Store credentials.
+type SnapStoreCredentialStore interface {
+	Load(ctx context.Context) (*dto.StoreCredentialRecord, error)
+	Save(ctx context.Context, macaroon string) (*dto.StoreCredentialRecord, error)
+	Clear(ctx context.Context) error
+}
+
+// CharmhubCredentialStore manages persisted Charmhub credentials.
+type CharmhubCredentialStore interface {
+	Load(ctx context.Context) (*dto.StoreCredentialRecord, error)
+	Save(ctx context.Context, macaroon string) (*dto.StoreCredentialRecord, error)
+	Clear(ctx context.Context) error
 }
