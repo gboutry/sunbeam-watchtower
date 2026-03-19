@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/charmhub"
@@ -14,11 +15,13 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/teamsync"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
+	"gopkg.in/yaml.v3"
 )
 
 // lpTeamProvider adapts the LP client to the port.LaunchpadTeamProvider interface.
 type lpTeamProvider struct {
-	client *lp.Client
+	client         *lp.Client
+	emailOverrides map[string]string // username → email
 }
 
 // Compile-time interface compliance check.
@@ -31,9 +34,35 @@ func (p *lpTeamProvider) GetTeamMembers(ctx context.Context, teamName string) ([
 	}
 	result := make([]dto.TeamMember, len(members))
 	for i, m := range members {
-		result[i] = dto.TeamMember{Username: m.Username, Email: m.Email}
+		email := m.Email
+		if email == "" {
+			if override, ok := p.emailOverrides[m.Username]; ok {
+				email = override
+			}
+		}
+		result[i] = dto.TeamMember{Username: m.Username, Email: email}
 	}
 	return result, nil
+}
+
+// loadEmailOverrides reads a YAML file mapping LP usernames to email addresses.
+// Returns nil map if path is empty or file doesn't exist.
+func loadEmailOverrides(path string) (map[string]string, error) {
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading email overrides: %w", err)
+	}
+	var overrides map[string]string
+	if err := yaml.Unmarshal(data, &overrides); err != nil {
+		return nil, fmt.Errorf("parsing email overrides: %w", err)
+	}
+	return overrides, nil
 }
 
 // TeamSyncService returns the lazily initialized team sync service.
@@ -54,7 +83,13 @@ func (a *App) TeamSyncService() (*teamsync.Service, error) {
 			return
 		}
 
-		teamProvider := &lpTeamProvider{client: lpClient}
+		emailOverrides, err := loadEmailOverrides(a.Config.Collaborators.EmailOverrides)
+		if err != nil {
+			a.teamSyncServiceErr = err
+			return
+		}
+
+		teamProvider := &lpTeamProvider{client: lpClient, emailOverrides: emailOverrides}
 
 		// Load store credentials for collaborator managers.
 		snapStoreAuth := ""
