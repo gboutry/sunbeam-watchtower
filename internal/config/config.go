@@ -413,14 +413,14 @@ type OTelConfig struct {
 
 // Config is the top-level configuration.
 type Config struct {
-	Launchpad LaunchpadConfig           `mapstructure:"launchpad" yaml:"launchpad"`
-	GitHub    GitHubConfig              `mapstructure:"github" yaml:"github"`
-	Gerrit    GerritConfig              `mapstructure:"gerrit" yaml:"gerrit"`
-	BugGroups map[string]BugGroupConfig `mapstructure:"bug_groups" yaml:"bug_groups,omitempty"`
-	Projects  []ProjectConfig           `mapstructure:"projects" yaml:"projects"`
-	Build     BuildConfig               `mapstructure:"build" yaml:"build"`
-	Releases  ReleasesConfig            `mapstructure:"releases" yaml:"releases,omitempty"`
-	Packages  PackagesConfig            `mapstructure:"packages" yaml:"packages,omitempty"`
+	Launchpad     LaunchpadConfig           `mapstructure:"launchpad" yaml:"launchpad"`
+	GitHub        GitHubConfig              `mapstructure:"github" yaml:"github"`
+	Gerrit        GerritConfig              `mapstructure:"gerrit" yaml:"gerrit"`
+	BugGroups     map[string]BugGroupConfig `mapstructure:"bug_groups" yaml:"bug_groups,omitempty"`
+	Projects      []ProjectConfig           `mapstructure:"projects" yaml:"projects"`
+	Build         BuildConfig               `mapstructure:"build" yaml:"build"`
+	Releases      ReleasesConfig            `mapstructure:"releases" yaml:"releases,omitempty"`
+	Packages      PackagesConfig            `mapstructure:"packages" yaml:"packages,omitempty"`
 	TUI           TUIConfig                 `mapstructure:"tui" yaml:"tui,omitempty"`
 	OTel          OTelConfig                `mapstructure:"otel" yaml:"otel,omitempty"`
 	Collaborators *CollaboratorsConfig      `mapstructure:"collaborators" yaml:"collaborators,omitempty"`
