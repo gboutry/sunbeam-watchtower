@@ -179,6 +179,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 		withGroupID(newBuildCmd(opts), "workflow"),
 		withGroupID(newReleasesCmd(opts), "workflow"),
 		withGroupID(newProjectCmd(opts), "workflow"),
+		withGroupID(newTeamCmd(opts), "workflow"),
 		withGroupID(newPackagesCmd(opts), "workflow"),
 	)
 	root.AddCommand(
