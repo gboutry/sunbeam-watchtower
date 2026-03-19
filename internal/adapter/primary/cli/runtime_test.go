@@ -60,6 +60,23 @@ func TestCommandNeedsPersistentServer(t *testing.T) {
 			t.Fatal("async project sync should require persistent server")
 		}
 	})
+
+	t.Run("team sync only requires persistent server when async", func(t *testing.T) {
+		team := &cobra.Command{Use: "team"}
+		cmd := &cobra.Command{Use: "sync"}
+		cmd.Flags().Bool("async", false, "")
+		team.AddCommand(cmd)
+
+		if commandNeedsPersistentServer(cmd) {
+			t.Fatal("sync team command should not require persistent server")
+		}
+		if err := cmd.Flags().Set("async", "true"); err != nil {
+			t.Fatalf("Set(async) error = %v", err)
+		}
+		if !commandNeedsPersistentServer(cmd) {
+			t.Fatal("async team sync should require persistent server")
+		}
+	})
 }
 
 func TestTargetPolicyForCommand(t *testing.T) {

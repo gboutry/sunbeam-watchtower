@@ -68,3 +68,43 @@ func (c *Client) GetTeamMembers(ctx context.Context, teamName string) ([]Person,
 	path := fmt.Sprintf("/~%s/members", teamName)
 	return GetAllPages[Person](ctx, c, path)
 }
+
+// TeamMemberEmail represents the LP email resource response.
+type TeamMemberEmail struct {
+	Email string `json:"email"`
+}
+
+// TeamMember holds a resolved team member username and email address.
+// Use this type when converting to pkg/dto/v1.TeamMember at the adapter layer.
+type TeamMember struct {
+	Username string
+	Email    string // empty when HideEmailAddresses is true or no email link exists
+}
+
+// GetTeamMembersWithEmails returns team members with resolved email addresses.
+// Sub-teams are filtered out. Email addresses are resolved from the
+// preferred_email_address_link field when hide_email_addresses is false.
+// Errors from individual email fetches are silently ignored; the member is
+// returned with an empty email instead.
+func (c *Client) GetTeamMembersWithEmails(ctx context.Context, teamName string) ([]TeamMember, error) {
+	persons, err := c.GetTeamMembers(ctx, teamName)
+	if err != nil {
+		return nil, err
+	}
+
+	var members []TeamMember
+	for _, p := range persons {
+		if p.IsTeam {
+			continue
+		}
+		member := TeamMember{Username: p.Name}
+		if p.PreferredEmailAddressLink != "" && !p.HideEmailAddresses {
+			var emailResp TeamMemberEmail
+			if err := c.GetJSON(ctx, p.PreferredEmailAddressLink, &emailResp); err == nil {
+				member.Email = emailResp.Email
+			}
+		}
+		members = append(members, member)
+	}
+	return members, nil
+}

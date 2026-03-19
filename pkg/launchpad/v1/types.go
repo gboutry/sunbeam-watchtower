@@ -31,7 +31,8 @@ type Person struct {
 	Private               bool   `json:"private"`
 	Visibility            string `json:"visibility"`
 	AccountStatus         string `json:"account_status"`
-	HideEmailAddresses    bool   `json:"hide_email_addresses"`
+	HideEmailAddresses           bool   `json:"hide_email_addresses"`
+	PreferredEmailAddressLink    string `json:"preferred_email_address_link,omitempty"`
 	IsProbationary        bool   `json:"is_probationary"`
 	IsUbuntuCocSigner     bool   `json:"is_ubuntu_coc_signer"`
 	ArchiveLink           string `json:"archive_link"`

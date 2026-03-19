@@ -67,6 +67,9 @@ func commandNeedsPersistentServer(cmd *cobra.Command) bool {
 	case frontend.ActionProjectSyncApply, frontend.ActionProjectSyncDryRun:
 		async, _ := cmd.Flags().GetBool("async")
 		return async
+	case frontend.ActionTeamSyncApply, frontend.ActionTeamSyncDryRun:
+		async, _ := cmd.Flags().GetBool("async")
+		return async
 	}
 
 	switch parent {
@@ -80,6 +83,11 @@ func commandNeedsPersistentServer(cmd *cobra.Command) bool {
 			return async
 		}
 	case "project":
+		if cmd.Name() == "sync" {
+			async, _ := cmd.Flags().GetBool("async")
+			return async
+		}
+	case "team":
 		if cmd.Name() == "sync" {
 			async, _ := cmd.Flags().GetBool("async")
 			return async
