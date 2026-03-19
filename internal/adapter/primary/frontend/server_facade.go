@@ -16,6 +16,7 @@ type ServerFacade struct {
 	reviews    *ReviewServerWorkflow
 	commits    *CommitServerWorkflow
 	config     *ConfigServerWorkflow
+	teams      *TeamServerWorkflow
 }
 
 // NewServerFacade creates a server-side frontend facade.
@@ -32,6 +33,7 @@ func NewServerFacade(application *app.App) *ServerFacade {
 		reviews:    NewReviewServerWorkflow(application),
 		commits:    NewCommitServerWorkflow(application),
 		config:     NewConfigServerWorkflow(application),
+		teams:      NewTeamServerWorkflow(application, async),
 	}
 }
 
@@ -61,3 +63,6 @@ func (f *ServerFacade) Commits() *CommitServerWorkflow { return f.commits }
 
 // Config returns reusable config workflows.
 func (f *ServerFacade) Config() *ConfigServerWorkflow { return f.config }
+
+// Teams returns reusable team workflows.
+func (f *ServerFacade) Teams() *TeamServerWorkflow { return f.teams }
