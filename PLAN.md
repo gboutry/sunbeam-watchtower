@@ -51,7 +51,7 @@ The following are implemented and should be treated as the current baseline:
 
 - strict hexagonal layout under `internal/adapter/*`, `internal/core/*`, and `pkg/*`
 - HTTP API for auth, builds, releases, cache, packages, bugs, reviews, commits, config, and project sync
-- shared frontend facade for auth, operations, project, build, cache, package, bug, review, commit, release, and config workflows
+- shared frontend facade for auth, operations, project, build, cache, package, bug, review, commit, release, config, and team workflows
 - shared runtime/bootstrap layer for env defaults, logger setup, config loading, embedded server startup, local daemon management, and target resolution
 - TUI sessions now prefer an already running local daemon on startup and only fall back to an embedded session when no persistent daemon is available
 - shared runtime session target policies for CLI and TUI, covering embedded, discovered-daemon, and persistent-daemon resolution
@@ -80,6 +80,7 @@ The following are implemented and should be treated as the current baseline:
 - `watchtower.yaml` can now declare TUI startup presets, including `tui.default_pane`, per-pane default filters, and explicit startup modes for Packages and Commits
 - the TUI now exposes meta-overlay mutation workflows for cache sync/clear plus project and bug sync, while keeping those write actions out of the read-only content tabs
 - the TUI form system now supports reusable multi-select fields with `Space` toggles and visual-range `v` + `gg`/`G` motions for known finite multi-value inputs, and cache sync/clear for git/bugs/reviews now accepts multiple projects end to end instead of single-project bodies only
+- team collaborator sync is partially wired: action catalog entries (`team.sync.dry_run`, `team.sync.apply`), CLI action selector, client transport (`pkg/client`), client-side frontend workflow, and `ClientFacade.Teams()` are in place; server-side workflow and async facade wiring are deferred to composition root wiring
 
 ## Current Gaps
 

@@ -34,6 +34,12 @@ type ProjectSyncOptions struct {
 	DryRun   bool
 }
 
+// TeamSyncOptions holds the inputs for starting an async team sync operation.
+type TeamSyncOptions struct {
+	Projects []string
+	DryRun   bool
+}
+
 // NewFacade creates a frontend-oriented facade on top of the application wiring.
 func NewFacade(application *app.App) *Facade {
 	return &Facade{
