@@ -2155,6 +2155,10 @@ func (m rootModel) renderAuthModal() string {
 	lines = append(lines, renderProviderStatusDetail("Launchpad", launchpadStatusFromAuth(m.auth.status))...)
 	lines = append(lines, renderProviderStatusLine("GitHub", githubStatusFromAuth(m.auth.status)))
 	lines = append(lines, renderProviderStatusDetail("GitHub", githubStatusFromAuth(m.auth.status))...)
+	lines = append(lines, renderProviderStatusLine("Snap Store", snapStoreStatusFromAuth(m.auth.status)))
+	lines = append(lines, renderProviderStatusDetail("Snap Store", snapStoreStatusFromAuth(m.auth.status))...)
+	lines = append(lines, renderProviderStatusLine("Charmhub", charmhubStatusFromAuth(m.auth.status)))
+	lines = append(lines, renderProviderStatusDetail("Charmhub", charmhubStatusFromAuth(m.auth.status))...)
 	if m.auth.launchpadBegin != nil {
 		lines = append(lines, "", "Launchpad authorize URL:", m.auth.launchpadBegin.AuthorizeURL)
 	}
@@ -4322,7 +4326,7 @@ func displayGitHubName(status *dto.AuthStatus) string {
 }
 
 func renderAuthSummaryText(status *dto.AuthStatus) string {
-	parts := make([]string, 0, 2)
+	parts := make([]string, 0, 4)
 	if launchpadStatusFromAuth(status).authenticated {
 		parts = append(parts, "LP: "+displayLaunchpadName(status))
 	} else {
@@ -4332,6 +4336,16 @@ func renderAuthSummaryText(status *dto.AuthStatus) string {
 		parts = append(parts, "GH: "+displayGitHubName(status))
 	} else {
 		parts = append(parts, "GH: not authenticated")
+	}
+	if snapStoreStatusFromAuth(status).authenticated {
+		parts = append(parts, "Snap: ok")
+	} else {
+		parts = append(parts, "Snap: no")
+	}
+	if charmhubStatusFromAuth(status).authenticated {
+		parts = append(parts, "Charm: ok")
+	} else {
+		parts = append(parts, "Charm: no")
 	}
 	return strings.Join(parts, "  ")
 }
@@ -4370,6 +4384,28 @@ func githubStatusFromAuth(status *dto.AuthStatus) providerStatusView {
 		source:          status.GitHub.Source,
 		credentialsPath: status.GitHub.CredentialsPath,
 		err:             status.GitHub.Error,
+	}
+}
+
+func snapStoreStatusFromAuth(status *dto.AuthStatus) providerStatusView {
+	if status == nil {
+		return providerStatusView{}
+	}
+	return providerStatusView{
+		authenticated:   status.SnapStore.Authenticated,
+		source:          status.SnapStore.Source,
+		credentialsPath: status.SnapStore.CredentialsPath,
+	}
+}
+
+func charmhubStatusFromAuth(status *dto.AuthStatus) providerStatusView {
+	if status == nil {
+		return providerStatusView{}
+	}
+	return providerStatusView{
+		authenticated:   status.Charmhub.Authenticated,
+		source:          status.Charmhub.Source,
+		credentialsPath: status.Charmhub.CredentialsPath,
 	}
 }
 

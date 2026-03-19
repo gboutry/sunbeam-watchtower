@@ -66,6 +66,40 @@ type AuthGitHubLogoutOutput struct {
 	Body dto.GitHubAuthLogoutResult
 }
 
+// AuthSnapStoreLoginInput is the request body for Snap Store login.
+type AuthSnapStoreLoginInput struct {
+	Body struct {
+		Macaroon string `json:"macaroon" doc:"Pre-obtained Snap Store macaroon string"`
+	}
+}
+
+// AuthSnapStoreLoginOutput is the response for Snap Store login.
+type AuthSnapStoreLoginOutput struct {
+	Body dto.SnapStoreAuthLoginResult
+}
+
+// AuthSnapStoreLogoutOutput is the response for logging out from Snap Store.
+type AuthSnapStoreLogoutOutput struct {
+	Body dto.SnapStoreAuthLogoutResult
+}
+
+// AuthCharmhubLoginInput is the request body for Charmhub login.
+type AuthCharmhubLoginInput struct {
+	Body struct {
+		Macaroon string `json:"macaroon" doc:"Pre-obtained Charmhub macaroon string"`
+	}
+}
+
+// AuthCharmhubLoginOutput is the response for Charmhub login.
+type AuthCharmhubLoginOutput struct {
+	Body dto.CharmhubAuthLoginResult
+}
+
+// AuthCharmhubLogoutOutput is the response for logging out from Charmhub.
+type AuthCharmhubLogoutOutput struct {
+	Body dto.CharmhubAuthLogoutResult
+}
+
 // RegisterAuthAPI registers authentication endpoints on the given huma API.
 func RegisterAuthAPI(api huma.API, application *app.App) {
 	facade := frontend.NewServerFacade(application)
@@ -226,6 +260,90 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		}
 
 		out := &AuthGitHubLogoutOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-snapstore-login",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/snapstore/login",
+		Summary:     "Save Snap Store credentials",
+		Description: "Saves a pre-obtained Snap Store macaroon for authenticated API access.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, input *AuthSnapStoreLoginInput) (*AuthSnapStoreLoginOutput, error) {
+		result, err := facade.Auth().LoginSnapStore(ctx, input.Body.Macaroon)
+		if err != nil {
+			if errors.Is(err, authsvc.ErrSnapStoreEnvironmentCredentials) {
+				return nil, huma.Error400BadRequest(err.Error())
+			}
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to save Snap Store credentials: %v", err))
+		}
+
+		out := &AuthSnapStoreLoginOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-snapstore-logout",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/snapstore/logout",
+		Summary:     "Logout from Snap Store",
+		Description: "Clears persisted Snap Store credentials when they are file-backed.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, _ *struct{}) (*AuthSnapStoreLogoutOutput, error) {
+		result, err := facade.Auth().LogoutSnapStore(ctx)
+		if err != nil {
+			if errors.Is(err, authsvc.ErrSnapStoreEnvironmentCredentials) {
+				return nil, huma.Error400BadRequest(err.Error())
+			}
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to logout from Snap Store: %v", err))
+		}
+
+		out := &AuthSnapStoreLogoutOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-charmhub-login",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/charmhub/login",
+		Summary:     "Save Charmhub credentials",
+		Description: "Saves a pre-obtained Charmhub macaroon for authenticated API access.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, input *AuthCharmhubLoginInput) (*AuthCharmhubLoginOutput, error) {
+		result, err := facade.Auth().LoginCharmhub(ctx, input.Body.Macaroon)
+		if err != nil {
+			if errors.Is(err, authsvc.ErrCharmhubEnvironmentCredentials) {
+				return nil, huma.Error400BadRequest(err.Error())
+			}
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to save Charmhub credentials: %v", err))
+		}
+
+		out := &AuthCharmhubLoginOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-charmhub-logout",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/charmhub/logout",
+		Summary:     "Logout from Charmhub",
+		Description: "Clears persisted Charmhub credentials when they are file-backed.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, _ *struct{}) (*AuthCharmhubLogoutOutput, error) {
+		result, err := facade.Auth().LogoutCharmhub(ctx)
+		if err != nil {
+			if errors.Is(err, authsvc.ErrCharmhubEnvironmentCredentials) {
+				return nil, huma.Error400BadRequest(err.Error())
+			}
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to logout from Charmhub: %v", err))
+		}
+
+		out := &AuthCharmhubLogoutOutput{}
 		out.Body = *result
 		return out, nil
 	})

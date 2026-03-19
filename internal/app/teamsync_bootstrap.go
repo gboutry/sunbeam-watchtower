@@ -56,11 +56,19 @@ func (a *App) TeamSyncService() (*teamsync.Service, error) {
 
 		teamProvider := &lpTeamProvider{client: lpClient}
 
-		// Build store collaborator managers.
-		// Auth tokens are empty for now — Task 8 will add real store auth.
+		// Load store credentials for collaborator managers.
+		snapStoreAuth := ""
+		if rec, err := a.SnapStoreCredentialStore().Load(context.Background()); err == nil && rec != nil {
+			snapStoreAuth = rec.Macaroon
+		}
+		charmhubAuth := ""
+		if rec, err := a.CharmhubCredentialStore().Load(context.Background()); err == nil && rec != nil {
+			charmhubAuth = rec.Macaroon
+		}
+
 		stores := map[dto.ArtifactType]port.StoreCollaboratorManager{
-			dto.ArtifactSnap:  snapstore.NewCollaboratorManager(""),
-			dto.ArtifactCharm: charmhub.NewCollaboratorManager(""),
+			dto.ArtifactSnap:  snapstore.NewCollaboratorManager(snapStoreAuth),
+			dto.ArtifactCharm: charmhub.NewCollaboratorManager(charmhubAuth),
 		}
 
 		a.teamSyncService = teamsync.NewService(teamProvider, stores, a.Logger)

@@ -19,6 +19,8 @@ func newAuthCmd(opts *Options) *cobra.Command {
 	cmd.AddCommand(newAuthStatusCmd(opts))
 	cmd.AddCommand(newAuthLaunchpadCmd(opts))
 	cmd.AddCommand(newAuthGitHubCmd(opts))
+	cmd.AddCommand(newAuthSnapStoreCmd(opts))
+	cmd.AddCommand(newAuthCharmhubCmd(opts))
 	return cmd
 }
 
@@ -121,6 +123,10 @@ func newAuthStatusCmd(opts *Options) *cobra.Command {
 			writeAuthStatusSection(opts.Out, styler, "Launchpad", status.Launchpad.Authenticated, status.Launchpad.DisplayName, status.Launchpad.Username, status.Launchpad.Source, status.Launchpad.CredentialsPath, status.Launchpad.Error)
 			fmt.Fprintln(opts.Out)
 			writeAuthStatusSection(opts.Out, styler, "GitHub", status.GitHub.Authenticated, status.GitHub.DisplayName, status.GitHub.Username, status.GitHub.Source, status.GitHub.CredentialsPath, status.GitHub.Error)
+			fmt.Fprintln(opts.Out)
+			writeAuthStatusSection(opts.Out, styler, "Snap Store", status.SnapStore.Authenticated, "", "", status.SnapStore.Source, status.SnapStore.CredentialsPath, "")
+			fmt.Fprintln(opts.Out)
+			writeAuthStatusSection(opts.Out, styler, "Charmhub", status.Charmhub.Authenticated, "", "", status.Charmhub.Source, status.Charmhub.CredentialsPath, "")
 			return nil
 		},
 	}, frontend.ActionAuthStatus)
@@ -193,4 +199,148 @@ func newAuthGitHubLogoutCmd(opts *Options) *cobra.Command {
 			return nil
 		},
 	}, frontend.ActionAuthGitHubLogout)
+}
+
+func newAuthSnapStoreCmd(opts *Options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "snapstore",
+		Short: "Manage Snap Store authentication",
+	}
+	cmd.AddCommand(newAuthSnapStoreLoginCmd(opts))
+	cmd.AddCommand(newAuthSnapStoreLogoutCmd(opts))
+	return cmd
+}
+
+func newAuthSnapStoreLoginCmd(opts *Options) *cobra.Command {
+	var credentials string
+	cmd := withActionID(&cobra.Command{
+		Use:   "login",
+		Short: "Save Snap Store credentials",
+		Long:  "Save a pre-obtained Snap Store macaroon. Get one from 'snapcraft export-login'.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
+			if credentials == "" {
+				fmt.Fprint(opts.Out, styler.Key("Macaroon: "))
+				scanner := bufio.NewScanner(cmd.InOrStdin())
+				if scanner.Scan() {
+					credentials = scanner.Text()
+				}
+				if credentials == "" {
+					return fmt.Errorf("macaroon is required")
+				}
+			}
+
+			workflow := opts.Frontend().Auth()
+			result, err := workflow.LoginSnapStore(cmd.Context(), credentials)
+			if err != nil {
+				return err
+			}
+			if result.SnapStore.Authenticated {
+				fmt.Fprintf(opts.Out, "%s\n", styler.Action("Snap Store credentials saved."))
+			}
+			if result.SnapStore.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), result.SnapStore.CredentialsPath)
+			}
+			return nil
+		},
+	}, frontend.ActionAuthSnapStoreLogin)
+	cmd.Flags().StringVar(&credentials, "credentials", "", "Snap Store macaroon string")
+	return cmd
+}
+
+func newAuthSnapStoreLogoutCmd(opts *Options) *cobra.Command {
+	return withActionID(&cobra.Command{
+		Use:   "logout",
+		Short: "Clear persisted Snap Store credentials",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			workflow := opts.Frontend().Auth()
+			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
+			result, err := workflow.LogoutSnapStore(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if !result.Cleared {
+				fmt.Fprintln(opts.Out, styler.Placeholder("No persisted Snap Store credentials were found."))
+				return nil
+			}
+			if result.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Removed Snap Store credentials from"), result.CredentialsPath)
+				return nil
+			}
+			fmt.Fprintf(opts.Out, "%s persisted Snap Store credentials.\n", styler.Action("Removed"))
+			return nil
+		},
+	}, frontend.ActionAuthSnapStoreLogout)
+}
+
+func newAuthCharmhubCmd(opts *Options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "charmhub",
+		Short: "Manage Charmhub authentication",
+	}
+	cmd.AddCommand(newAuthCharmhubLoginCmd(opts))
+	cmd.AddCommand(newAuthCharmhubLogoutCmd(opts))
+	return cmd
+}
+
+func newAuthCharmhubLoginCmd(opts *Options) *cobra.Command {
+	var credentials string
+	cmd := withActionID(&cobra.Command{
+		Use:   "login",
+		Short: "Save Charmhub credentials",
+		Long:  "Save a pre-obtained Charmhub macaroon. Get one from 'charmcraft login --export'.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
+			if credentials == "" {
+				fmt.Fprint(opts.Out, styler.Key("Macaroon: "))
+				scanner := bufio.NewScanner(cmd.InOrStdin())
+				if scanner.Scan() {
+					credentials = scanner.Text()
+				}
+				if credentials == "" {
+					return fmt.Errorf("macaroon is required")
+				}
+			}
+
+			workflow := opts.Frontend().Auth()
+			result, err := workflow.LoginCharmhub(cmd.Context(), credentials)
+			if err != nil {
+				return err
+			}
+			if result.Charmhub.Authenticated {
+				fmt.Fprintf(opts.Out, "%s\n", styler.Action("Charmhub credentials saved."))
+			}
+			if result.Charmhub.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), result.Charmhub.CredentialsPath)
+			}
+			return nil
+		},
+	}, frontend.ActionAuthCharmhubLogin)
+	cmd.Flags().StringVar(&credentials, "credentials", "", "Charmhub macaroon string")
+	return cmd
+}
+
+func newAuthCharmhubLogoutCmd(opts *Options) *cobra.Command {
+	return withActionID(&cobra.Command{
+		Use:   "logout",
+		Short: "Clear persisted Charmhub credentials",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			workflow := opts.Frontend().Auth()
+			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
+			result, err := workflow.LogoutCharmhub(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if !result.Cleared {
+				fmt.Fprintln(opts.Out, styler.Placeholder("No persisted Charmhub credentials were found."))
+				return nil
+			}
+			if result.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Removed Charmhub credentials from"), result.CredentialsPath)
+				return nil
+			}
+			fmt.Fprintf(opts.Out, "%s persisted Charmhub credentials.\n", styler.Action("Removed"))
+			return nil
+		},
+	}, frontend.ActionAuthCharmhubLogout)
 }

@@ -80,13 +80,14 @@ The following are implemented and should be treated as the current baseline:
 - `watchtower.yaml` can now declare TUI startup presets, including `tui.default_pane`, per-pane default filters, and explicit startup modes for Packages and Commits
 - the TUI now exposes meta-overlay mutation workflows for cache sync/clear plus project and bug sync, while keeping those write actions out of the read-only content tabs
 - the TUI form system now supports reusable multi-select fields with `Space` toggles and visual-range `v` + `gg`/`G` motions for known finite multi-value inputs, and cache sync/clear for git/bugs/reviews now accepts multiple projects end to end instead of single-project bodies only
-- team collaborator sync is fully wired end-to-end: the `TeamSyncService()` lazy factory in `internal/app` adapts the LP client to `port.LaunchpadTeamProvider` and constructs the `teamsync.Service` with snap/charm store collaborator managers; the server-side `TeamServerWorkflow.Sync` builds sync targets from config and delegates to the service; the async `Facade.StartTeamSync` now runs the real sync inside the operation runner with per-artifact progress reporting; store auth tokens are still placeholder-empty (deferred to store authentication wiring)
+- team collaborator sync is fully wired end-to-end: the `TeamSyncService()` lazy factory in `internal/app` adapts the LP client to `port.LaunchpadTeamProvider` and constructs the `teamsync.Service` with snap/charm store collaborator managers; the server-side `TeamServerWorkflow.Sync` builds sync targets from config and delegates to the service; the async `Facade.StartTeamSync` now runs the real sync inside the operation runner with per-artifact progress reporting
+- Snap Store and Charmhub authentication is implemented with macaroon-based credential stores following the env-var-then-file fallback pattern established by LP and GitHub; `SNAPCRAFT_STORE_CREDENTIALS` and `CHARMCRAFT_AUTH` environment variables take precedence over file-cached credentials; login/logout is exposed through CLI, API, and TUI; the composition root now loads store macaroons from credential stores and passes them to the snap/charm collaborator managers
 
 ## Current Gaps
 
 These are the main known gaps that still matter:
 
-- Launchpad and GitHub auth are implemented, but the same authenticated-flow model is not yet extended to other forges such as Gerrit
+- Launchpad, GitHub, Snap Store, and Charmhub auth are implemented, but the same authenticated-flow model is not yet extended to other forges such as Gerrit; store auth uses a simplified pre-obtained macaroon approach rather than interactive Ubuntu SSO discharge
 - the TUI now covers the main read-only workflows and cache/project/bug mutation entrypoints, but it still does not expose direct build retry/cancel flows
 - the `Packages` and `Commits` TUI tabs now have read-only submodes, but deeper workflow actions remain CLI/API-first
 - some forge/package bootstrap paths in `internal/app` still contain logic that should continue moving into narrower builders/factories
