@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,9 +20,7 @@ import (
 
 const (
 	defaultTokensEndpoint = "https://dashboard.snapcraft.io/api/v2/tokens"
-	defaultSSOBaseURL     = "https://login.ubuntu.com"
 	defaultFlowTTL        = 10 * time.Minute
-	pollInterval          = 2 * time.Second
 )
 
 // tokensRequest is the JSON body for the Snap Store v2 tokens endpoint.
@@ -35,16 +34,15 @@ type tokensResponse struct {
 	Macaroon string `json:"macaroon"`
 }
 
-// Authenticator performs Snap Store authentication via Ubuntu SSO macaroon discharge.
+// Authenticator performs Snap Store authentication via httpbakery macaroon discharge.
 type Authenticator struct {
 	tokensEndpoint string
-	ssoBaseURL     string
 	permissions    []string
 	logger         *slog.Logger
 	httpClient     *http.Client
 }
 
-// NewAuthenticator creates a Snap Store SSO authenticator adapter.
+// NewAuthenticator creates a Snap Store authenticator adapter.
 func NewAuthenticator(logger *slog.Logger, httpClient *http.Client) *Authenticator {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -54,15 +52,13 @@ func NewAuthenticator(logger *slog.Logger, httpClient *http.Client) *Authenticat
 	}
 	return &Authenticator{
 		tokensEndpoint: defaultTokensEndpoint,
-		ssoBaseURL:     defaultSSOBaseURL,
 		permissions:    []string{"package_access", "package_manage"},
 		logger:         logger,
 		httpClient:     httpClient,
 	}
 }
 
-// BeginAuth requests a root macaroon from the Snap Store, extracts the Ubuntu SSO
-// third-party caveat, and initiates the browser-based discharge flow.
+// BeginAuth requests a root macaroon from the Snap Store and returns a pending flow.
 func (a *Authenticator) BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, error) {
 	a.logger.Info("requesting root macaroon from snap store")
 
@@ -71,43 +67,25 @@ func (a *Authenticator) BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, err
 		return nil, fmt.Errorf("requesting snap store root macaroon: %w", err)
 	}
 
-	caveatID, err := ubuntusso.ExtractSSOCaveatID(rootMacaroon, a.ssoBaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("extracting SSO caveat from snap store macaroon: %w", err)
-	}
-
-	a.logger.Info("starting SSO discharge flow", "sso_base_url", a.ssoBaseURL)
-
-	dischargeURL := strings.TrimRight(a.ssoBaseURL, "/") + ubuntusso.DischargeEndpoint
-	visitURL, waitURL, err := ubuntusso.BeginDischarge(ctx, a.httpClient, dischargeURL, caveatID)
-	if err != nil {
-		return nil, fmt.Errorf("starting SSO discharge: %w", err)
-	}
-
 	now := time.Now().UTC()
 	return &sa.PendingAuthFlow{
 		RootMacaroon: rootMacaroon,
-		CaveatID:     caveatID,
-		VisitURL:     visitURL,
-		WaitURL:      waitURL,
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(defaultFlowTTL),
 	}, nil
 }
 
-// PollAuth polls the SSO wait URL until the user completes browser authentication,
-// then binds the discharge macaroon to the root and returns the serialized credential.
+// PollAuth discharges the root macaroon using httpbakery with browser-based
+// interaction. Opens a browser for the user to authenticate via Ubuntu SSO.
 func (a *Authenticator) PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) (string, error) {
-	a.logger.Info("polling SSO for snap store discharge")
+	a.logger.Info("starting httpbakery discharge for snap store")
 
-	dischargeMacaroon, err := ubuntusso.PollDischarge(ctx, a.httpClient, flow.WaitURL, pollInterval)
+	credential, err := ubuntusso.DischargeAll(ctx, flow.RootMacaroon, func(u *url.URL) error {
+		a.logger.Info("browser visit required", "url", u.String())
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("polling snap store SSO discharge: %w", err)
-	}
-
-	credential, err := ubuntusso.BindDischarge(flow.RootMacaroon, dischargeMacaroon)
-	if err != nil {
-		return "", fmt.Errorf("binding snap store discharge: %w", err)
+		return "", fmt.Errorf("discharging snap store macaroon: %w", err)
 	}
 
 	return credential, nil
