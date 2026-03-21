@@ -70,17 +70,11 @@ type CharmhubCredentialStore interface {
 	Clear(ctx context.Context) error
 }
 
-// StoreAuthenticator performs store macaroon discharge via SSO/Candid.
-// Used for both Snap Store and Charmhub.
+// StoreAuthenticator requests root macaroons from a store API.
+// Used for both Snap Store and Charmhub. Discharge happens client-side.
 type StoreAuthenticator interface {
 	// BeginAuth requests a root macaroon from the store.
-	// Returns a pending flow containing the root macaroon.
 	BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, error)
-
-	// PollAuth discharges the root macaroon using httpbakery.
-	// openURL is called when the user must visit a URL in their browser.
-	// Returns the serialized credential ready for store API use.
-	PollAuth(ctx context.Context, flow *sa.PendingAuthFlow, openURL func(url string) error) (string, error)
 }
 
 // SnapStoreAuthenticator is an alias for StoreAuthenticator used for Snap Store auth.
@@ -88,17 +82,3 @@ type SnapStoreAuthenticator = StoreAuthenticator
 
 // CharmhubAuthenticator is an alias for StoreAuthenticator used for Charmhub auth.
 type CharmhubAuthenticator = StoreAuthenticator
-
-// SnapStorePendingAuthFlowStore stores short-lived pending Snap Store auth flows.
-type SnapStorePendingAuthFlowStore interface {
-	Put(ctx context.Context, flow *sa.PendingAuthFlow) error
-	Get(ctx context.Context, id string) (*sa.PendingAuthFlow, error)
-	Delete(ctx context.Context, id string) error
-}
-
-// CharmhubPendingAuthFlowStore stores short-lived pending Charmhub auth flows.
-type CharmhubPendingAuthFlowStore interface {
-	Put(ctx context.Context, flow *sa.PendingAuthFlow) error
-	Get(ctx context.Context, id string) (*sa.PendingAuthFlow, error)
-	Delete(ctx context.Context, id string) error
-}

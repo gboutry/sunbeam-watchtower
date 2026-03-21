@@ -6,8 +6,10 @@ package frontend
 import (
 	"context"
 	"errors"
+	"net/url"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
+	sa "github.com/gboutry/sunbeam-watchtower/pkg/storeauth/v1"
 )
 
 // LaunchpadAuthorizationHandler handles the user-facing authorization step between begin and finalize.
@@ -17,10 +19,12 @@ type LaunchpadAuthorizationHandler func(context.Context, *dto.LaunchpadAuthBegin
 type GitHubAuthorizationHandler func(context.Context, *dto.GitHubAuthBeginResult) error
 
 // SnapStoreAuthorizationHandler handles the user-facing SSO browser authorization step.
-type SnapStoreAuthorizationHandler func(context.Context, *dto.SnapStoreAuthBeginResult) error
+// It receives the URL the user must visit to authenticate.
+type SnapStoreAuthorizationHandler func(ctx context.Context, visitURL string) error
 
 // CharmhubAuthorizationHandler handles the user-facing SSO browser authorization step.
-type CharmhubAuthorizationHandler func(context.Context, *dto.CharmhubAuthBeginResult) error
+// It receives the URL the user must visit to authenticate.
+type CharmhubAuthorizationHandler func(ctx context.Context, visitURL string) error
 
 // AuthLoginResult contains both halves of a completed login workflow.
 type AuthLoginResult struct {
@@ -34,16 +38,14 @@ type GitHubAuthLoginResult struct {
 	Finalized *dto.GitHubAuthFinalizeResult
 }
 
-// SnapStoreAuthLoginResult contains both halves of a completed Snap Store login workflow.
+// SnapStoreAuthLoginResult contains the result of a completed Snap Store login workflow.
 type SnapStoreAuthLoginResult struct {
-	Begin     *dto.SnapStoreAuthBeginResult
-	Finalized *dto.SnapStoreAuthFinalizeResult
+	Saved *dto.SnapStoreAuthSaveResult
 }
 
-// CharmhubAuthLoginResult contains both halves of a completed Charmhub login workflow.
+// CharmhubAuthLoginResult contains the result of a completed Charmhub login workflow.
 type CharmhubAuthLoginResult struct {
-	Begin     *dto.CharmhubAuthBeginResult
-	Finalized *dto.CharmhubAuthFinalizeResult
+	Saved *dto.CharmhubAuthSaveResult
 }
 
 // AuthClientWorkflow exposes reusable client-side auth workflows for CLI/TUI/MCP frontends.
@@ -182,16 +184,17 @@ func (w *AuthClientWorkflow) BeginSnapStore(ctx context.Context) (*dto.SnapStore
 	return apiClient.AuthSnapStoreBegin(ctx)
 }
 
-// FinalizeSnapStore completes one remote Snap Store auth flow.
-func (w *AuthClientWorkflow) FinalizeSnapStore(ctx context.Context, flowID string) (*dto.SnapStoreAuthFinalizeResult, error) {
+// SaveSnapStoreCredential persists a discharged Snap Store credential through the API.
+func (w *AuthClientWorkflow) SaveSnapStoreCredential(ctx context.Context, macaroon string) (*dto.SnapStoreAuthSaveResult, error) {
 	apiClient, err := w.resolveClient()
 	if err != nil {
 		return nil, err
 	}
-	return apiClient.AuthSnapStoreFinalize(ctx, flowID)
+	return apiClient.AuthSnapStoreSave(ctx, macaroon)
 }
 
-// LoginSnapStore runs the full begin -> authorize -> finalize client workflow.
+// LoginSnapStore runs the full begin -> discharge -> save client workflow.
+// The macaroon discharge runs client-side via httpbakery so the browser opens locally.
 func (w *AuthClientWorkflow) LoginSnapStore(
 	ctx context.Context,
 	handler SnapStoreAuthorizationHandler,
@@ -204,17 +207,21 @@ func (w *AuthClientWorkflow) LoginSnapStore(
 	if err != nil {
 		return nil, err
 	}
-	if err := handler(ctx, begin); err != nil {
+
+	// Discharge the root macaroon client-side.
+	credential, err := sa.DischargeAll(ctx, begin.RootMacaroon, func(u *url.URL) error {
+		return handler(ctx, u.String())
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	finalized, err := w.FinalizeSnapStore(ctx, begin.FlowID)
+	saved, err := w.SaveSnapStoreCredential(ctx, credential)
 	if err != nil {
 		return nil, err
 	}
 	return &SnapStoreAuthLoginResult{
-		Begin:     begin,
-		Finalized: finalized,
+		Saved: saved,
 	}, nil
 }
 
@@ -236,16 +243,17 @@ func (w *AuthClientWorkflow) BeginCharmhub(ctx context.Context) (*dto.CharmhubAu
 	return apiClient.AuthCharmhubBegin(ctx)
 }
 
-// FinalizeCharmhub completes one remote Charmhub auth flow.
-func (w *AuthClientWorkflow) FinalizeCharmhub(ctx context.Context, flowID string) (*dto.CharmhubAuthFinalizeResult, error) {
+// SaveCharmhubCredential persists a discharged Charmhub credential through the API.
+func (w *AuthClientWorkflow) SaveCharmhubCredential(ctx context.Context, macaroon string) (*dto.CharmhubAuthSaveResult, error) {
 	apiClient, err := w.resolveClient()
 	if err != nil {
 		return nil, err
 	}
-	return apiClient.AuthCharmhubFinalize(ctx, flowID)
+	return apiClient.AuthCharmhubSave(ctx, macaroon)
 }
 
-// LoginCharmhub runs the full begin -> authorize -> finalize client workflow.
+// LoginCharmhub runs the full begin -> discharge -> save client workflow.
+// The macaroon discharge runs client-side via httpbakery so the browser opens locally.
 func (w *AuthClientWorkflow) LoginCharmhub(
 	ctx context.Context,
 	handler CharmhubAuthorizationHandler,
@@ -258,17 +266,21 @@ func (w *AuthClientWorkflow) LoginCharmhub(
 	if err != nil {
 		return nil, err
 	}
-	if err := handler(ctx, begin); err != nil {
+
+	// Discharge the root macaroon client-side.
+	credential, err := sa.DischargeAll(ctx, begin.RootMacaroon, func(u *url.URL) error {
+		return handler(ctx, u.String())
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	finalized, err := w.FinalizeCharmhub(ctx, begin.FlowID)
+	saved, err := w.SaveCharmhubCredential(ctx, credential)
 	if err != nil {
 		return nil, err
 	}
 	return &CharmhubAuthLoginResult{
-		Begin:     begin,
-		Finalized: finalized,
+		Saved: saved,
 	}, nil
 }
 

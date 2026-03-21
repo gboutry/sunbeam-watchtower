@@ -10,11 +10,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/ubuntusso"
 	sa "github.com/gboutry/sunbeam-watchtower/pkg/storeauth/v1"
 )
 
@@ -73,25 +71,6 @@ func (a *Authenticator) BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, err
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(defaultFlowTTL),
 	}, nil
-}
-
-// PollAuth discharges the root macaroon using httpbakery with browser-based
-// interaction. openURL is called when the user must visit a URL to authenticate.
-func (a *Authenticator) PollAuth(ctx context.Context, flow *sa.PendingAuthFlow, openURL func(string) error) (string, error) {
-	a.logger.Info("starting httpbakery discharge for snap store")
-
-	credential, err := ubuntusso.DischargeAll(ctx, flow.RootMacaroon, func(u *url.URL) error {
-		a.logger.Info("browser visit required", "url", u.String())
-		if openURL != nil {
-			return openURL(u.String())
-		}
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("discharging snap store macaroon: %w", err)
-	}
-
-	return credential, nil
 }
 
 func (a *Authenticator) requestRootMacaroon(ctx context.Context) (string, error) {

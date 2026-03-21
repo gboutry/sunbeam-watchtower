@@ -106,14 +106,13 @@ func (w *AuthWorkflow) BeginSnapStore(ctx context.Context) (*dto.SnapStoreAuthBe
 	return service.BeginSnapStore(ctx)
 }
 
-// FinalizeSnapStore completes a pending Snap Store authentication flow.
-// openURL is called when the user must visit a URL in their browser to authenticate.
-func (w *AuthWorkflow) FinalizeSnapStore(ctx context.Context, flowID string, openURL func(string) error) (*dto.SnapStoreAuthFinalizeResult, error) {
+// SaveSnapStoreCredential persists a discharged Snap Store credential.
+func (w *AuthWorkflow) SaveSnapStoreCredential(ctx context.Context, macaroon string) (*dto.SnapStoreAuthSaveResult, error) {
 	service, err := w.resolveService()
 	if err != nil {
 		return nil, err
 	}
-	return service.FinalizeSnapStore(ctx, flowID, openURL)
+	return service.SaveSnapStoreCredential(ctx, macaroon)
 }
 
 // LogoutSnapStore clears persisted Snap Store credentials.
@@ -134,14 +133,13 @@ func (w *AuthWorkflow) BeginCharmhub(ctx context.Context) (*dto.CharmhubAuthBegi
 	return service.BeginCharmhub(ctx)
 }
 
-// FinalizeCharmhub completes a pending Charmhub authentication flow.
-// openURL is called when the user must visit a URL in their browser to authenticate.
-func (w *AuthWorkflow) FinalizeCharmhub(ctx context.Context, flowID string, openURL func(string) error) (*dto.CharmhubAuthFinalizeResult, error) {
+// SaveCharmhubCredential persists a discharged Charmhub credential.
+func (w *AuthWorkflow) SaveCharmhubCredential(ctx context.Context, macaroon string) (*dto.CharmhubAuthSaveResult, error) {
 	service, err := w.resolveService()
 	if err != nil {
 		return nil, err
 	}
-	return service.FinalizeCharmhub(ctx, flowID, openURL)
+	return service.SaveCharmhubCredential(ctx, macaroon)
 }
 
 // LogoutCharmhub clears persisted Charmhub credentials.

@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/authflowstore"
 	chadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/charmhub"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/credentials"
 	ghadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/githubauth"
@@ -88,22 +87,6 @@ func (a *App) CharmhubCredentialStore() port.CharmhubCredentialStore {
 	return a.charmhubCredsStore
 }
 
-// SnapStorePendingAuthFlowStore returns the shared pending Snap Store auth flow store.
-func (a *App) SnapStorePendingAuthFlowStore() port.SnapStorePendingAuthFlowStore {
-	a.snapStoreFlowOnce.Do(func() {
-		a.snapStoreFlowStore = authflowstore.NewMemoryStoreFlowStore()
-	})
-	return a.snapStoreFlowStore
-}
-
-// CharmhubPendingAuthFlowStore returns the shared pending Charmhub auth flow store.
-func (a *App) CharmhubPendingAuthFlowStore() port.CharmhubPendingAuthFlowStore {
-	a.charmhubFlowOnce.Do(func() {
-		a.charmhubFlowStore = authflowstore.NewMemoryStoreFlowStore()
-	})
-	return a.charmhubFlowStore
-}
-
 // AuthService creates the shared auth service.
 func (a *App) AuthService() (*authsvc.Service, error) {
 	var githubMutableErr error
@@ -119,10 +102,8 @@ func (a *App) AuthService() (*authsvc.Service, error) {
 		ghadapter.NewAuthenticator(a.GitHubClientID(), a.Logger, a.upstreamHTTPClient("github", 30*time.Second)),
 		githubMutableErr,
 		a.SnapStoreCredentialStore(),
-		a.SnapStorePendingAuthFlowStore(),
 		ssadapter.NewAuthenticator(a.Logger, a.upstreamHTTPClient("snapstore", 30*time.Second)),
 		a.CharmhubCredentialStore(),
-		a.CharmhubPendingAuthFlowStore(),
 		chadapter.NewAuthenticator(a.Logger, a.upstreamHTTPClient("charmhub", 30*time.Second)),
 		a.Logger,
 	), nil
