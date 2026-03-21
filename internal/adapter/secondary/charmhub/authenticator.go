@@ -75,17 +75,15 @@ func (a *Authenticator) BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, err
 }
 
 // PollAuth discharges the root macaroon using httpbakery with browser-based
-// interaction. It opens a browser for the user to authenticate, then returns
-// the serialized credential.
-func (a *Authenticator) PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) (string, error) {
+// interaction. openURL is called when the user must visit a URL to authenticate.
+func (a *Authenticator) PollAuth(ctx context.Context, flow *sa.PendingAuthFlow, openURL func(string) error) (string, error) {
 	a.logger.Info("starting httpbakery discharge for charmhub")
 
-	var visitURL string
 	credential, err := ubuntusso.DischargeAll(ctx, flow.RootMacaroon, func(u *url.URL) error {
-		visitURL = u.String()
-		a.logger.Info("browser visit required", "url", visitURL)
-		// The openURL callback from the caller will handle this.
-		// For now, just record it. The caller wraps this with actual browser opening.
+		a.logger.Info("browser visit required", "url", u.String())
+		if openURL != nil {
+			return openURL(u.String())
+		}
 		return nil
 	})
 	if err != nil {

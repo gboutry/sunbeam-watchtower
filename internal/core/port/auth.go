@@ -70,27 +70,24 @@ type CharmhubCredentialStore interface {
 	Clear(ctx context.Context) error
 }
 
-// SnapStoreAuthenticator performs Snap Store macaroon discharge via Ubuntu SSO.
-type SnapStoreAuthenticator interface {
-	// BeginAuth requests a root macaroon from the store, extracts the
-	// third-party caveat, and initiates an SSO discharge flow.
-	// Returns a pending flow with a URL the user must visit in a browser.
+// StoreAuthenticator performs store macaroon discharge via SSO/Candid.
+// Used for both Snap Store and Charmhub.
+type StoreAuthenticator interface {
+	// BeginAuth requests a root macaroon from the store.
+	// Returns a pending flow containing the root macaroon.
 	BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, error)
 
-	// PollAuth polls the SSO wait URL until the user has authenticated.
-	// Returns the serialized credential (bound macaroon) ready for store API use.
-	PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) (string, error)
+	// PollAuth discharges the root macaroon using httpbakery.
+	// openURL is called when the user must visit a URL in their browser.
+	// Returns the serialized credential ready for store API use.
+	PollAuth(ctx context.Context, flow *sa.PendingAuthFlow, openURL func(url string) error) (string, error)
 }
 
-// CharmhubAuthenticator performs Charmhub macaroon discharge via Ubuntu SSO.
-type CharmhubAuthenticator interface {
-	// BeginAuth requests a root macaroon from Charmhub, extracts the
-	// third-party caveat, and initiates an SSO discharge flow.
-	BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, error)
+// SnapStoreAuthenticator is an alias for StoreAuthenticator used for Snap Store auth.
+type SnapStoreAuthenticator = StoreAuthenticator
 
-	// PollAuth polls the SSO wait URL until the user has authenticated.
-	PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) (string, error)
-}
+// CharmhubAuthenticator is an alias for StoreAuthenticator used for Charmhub auth.
+type CharmhubAuthenticator = StoreAuthenticator
 
 // SnapStorePendingAuthFlowStore stores short-lived pending Snap Store auth flows.
 type SnapStorePendingAuthFlowStore interface {

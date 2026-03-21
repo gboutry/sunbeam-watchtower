@@ -878,7 +878,7 @@ func (a *fakeStoreAuthenticator) BeginAuth(context.Context) (*sa.PendingAuthFlow
 	return a.flow, nil
 }
 
-func (a *fakeStoreAuthenticator) PollAuth(context.Context, *sa.PendingAuthFlow) (string, error) {
+func (a *fakeStoreAuthenticator) PollAuth(_ context.Context, _ *sa.PendingAuthFlow, _ func(string) error) (string, error) {
 	if a.pollErr != nil {
 		return "", a.pollErr
 	}
@@ -1009,7 +1009,7 @@ func TestFinalizeSnapStoreSavesCredentials(t *testing.T) {
 		t.Fatalf("BeginSnapStore() error = %v", err)
 	}
 
-	result, err := svc.FinalizeSnapStore(context.Background(), begin.FlowID)
+	result, err := svc.FinalizeSnapStore(context.Background(), begin.FlowID, nil)
 	if err != nil {
 		t.Fatalf("FinalizeSnapStore() error = %v", err)
 	}
@@ -1073,7 +1073,7 @@ func TestFinalizeSnapStoreUnknownFlow(t *testing.T) {
 	}
 	svc := newServiceWithStoreAuth(store, auth, nil, nil)
 
-	_, err := svc.FinalizeSnapStore(context.Background(), "missing-flow")
+	_, err := svc.FinalizeSnapStore(context.Background(), "missing-flow", nil)
 	if !errors.Is(err, ErrSnapStoreAuthFlowNotFound) {
 		t.Fatalf("FinalizeSnapStore() error = %v, want %v", err, ErrSnapStoreAuthFlowNotFound)
 	}
@@ -1096,7 +1096,7 @@ func TestFinalizeSnapStoreDenied(t *testing.T) {
 		t.Fatalf("BeginSnapStore() error = %v", err)
 	}
 
-	_, err = svc.FinalizeSnapStore(context.Background(), begin.FlowID)
+	_, err = svc.FinalizeSnapStore(context.Background(), begin.FlowID, nil)
 	if !errors.Is(err, ErrSnapStoreAuthDenied) {
 		t.Fatalf("FinalizeSnapStore() error = %v, want %v", err, ErrSnapStoreAuthDenied)
 	}
@@ -1119,7 +1119,7 @@ func TestFinalizeSnapStoreExpired(t *testing.T) {
 		t.Fatalf("BeginSnapStore() error = %v", err)
 	}
 
-	_, err = svc.FinalizeSnapStore(context.Background(), begin.FlowID)
+	_, err = svc.FinalizeSnapStore(context.Background(), begin.FlowID, nil)
 	if !errors.Is(err, ErrSnapStoreAuthFlowExpired) {
 		t.Fatalf("FinalizeSnapStore() error = %v, want %v", err, ErrSnapStoreAuthFlowExpired)
 	}
@@ -1128,7 +1128,7 @@ func TestFinalizeSnapStoreExpired(t *testing.T) {
 func TestFinalizeSnapStoreRejectsNilAuthenticator(t *testing.T) {
 	svc := newServiceWithStores(nil, nil)
 
-	_, err := svc.FinalizeSnapStore(context.Background(), "flow-id")
+	_, err := svc.FinalizeSnapStore(context.Background(), "flow-id", nil)
 	if err == nil {
 		t.Fatal("expected error when authenticator is nil")
 	}
@@ -1220,7 +1220,7 @@ func TestFinalizeCharmhubSavesCredentials(t *testing.T) {
 		t.Fatalf("BeginCharmhub() error = %v", err)
 	}
 
-	result, err := svc.FinalizeCharmhub(context.Background(), begin.FlowID)
+	result, err := svc.FinalizeCharmhub(context.Background(), begin.FlowID, nil)
 	if err != nil {
 		t.Fatalf("FinalizeCharmhub() error = %v", err)
 	}
@@ -1284,7 +1284,7 @@ func TestFinalizeCharmhubUnknownFlow(t *testing.T) {
 	}
 	svc := newServiceWithStoreAuth(nil, nil, store, auth)
 
-	_, err := svc.FinalizeCharmhub(context.Background(), "missing-flow")
+	_, err := svc.FinalizeCharmhub(context.Background(), "missing-flow", nil)
 	if !errors.Is(err, ErrCharmhubAuthFlowNotFound) {
 		t.Fatalf("FinalizeCharmhub() error = %v, want %v", err, ErrCharmhubAuthFlowNotFound)
 	}
@@ -1307,7 +1307,7 @@ func TestFinalizeCharmhubDenied(t *testing.T) {
 		t.Fatalf("BeginCharmhub() error = %v", err)
 	}
 
-	_, err = svc.FinalizeCharmhub(context.Background(), begin.FlowID)
+	_, err = svc.FinalizeCharmhub(context.Background(), begin.FlowID, nil)
 	if !errors.Is(err, ErrCharmhubAuthDenied) {
 		t.Fatalf("FinalizeCharmhub() error = %v, want %v", err, ErrCharmhubAuthDenied)
 	}
@@ -1330,7 +1330,7 @@ func TestFinalizeCharmhubExpired(t *testing.T) {
 		t.Fatalf("BeginCharmhub() error = %v", err)
 	}
 
-	_, err = svc.FinalizeCharmhub(context.Background(), begin.FlowID)
+	_, err = svc.FinalizeCharmhub(context.Background(), begin.FlowID, nil)
 	if !errors.Is(err, ErrCharmhubAuthFlowExpired) {
 		t.Fatalf("FinalizeCharmhub() error = %v, want %v", err, ErrCharmhubAuthFlowExpired)
 	}
@@ -1339,7 +1339,7 @@ func TestFinalizeCharmhubExpired(t *testing.T) {
 func TestFinalizeCharmhubRejectsNilAuthenticator(t *testing.T) {
 	svc := newServiceWithStores(nil, nil)
 
-	_, err := svc.FinalizeCharmhub(context.Background(), "flow-id")
+	_, err := svc.FinalizeCharmhub(context.Background(), "flow-id", nil)
 	if err == nil {
 		t.Fatal("expected error when authenticator is nil")
 	}
