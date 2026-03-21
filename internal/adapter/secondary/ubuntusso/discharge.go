@@ -37,24 +37,14 @@ type dischargeWaitResponse struct {
 	DischargeMacaroon string `json:"discharge_macaroon"`
 }
 
-// ExtractSSOCaveatID decodes a base64-encoded serialized macaroon and returns
+// ExtractSSOCaveatID decodes a serialized macaroon and returns
 // the ID of the third-party caveat issued by login.ubuntu.com.
+// It supports multiple serialization formats: JSON, base64 binary (standard
+// and URL-safe, with and without padding).
 func ExtractSSOCaveatID(serializedMacaroon string, ssoBaseURL string) (string, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(serializedMacaroon)
+	m, err := decodeMacaroonAny(serializedMacaroon)
 	if err != nil {
-		// Try standard base64.
-		raw, err = base64.StdEncoding.DecodeString(serializedMacaroon)
-		if err != nil {
-			return "", fmt.Errorf("decoding macaroon: %w", err)
-		}
-	}
-
-	var m macaroon.Macaroon
-	if err := m.UnmarshalBinary(raw); err != nil {
-		// Try JSON unmarshal as fallback (some stores return JSON-encoded macaroons).
-		if jsonErr := json.Unmarshal([]byte(serializedMacaroon), &m); jsonErr != nil {
-			return "", fmt.Errorf("unmarshaling macaroon (binary: %w, json: %w)", err, jsonErr)
-		}
+		return "", fmt.Errorf("decoding macaroon: %w", err)
 	}
 
 	for _, caveat := range m.Caveats() {
@@ -68,6 +58,39 @@ func ExtractSSOCaveatID(serializedMacaroon string, ssoBaseURL string) (string, e
 	}
 
 	return "", fmt.Errorf("no third-party caveat from login.ubuntu.com found in macaroon")
+}
+
+// decodeMacaroonAny tries multiple deserialization strategies for a macaroon.
+func decodeMacaroonAny(s string) (*macaroon.Macaroon, error) {
+	var m macaroon.Macaroon
+
+	// Try JSON first (Charmhub returns JSON-serialized macaroons).
+	if len(s) > 0 && (s[0] == '{' || s[0] == '"') {
+		if err := json.Unmarshal([]byte(s), &m); err == nil {
+			return &m, nil
+		}
+	}
+
+	// Try JSON even if it doesn't start with { (some APIs wrap in quotes).
+	if err := json.Unmarshal([]byte(s), &m); err == nil {
+		return &m, nil
+	}
+
+	// Try various base64 encodings → binary unmarshal.
+	for _, enc := range []*base64.Encoding{
+		base64.RawURLEncoding,
+		base64.URLEncoding,
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+	} {
+		if raw, err := enc.DecodeString(s); err == nil {
+			if err := m.UnmarshalBinary(raw); err == nil {
+				return &m, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("could not decode macaroon from any supported format (JSON, base64 binary)")
 }
 
 // BeginDischarge initiates a discharge flow with Ubuntu SSO.
@@ -198,53 +221,33 @@ func PollDischarge(ctx context.Context, httpClient *http.Client, waitURL string,
 
 // BindDischarge binds a discharge macaroon to a root macaroon and returns
 // the serialized credential string (base64-encoded root + " " + base64-encoded discharge).
-func BindDischarge(rootMacaroonB64, dischargeMacaroonB64 string) (string, error) {
-	rootRaw, err := decodeMacaroon(rootMacaroonB64)
+func BindDischarge(rootSerialized, dischargeSerialized string) (string, error) {
+	root, err := decodeMacaroonAny(rootSerialized)
 	if err != nil {
 		return "", fmt.Errorf("decoding root macaroon: %w", err)
 	}
 
-	dischargeRaw, err := decodeMacaroon(dischargeMacaroonB64)
+	discharge, err := decodeMacaroonAny(dischargeSerialized)
 	if err != nil {
 		return "", fmt.Errorf("decoding discharge macaroon: %w", err)
 	}
 
-	var root macaroon.Macaroon
-	if err := root.UnmarshalBinary(rootRaw); err != nil {
-		if jsonErr := json.Unmarshal([]byte(rootMacaroonB64), &root); jsonErr != nil {
-			return "", fmt.Errorf("unmarshaling root macaroon: %w", err)
-		}
-	}
-
-	var discharge macaroon.Macaroon
-	if err := discharge.UnmarshalBinary(dischargeRaw); err != nil {
-		if jsonErr := json.Unmarshal([]byte(dischargeMacaroonB64), &discharge); jsonErr != nil {
-			return "", fmt.Errorf("unmarshaling discharge macaroon: %w", err)
-		}
-	}
-
 	discharge.Bind(root.Signature())
 
-	boundDischargeRaw, err := discharge.MarshalBinary()
+	rootBin, err := root.MarshalBinary()
+	if err != nil {
+		return "", fmt.Errorf("marshaling root macaroon: %w", err)
+	}
+
+	dischargeBin, err := discharge.MarshalBinary()
 	if err != nil {
 		return "", fmt.Errorf("marshaling bound discharge macaroon: %w", err)
 	}
 
-	rootB64 := base64.RawURLEncoding.EncodeToString(rootRaw)
-	dischargeB64 := base64.RawURLEncoding.EncodeToString(boundDischargeRaw)
+	rootB64 := base64.RawURLEncoding.EncodeToString(rootBin)
+	dischargeB64 := base64.RawURLEncoding.EncodeToString(dischargeBin)
 
 	return rootB64 + " " + dischargeB64, nil
-}
-
-func decodeMacaroon(s string) ([]byte, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		raw, err = base64.StdEncoding.DecodeString(s)
-		if err != nil {
-			return nil, fmt.Errorf("base64 decode: %w", err)
-		}
-	}
-	return raw, nil
 }
 
 func firstNonEmpty(values ...string) string {
