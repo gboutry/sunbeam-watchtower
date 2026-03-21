@@ -83,10 +83,10 @@ type Service struct {
 
 	snapStoreStore port.SnapStoreCredentialStore
 	snapStoreFlows port.SnapStorePendingAuthFlowStore
-	snapStoreAuth  port.SnapStoreAuthenticator
+	snapStoreAuth  port.StoreAuthenticator
 	charmhubStore  port.CharmhubCredentialStore
 	charmhubFlows  port.CharmhubPendingAuthFlowStore
-	charmhubAuth   port.CharmhubAuthenticator
+	charmhubAuth   port.StoreAuthenticator
 
 	logger    *slog.Logger
 	now       func() time.Time
@@ -144,10 +144,10 @@ func NewServiceWithStores(
 	githubMutableErr error,
 	snapStoreStore port.SnapStoreCredentialStore,
 	snapStoreFlows port.SnapStorePendingAuthFlowStore,
-	snapStoreAuth port.SnapStoreAuthenticator,
+	snapStoreAuth port.StoreAuthenticator,
 	charmhubStore port.CharmhubCredentialStore,
 	charmhubFlows port.CharmhubPendingAuthFlowStore,
-	charmhubAuth port.CharmhubAuthenticator,
+	charmhubAuth port.StoreAuthenticator,
 	logger *slog.Logger,
 ) *Service {
 	if logger == nil {
@@ -513,7 +513,8 @@ func (s *Service) BeginSnapStore(ctx context.Context) (*dto.SnapStoreAuthBeginRe
 }
 
 // FinalizeSnapStore completes a pending Snap Store SSO auth flow and persists credentials.
-func (s *Service) FinalizeSnapStore(ctx context.Context, flowID string) (*dto.SnapStoreAuthFinalizeResult, error) {
+// openURL is called when the user must visit a URL in their browser to authenticate.
+func (s *Service) FinalizeSnapStore(ctx context.Context, flowID string, openURL func(string) error) (*dto.SnapStoreAuthFinalizeResult, error) {
 	if s.snapStoreAuth == nil {
 		return nil, fmt.Errorf("snap store authenticator not configured")
 	}
@@ -533,7 +534,7 @@ func (s *Service) FinalizeSnapStore(ctx context.Context, flowID string) (*dto.Sn
 		}
 	}
 
-	credential, err := s.snapStoreAuth.PollAuth(ctx, flow)
+	credential, err := s.snapStoreAuth.PollAuth(ctx, flow, openURL)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
@@ -631,7 +632,8 @@ func (s *Service) BeginCharmhub(ctx context.Context) (*dto.CharmhubAuthBeginResu
 }
 
 // FinalizeCharmhub completes a pending Charmhub SSO auth flow and persists credentials.
-func (s *Service) FinalizeCharmhub(ctx context.Context, flowID string) (*dto.CharmhubAuthFinalizeResult, error) {
+// openURL is called when the user must visit a URL in their browser to authenticate.
+func (s *Service) FinalizeCharmhub(ctx context.Context, flowID string, openURL func(string) error) (*dto.CharmhubAuthFinalizeResult, error) {
 	if s.charmhubAuth == nil {
 		return nil, fmt.Errorf("charmhub authenticator not configured")
 	}
@@ -651,7 +653,7 @@ func (s *Service) FinalizeCharmhub(ctx context.Context, flowID string) (*dto.Cha
 		}
 	}
 
-	credential, err := s.charmhubAuth.PollAuth(ctx, flow)
+	credential, err := s.charmhubAuth.PollAuth(ctx, flow, openURL)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

@@ -76,12 +76,15 @@ func (a *Authenticator) BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, err
 }
 
 // PollAuth discharges the root macaroon using httpbakery with browser-based
-// interaction. Opens a browser for the user to authenticate via Ubuntu SSO.
-func (a *Authenticator) PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) (string, error) {
+// interaction. openURL is called when the user must visit a URL to authenticate.
+func (a *Authenticator) PollAuth(ctx context.Context, flow *sa.PendingAuthFlow, openURL func(string) error) (string, error) {
 	a.logger.Info("starting httpbakery discharge for snap store")
 
 	credential, err := ubuntusso.DischargeAll(ctx, flow.RootMacaroon, func(u *url.URL) error {
 		a.logger.Info("browser visit required", "url", u.String())
+		if openURL != nil {
+			return openURL(u.String())
+		}
 		return nil
 	})
 	if err != nil {

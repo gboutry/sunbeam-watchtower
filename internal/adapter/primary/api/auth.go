@@ -303,7 +303,7 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Description: "Polls the SSO discharge using the opaque flow ID returned by begin.",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, input *AuthSnapStoreFinalizeInput) (*AuthSnapStoreFinalizeOutput, error) {
-		result, err := facade.Auth().FinalizeSnapStore(ctx, input.Body.FlowID)
+		result, err := facade.Auth().FinalizeSnapStore(ctx, input.Body.FlowID, nil)
 		if err != nil {
 			switch {
 			case errors.Is(err, authsvc.ErrSnapStoreAuthFlowNotFound):
@@ -372,7 +372,7 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 		Description: "Polls the SSO discharge using the opaque flow ID returned by begin.",
 		Tags:        []string{"auth"},
 	}, func(ctx context.Context, input *AuthCharmhubFinalizeInput) (*AuthCharmhubFinalizeOutput, error) {
-		result, err := facade.Auth().FinalizeCharmhub(ctx, input.Body.FlowID)
+		result, err := facade.Auth().FinalizeCharmhub(ctx, input.Body.FlowID, nil)
 		if err != nil {
 			switch {
 			case errors.Is(err, authsvc.ErrCharmhubAuthFlowNotFound):
