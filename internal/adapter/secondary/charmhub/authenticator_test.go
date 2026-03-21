@@ -19,35 +19,34 @@ func discardLogger() *slog.Logger {
 
 func TestAuthenticatorBeginAuthRequestsRootMacaroon(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1/tokens":
-			var req tokensRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("Decode() error = %v", err)
-			}
-			if req.Description != "sunbeam-watchtower" {
-				t.Fatalf("Description = %q, want sunbeam-watchtower", req.Description)
-			}
-			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(tokensResponse{Macaroon: "fake-root-macaroon"})
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		var req tokensRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("Decode() error = %v", err)
 		}
+		if req.Description != "sunbeam-watchtower" {
+			t.Fatalf("Description = %q, want sunbeam-watchtower", req.Description)
+		}
+		if len(req.Permissions) == 0 {
+			t.Fatal("expected permissions")
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(tokensResponse{Macaroon: "fake-root-macaroon"})
 	}))
 	defer srv.Close()
 
 	auth := NewAuthenticator(discardLogger(), srv.Client())
 	auth.tokensEndpoint = srv.URL + "/v1/tokens"
 
-	// This will fail at the caveat extraction step since our fake macaroon
-	// isn't a real macaroon, but that's expected.
-	_, err := auth.BeginAuth(context.Background())
-	if err == nil {
-		t.Fatal("expected error (fake macaroon cannot be decoded)")
+	flow, err := auth.BeginAuth(context.Background())
+	if err != nil {
+		t.Fatalf("BeginAuth() error = %v", err)
+	}
+	if flow.RootMacaroon != "fake-root-macaroon" {
+		t.Fatalf("RootMacaroon = %q, want fake-root-macaroon", flow.RootMacaroon)
 	}
 }
 
-func TestAuthenticatorRequestRootMacaroonRejectsError(t *testing.T) {
+func TestAuthenticatorBeginAuthRejectsHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte("forbidden"))
@@ -63,7 +62,7 @@ func TestAuthenticatorRequestRootMacaroonRejectsError(t *testing.T) {
 	}
 }
 
-func TestAuthenticatorRequestRootMacaroonRejectsEmptyMacaroon(t *testing.T) {
+func TestAuthenticatorBeginAuthRejectsEmptyMacaroon(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(tokensResponse{Macaroon: ""})
 	}))

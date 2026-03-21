@@ -4,143 +4,78 @@
 package ubuntusso
 
 import (
-	"context"
+	"encoding/base64"
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"testing"
-	"time"
+
+	"gopkg.in/macaroon.v2"
 )
 
-func TestBeginDischargeExtractsVisitAndWaitURLs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Fatalf("unexpected method: %s", r.Method)
-		}
-		body, _ := io.ReadAll(r.Body)
-		var req dischargeRequest
-		if err := json.Unmarshal(body, &req); err != nil {
-			t.Fatalf("Unmarshal() error = %v", err)
-		}
-		if req.CaveatID != "test-caveat-id" {
-			t.Fatalf("CaveatID = %q, want test-caveat-id", req.CaveatID)
-		}
-
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"code":      "interaction-required",
-			"message":   "human verification required",
-			"visit_url": "https://login.ubuntu.com/+interact/visit123",
-			"wait_url":  "https://login.ubuntu.com/+interact/wait123",
-		})
-	}))
-	defer srv.Close()
-
-	visitURL, waitURL, err := BeginDischarge(context.Background(), srv.Client(), srv.URL, "test-caveat-id")
+func TestDecodeMacaroonAny_JSON(t *testing.T) {
+	// Create a macaroon and marshal to JSON.
+	m, err := macaroon.New([]byte("root-key"), []byte("id"), "location", macaroon.LatestVersion)
 	if err != nil {
-		t.Fatalf("BeginDischarge() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
-	if visitURL != "https://login.ubuntu.com/+interact/visit123" {
-		t.Fatalf("visitURL = %q", visitURL)
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
 	}
-	if waitURL != "https://login.ubuntu.com/+interact/wait123" {
-		t.Fatalf("waitURL = %q", waitURL)
+
+	decoded, err := decodeMacaroonAny(string(data))
+	if err != nil {
+		t.Fatalf("decodeMacaroonAny() error = %v", err)
+	}
+	if string(decoded.Id()) != "id" {
+		t.Fatalf("Id = %q, want id", decoded.Id())
 	}
 }
 
-func TestBeginDischargeExtractsNestedURLs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"Info": map[string]string{
-				"visit_url": "https://login.ubuntu.com/+candid/visit",
-				"wait_url":  "https://login.ubuntu.com/+candid/wait",
-			},
-		})
-	}))
-	defer srv.Close()
-
-	visitURL, waitURL, err := BeginDischarge(context.Background(), srv.Client(), srv.URL, "caveat")
+func TestDecodeMacaroonAny_Base64Binary(t *testing.T) {
+	m, err := macaroon.New([]byte("root-key"), []byte("id"), "location", macaroon.LatestVersion)
 	if err != nil {
-		t.Fatalf("BeginDischarge() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
-	if visitURL != "https://login.ubuntu.com/+candid/visit" {
-		t.Fatalf("visitURL = %q", visitURL)
+	bin, err := m.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary() error = %v", err)
 	}
-	if waitURL != "https://login.ubuntu.com/+candid/wait" {
-		t.Fatalf("waitURL = %q", waitURL)
+	encoded := base64.StdEncoding.EncodeToString(bin)
+
+	decoded, err := decodeMacaroonAny(encoded)
+	if err != nil {
+		t.Fatalf("decodeMacaroonAny() error = %v", err)
+	}
+	if string(decoded.Id()) != "id" {
+		t.Fatalf("Id = %q, want id", decoded.Id())
 	}
 }
 
-func TestBeginDischargeFailsOnMissingURLs(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"code":    "interaction-required",
-			"message": "missing URLs",
-		})
-	}))
-	defer srv.Close()
-
-	_, _, err := BeginDischarge(context.Background(), srv.Client(), srv.URL, "caveat")
+func TestDecodeMacaroonAny_Invalid(t *testing.T) {
+	_, err := decodeMacaroonAny("not-a-macaroon")
 	if err == nil {
-		t.Fatal("expected error when visit/wait URLs are missing")
+		t.Fatal("expected error for invalid input")
 	}
 }
 
-func TestPollDischargeReturnsOnSuccess(t *testing.T) {
-	callCount := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		callCount++
-		if callCount < 2 {
-			w.WriteHeader(http.StatusAccepted)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(dischargeWaitResponse{
-			DischargeMacaroon: "discharge-mac-b64",
-		})
-	}))
-	defer srv.Close()
-
-	result, err := PollDischarge(context.Background(), srv.Client(), srv.URL, 10*time.Millisecond)
+func TestSerializeMacaroonSlice(t *testing.T) {
+	m, err := macaroon.New([]byte("key"), []byte("id"), "loc", macaroon.LatestVersion)
 	if err != nil {
-		t.Fatalf("PollDischarge() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
-	if result != "discharge-mac-b64" {
-		t.Fatalf("result = %q, want discharge-mac-b64", result)
+
+	result, err := serializeMacaroonSlice(macaroon.Slice{m})
+	if err != nil {
+		t.Fatalf("serializeMacaroonSlice() error = %v", err)
 	}
-	if callCount < 2 {
-		t.Fatalf("callCount = %d, expected at least 2", callCount)
+	if result == "" {
+		t.Fatal("expected non-empty result")
 	}
 }
 
-func TestPollDischargeRespectsContext(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer srv.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	_, err := PollDischarge(ctx, srv.Client(), srv.URL, 10*time.Millisecond)
+func TestSerializeMacaroonSlice_Empty(t *testing.T) {
+	_, err := serializeMacaroonSlice(macaroon.Slice{})
 	if err == nil {
-		t.Fatal("expected context deadline error")
-	}
-}
-
-func TestFirstNonEmpty(t *testing.T) {
-	tests := []struct {
-		values []string
-		want   string
-	}{
-		{[]string{"", "", "c"}, "c"},
-		{[]string{"a", "b"}, "a"},
-		{[]string{"", ""}, ""},
-	}
-	for _, tt := range tests {
-		got := firstNonEmpty(tt.values...)
-		if got != tt.want {
-			t.Errorf("firstNonEmpty(%v) = %q, want %q", tt.values, got, tt.want)
-		}
+		t.Fatal("expected error for empty slice")
 	}
 }

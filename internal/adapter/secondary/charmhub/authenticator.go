@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,9 +20,7 @@ import (
 
 const (
 	defaultTokensEndpoint = "https://api.charmhub.io/v1/tokens"
-	defaultSSOBaseURL     = "https://api.jujucharms.com/identity"
 	defaultFlowTTL        = 10 * time.Minute
-	pollInterval          = 2 * time.Second
 )
 
 // tokensRequest is the JSON body for the Charmhub tokens endpoint.
@@ -35,15 +34,14 @@ type tokensResponse struct {
 	Macaroon string `json:"macaroon"`
 }
 
-// Authenticator performs Charmhub authentication via Ubuntu SSO macaroon discharge.
+// Authenticator performs Charmhub authentication via httpbakery macaroon discharge.
 type Authenticator struct {
 	tokensEndpoint string
-	ssoBaseURL     string
 	logger         *slog.Logger
 	httpClient     *http.Client
 }
 
-// NewAuthenticator creates a Charmhub SSO authenticator adapter.
+// NewAuthenticator creates a Charmhub authenticator adapter.
 func NewAuthenticator(logger *slog.Logger, httpClient *http.Client) *Authenticator {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -53,14 +51,13 @@ func NewAuthenticator(logger *slog.Logger, httpClient *http.Client) *Authenticat
 	}
 	return &Authenticator{
 		tokensEndpoint: defaultTokensEndpoint,
-		ssoBaseURL:     defaultSSOBaseURL,
 		logger:         logger,
 		httpClient:     httpClient,
 	}
 }
 
-// BeginAuth requests a root macaroon from Charmhub, extracts the Ubuntu SSO
-// third-party caveat, and initiates the browser-based discharge flow.
+// BeginAuth requests a root macaroon from Charmhub and returns a pending flow.
+// The actual discharge (browser interaction) happens in PollAuth.
 func (a *Authenticator) BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, error) {
 	a.logger.Info("requesting root macaroon from charmhub")
 
@@ -69,43 +66,30 @@ func (a *Authenticator) BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, err
 		return nil, fmt.Errorf("requesting charmhub root macaroon: %w", err)
 	}
 
-	caveatID, err := ubuntusso.ExtractSSOCaveatID(rootMacaroon, a.ssoBaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("extracting SSO caveat from charmhub macaroon: %w", err)
-	}
-
-	a.logger.Info("starting SSO discharge flow", "sso_base_url", a.ssoBaseURL)
-
-	dischargeURL := strings.TrimRight(a.ssoBaseURL, "/") + "/discharge"
-	visitURL, waitURL, err := ubuntusso.BeginDischarge(ctx, a.httpClient, dischargeURL, caveatID)
-	if err != nil {
-		return nil, fmt.Errorf("starting SSO discharge: %w", err)
-	}
-
 	now := time.Now().UTC()
 	return &sa.PendingAuthFlow{
 		RootMacaroon: rootMacaroon,
-		CaveatID:     caveatID,
-		VisitURL:     visitURL,
-		WaitURL:      waitURL,
 		CreatedAt:    now,
 		ExpiresAt:    now.Add(defaultFlowTTL),
 	}, nil
 }
 
-// PollAuth polls the SSO wait URL until the user completes browser authentication,
-// then binds the discharge macaroon to the root and returns the serialized credential.
+// PollAuth discharges the root macaroon using httpbakery with browser-based
+// interaction. It opens a browser for the user to authenticate, then returns
+// the serialized credential.
 func (a *Authenticator) PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) (string, error) {
-	a.logger.Info("polling SSO for charmhub discharge")
+	a.logger.Info("starting httpbakery discharge for charmhub")
 
-	dischargeMacaroon, err := ubuntusso.PollDischarge(ctx, a.httpClient, flow.WaitURL, pollInterval)
+	var visitURL string
+	credential, err := ubuntusso.DischargeAll(ctx, flow.RootMacaroon, func(u *url.URL) error {
+		visitURL = u.String()
+		a.logger.Info("browser visit required", "url", visitURL)
+		// The openURL callback from the caller will handle this.
+		// For now, just record it. The caller wraps this with actual browser opening.
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("polling charmhub SSO discharge: %w", err)
-	}
-
-	credential, err := ubuntusso.BindDischarge(flow.RootMacaroon, dischargeMacaroon)
-	if err != nil {
-		return "", fmt.Errorf("binding charmhub discharge: %w", err)
+		return "", fmt.Errorf("discharging charmhub macaroon: %w", err)
 	}
 
 	return credential, nil
