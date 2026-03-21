@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultTokensEndpoint = "https://api.charmhub.io/v1/tokens"
-	defaultSSOBaseURL     = "https://login.ubuntu.com"
+	defaultSSOBaseURL     = "https://api.jujucharms.com/identity"
 	defaultFlowTTL        = 10 * time.Minute
 	pollInterval          = 2 * time.Second
 )
@@ -76,7 +76,8 @@ func (a *Authenticator) BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, err
 
 	a.logger.Info("starting SSO discharge flow", "sso_base_url", a.ssoBaseURL)
 
-	visitURL, waitURL, err := ubuntusso.BeginDischarge(ctx, a.httpClient, a.ssoBaseURL, caveatID)
+	dischargeURL := strings.TrimRight(a.ssoBaseURL, "/") + "/discharge"
+	visitURL, waitURL, err := ubuntusso.BeginDischarge(ctx, a.httpClient, dischargeURL, caveatID)
 	if err != nil {
 		return nil, fmt.Errorf("starting SSO discharge: %w", err)
 	}

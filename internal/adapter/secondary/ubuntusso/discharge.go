@@ -47,8 +47,12 @@ func ExtractSSOCaveatID(serializedMacaroon string, ssoBaseURL string) (string, e
 		return "", fmt.Errorf("decoding macaroon: %w", err)
 	}
 
+	var locations []string
 	for _, caveat := range m.Caveats() {
 		loc := caveat.Location
+		if loc != "" {
+			locations = append(locations, loc)
+		}
 		if loc != "" && strings.Contains(loc, "login.ubuntu.com") {
 			return string(caveat.Id), nil
 		}
@@ -57,7 +61,7 @@ func ExtractSSOCaveatID(serializedMacaroon string, ssoBaseURL string) (string, e
 		}
 	}
 
-	return "", fmt.Errorf("no third-party caveat from login.ubuntu.com found in macaroon")
+	return "", fmt.Errorf("no third-party caveat from login.ubuntu.com found in macaroon (caveat locations: %v, total caveats: %d)", locations, len(m.Caveats()))
 }
 
 // decodeMacaroonAny tries multiple deserialization strategies for a macaroon.
@@ -93,20 +97,18 @@ func decodeMacaroonAny(s string) (*macaroon.Macaroon, error) {
 	return nil, fmt.Errorf("could not decode macaroon from any supported format (JSON, base64 binary)")
 }
 
-// BeginDischarge initiates a discharge flow with Ubuntu SSO.
-// It POSTs the caveat_id and expects a 401 response with interaction info,
-// or alternatively parses visit/wait URLs from the response body.
-func BeginDischarge(ctx context.Context, httpClient *http.Client, ssoBaseURL, caveatID string) (visitURL, waitURL string, err error) {
-	if ssoBaseURL == "" {
-		ssoBaseURL = DefaultSSOBaseURL
-	}
-
+// BeginDischarge initiates a discharge flow with an identity provider.
+// It POSTs the caveat_id to the discharge endpoint and expects interaction
+// info with visit/wait URLs. The dischargeURL should be the full URL
+// (e.g. "https://login.ubuntu.com/api/v2/tokens/discharge" or
+// "https://api.jujucharms.com/identity/discharge").
+func BeginDischarge(ctx context.Context, httpClient *http.Client, dischargeURL, caveatID string) (visitURL, waitURL string, err error) {
 	body, err := json.Marshal(dischargeRequest{CaveatID: caveatID})
 	if err != nil {
 		return "", "", fmt.Errorf("marshaling discharge request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ssoBaseURL+DischargeEndpoint, strings.NewReader(string(body)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, dischargeURL, strings.NewReader(string(body)))
 	if err != nil {
 		return "", "", fmt.Errorf("creating discharge request: %w", err)
 	}
