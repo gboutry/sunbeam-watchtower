@@ -20,8 +20,8 @@ func discardLogger() *slog.Logger {
 func TestAuthenticatorBeginAuthRequestsRootMacaroon(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/dev/api/acl/":
-			var req aclRequest
+		case "/api/v2/tokens":
+			var req tokensRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				t.Fatalf("Decode() error = %v", err)
 			}
@@ -31,7 +31,7 @@ func TestAuthenticatorBeginAuthRequestsRootMacaroon(t *testing.T) {
 			// Return a fake macaroon - since we can't easily construct a real one
 			// with third-party caveats in a unit test, we'll just verify the HTTP call.
 			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(aclResponse{Macaroon: "fake-root-macaroon"})
+			_ = json.NewEncoder(w).Encode(tokensResponse{Macaroon: "fake-root-macaroon"})
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -39,7 +39,7 @@ func TestAuthenticatorBeginAuthRequestsRootMacaroon(t *testing.T) {
 	defer srv.Close()
 
 	auth := NewAuthenticator(discardLogger(), srv.Client())
-	auth.aclEndpoint = srv.URL + "/dev/api/acl/"
+	auth.tokensEndpoint = srv.URL + "/api/v2/tokens"
 
 	// This will fail at the caveat extraction step since our fake macaroon
 	// isn't a real macaroon, but that's expected - we're testing the HTTP call.
@@ -61,7 +61,7 @@ func TestAuthenticatorRequestRootMacaroonRejectsError(t *testing.T) {
 	defer srv.Close()
 
 	auth := NewAuthenticator(discardLogger(), srv.Client())
-	auth.aclEndpoint = srv.URL + "/dev/api/acl/"
+	auth.tokensEndpoint = srv.URL + "/api/v2/tokens"
 
 	_, err := auth.BeginAuth(context.Background())
 	if err == nil {
@@ -71,12 +71,12 @@ func TestAuthenticatorRequestRootMacaroonRejectsError(t *testing.T) {
 
 func TestAuthenticatorRequestRootMacaroonRejectsEmptyMacaroon(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(aclResponse{Macaroon: ""})
+		_ = json.NewEncoder(w).Encode(tokensResponse{Macaroon: ""})
 	}))
 	defer srv.Close()
 
 	auth := NewAuthenticator(discardLogger(), srv.Client())
-	auth.aclEndpoint = srv.URL + "/dev/api/acl/"
+	auth.tokensEndpoint = srv.URL + "/api/v2/tokens"
 
 	_, err := auth.BeginAuth(context.Background())
 	if err == nil {
