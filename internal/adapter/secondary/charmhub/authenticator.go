@@ -26,14 +26,8 @@ const (
 
 // tokensRequest is the JSON body for the Charmhub tokens endpoint.
 type tokensRequest struct {
-	Description string             `json:"description"`
-	Permissions []tokensPermission `json:"permissions"`
-}
-
-// tokensPermission describes a single Charmhub permission grant.
-type tokensPermission struct {
-	Type    string   `json:"type"`
-	Actions []string `json:"actions,omitempty"`
+	Description string   `json:"description"`
+	Permissions []string `json:"permissions"`
 }
 
 // tokensResponse is the JSON body returned by the Charmhub tokens endpoint.
@@ -119,9 +113,11 @@ func (a *Authenticator) PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) 
 func (a *Authenticator) requestRootMacaroon(ctx context.Context) (string, error) {
 	body, err := json.Marshal(tokensRequest{
 		Description: "sunbeam-watchtower",
-		Permissions: []tokensPermission{
-			{Type: "account", Actions: []string{"view-account"}},
-			{Type: "package", Actions: []string{"view", "push", "release"}},
+		Permissions: []string{
+			"account-view-packages",
+			"package-manage-acl",
+			"package-view",
+			"package-view-acl",
 		},
 	})
 	if err != nil {
