@@ -26,10 +26,11 @@ const (
 	DischargeEndpoint = "/api/v2/tokens/discharge"
 )
 
-// dischargeRequest is the JSON body for the SSO discharge endpoint.
+// dischargeRequest is the JSON body for SSO/Candid discharge endpoints.
+// Ubuntu SSO uses "caveat_id", Candid uses "id" — we send both.
 type dischargeRequest struct {
-	Permissions []string `json:"permissions,omitempty"`
-	CaveatID    string   `json:"caveat_id"`
+	ID       string `json:"id"`
+	CaveatID string `json:"caveat_id"`
 }
 
 // dischargeWaitResponse is the response from the wait URL.
@@ -103,7 +104,7 @@ func decodeMacaroonAny(s string) (*macaroon.Macaroon, error) {
 // (e.g. "https://login.ubuntu.com/api/v2/tokens/discharge" or
 // "https://api.jujucharms.com/identity/discharge").
 func BeginDischarge(ctx context.Context, httpClient *http.Client, dischargeURL, caveatID string) (visitURL, waitURL string, err error) {
-	body, err := json.Marshal(dischargeRequest{CaveatID: caveatID})
+	body, err := json.Marshal(dischargeRequest{ID: caveatID, CaveatID: caveatID})
 	if err != nil {
 		return "", "", fmt.Errorf("marshaling discharge request: %w", err)
 	}
