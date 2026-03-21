@@ -77,12 +77,6 @@ type App struct {
 	ghFlowOnce  sync.Once
 	ghFlowStore port.GitHubPendingAuthFlowStore
 
-	snapStoreFlowOnce  sync.Once
-	snapStoreFlowStore port.SnapStorePendingAuthFlowStore
-
-	charmhubFlowOnce  sync.Once
-	charmhubFlowStore port.CharmhubPendingAuthFlowStore
-
 	excusesOnce  sync.Once
 	excusesCache *excusescache.Cache
 	excusesErr   error

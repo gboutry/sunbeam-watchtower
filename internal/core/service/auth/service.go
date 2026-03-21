@@ -17,7 +17,6 @@ import (
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
-	sa "github.com/gboutry/sunbeam-watchtower/pkg/storeauth/v1"
 )
 
 const (
@@ -52,22 +51,10 @@ var (
 	ErrSnapStoreEnvironmentCredentials = errors.New(
 		"snap store credentials are provided by environment variables and cannot be modified",
 	)
-	// ErrSnapStoreAuthFlowNotFound indicates the requested pending auth flow was not found.
-	ErrSnapStoreAuthFlowNotFound = errors.New("snap store auth flow not found")
-	// ErrSnapStoreAuthFlowExpired indicates the requested pending auth flow has expired.
-	ErrSnapStoreAuthFlowExpired = errors.New("snap store auth flow expired")
-	// ErrSnapStoreAuthDenied indicates the SSO flow was denied by the user.
-	ErrSnapStoreAuthDenied = errors.New("snap store auth denied")
 	// ErrCharmhubEnvironmentCredentials indicates login/logout cannot alter env-provided credentials.
 	ErrCharmhubEnvironmentCredentials = errors.New(
 		"charmhub credentials are provided by environment variables and cannot be modified",
 	)
-	// ErrCharmhubAuthFlowNotFound indicates the requested pending auth flow was not found.
-	ErrCharmhubAuthFlowNotFound = errors.New("charmhub auth flow not found")
-	// ErrCharmhubAuthFlowExpired indicates the requested pending auth flow has expired.
-	ErrCharmhubAuthFlowExpired = errors.New("charmhub auth flow expired")
-	// ErrCharmhubAuthDenied indicates the SSO flow was denied by the user.
-	ErrCharmhubAuthDenied = errors.New("charmhub auth denied")
 )
 
 // Service exposes application-surface authentication workflows.
@@ -82,10 +69,8 @@ type Service struct {
 	githubMutableErr error
 
 	snapStoreStore port.SnapStoreCredentialStore
-	snapStoreFlows port.SnapStorePendingAuthFlowStore
 	snapStoreAuth  port.StoreAuthenticator
 	charmhubStore  port.CharmhubCredentialStore
-	charmhubFlows  port.CharmhubPendingAuthFlowStore
 	charmhubAuth   port.StoreAuthenticator
 
 	logger    *slog.Logger
@@ -127,8 +112,8 @@ func NewServiceWithGitHub(
 	return NewServiceWithStores(
 		launchpadStore, launchpadFlows, launchpadAuth,
 		githubStore, githubFlows, githubAuth, githubMutableErr,
-		nil, nil, nil,
-		nil, nil, nil,
+		nil, nil,
+		nil, nil,
 		logger,
 	)
 }
@@ -143,10 +128,8 @@ func NewServiceWithStores(
 	githubAuth port.GitHubAuthenticator,
 	githubMutableErr error,
 	snapStoreStore port.SnapStoreCredentialStore,
-	snapStoreFlows port.SnapStorePendingAuthFlowStore,
 	snapStoreAuth port.StoreAuthenticator,
 	charmhubStore port.CharmhubCredentialStore,
-	charmhubFlows port.CharmhubPendingAuthFlowStore,
 	charmhubAuth port.StoreAuthenticator,
 	logger *slog.Logger,
 ) *Service {
@@ -162,10 +145,8 @@ func NewServiceWithStores(
 		githubAuth:       githubAuth,
 		githubMutableErr: githubMutableErr,
 		snapStoreStore:   snapStoreStore,
-		snapStoreFlows:   snapStoreFlows,
 		snapStoreAuth:    snapStoreAuth,
 		charmhubStore:    charmhubStore,
-		charmhubFlows:    charmhubFlows,
 		charmhubAuth:     charmhubAuth,
 		logger:           logger,
 		now:              time.Now,
@@ -473,7 +454,8 @@ func (s *Service) githubStatus(
 	return status, nil
 }
 
-// BeginSnapStore starts a new Snap Store SSO auth flow and stores its server-side state.
+// BeginSnapStore requests a root macaroon from the Snap Store.
+// The client must discharge this macaroon locally using httpbakery.
 func (s *Service) BeginSnapStore(ctx context.Context) (*dto.SnapStoreAuthBeginResult, error) {
 	if s.snapStoreAuth == nil {
 		return nil, fmt.Errorf("snap store authenticator not configured")
@@ -493,73 +475,24 @@ func (s *Service) BeginSnapStore(ctx context.Context) (*dto.SnapStoreAuthBeginRe
 	if err != nil {
 		return nil, fmt.Errorf("starting snap store auth: %w", err)
 	}
-	flowID, err := s.newFlowID()
-	if err != nil {
-		return nil, fmt.Errorf("generating auth flow ID: %w", err)
-	}
-	flow.ID = flowID
-
-	if s.snapStoreFlows != nil {
-		if err := s.snapStoreFlows.Put(ctx, flow); err != nil {
-			return nil, fmt.Errorf("storing snap store auth flow: %w", err)
-		}
-	}
 
 	return &dto.SnapStoreAuthBeginResult{
-		FlowID:    flow.ID,
-		VisitURL:  flow.VisitURL,
-		ExpiresAt: flow.ExpiresAt,
+		RootMacaroon: flow.RootMacaroon,
 	}, nil
 }
 
-// FinalizeSnapStore completes a pending Snap Store SSO auth flow and persists credentials.
-// openURL is called when the user must visit a URL in their browser to authenticate.
-func (s *Service) FinalizeSnapStore(ctx context.Context, flowID string, openURL func(string) error) (*dto.SnapStoreAuthFinalizeResult, error) {
-	if s.snapStoreAuth == nil {
-		return nil, fmt.Errorf("snap store authenticator not configured")
-	}
-	if s.snapStoreFlows == nil {
-		return nil, fmt.Errorf("snap store flow store not configured")
+// SaveSnapStoreCredential persists a discharged Snap Store credential.
+func (s *Service) SaveSnapStoreCredential(ctx context.Context, macaroon string) (*dto.SnapStoreAuthSaveResult, error) {
+	if s.snapStoreStore == nil {
+		return nil, fmt.Errorf("snap store credential store not configured")
 	}
 
-	flow, err := s.snapStoreFlows.Get(ctx, flowID)
-	if err != nil {
-		switch {
-		case errors.Is(err, sa.ErrPendingAuthFlowNotFound):
-			return nil, ErrSnapStoreAuthFlowNotFound
-		case errors.Is(err, sa.ErrPendingAuthFlowExpired):
-			return nil, ErrSnapStoreAuthFlowExpired
-		default:
-			return nil, fmt.Errorf("loading snap store auth flow: %w", err)
-		}
-	}
-
-	credential, err := s.snapStoreAuth.PollAuth(ctx, flow, openURL)
-	if err != nil {
-		switch {
-		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-			return nil, err
-		case errors.Is(err, sa.ErrDischargeDenied):
-			_ = s.snapStoreFlows.Delete(ctx, flowID)
-			return nil, ErrSnapStoreAuthDenied
-		case errors.Is(err, sa.ErrDischargeExpired):
-			_ = s.snapStoreFlows.Delete(ctx, flowID)
-			return nil, ErrSnapStoreAuthFlowExpired
-		default:
-			return nil, fmt.Errorf("polling snap store SSO discharge: %w", err)
-		}
-	}
-
-	if err := s.snapStoreFlows.Delete(ctx, flowID); err != nil {
-		return nil, fmt.Errorf("deleting completed snap store auth flow: %w", err)
-	}
-
-	saved, err := s.snapStoreStore.Save(ctx, credential)
+	saved, err := s.snapStoreStore.Save(ctx, macaroon)
 	if err != nil {
 		return nil, fmt.Errorf("saving snap store credentials: %w", err)
 	}
 
-	return &dto.SnapStoreAuthFinalizeResult{
+	return &dto.SnapStoreAuthSaveResult{
 		SnapStore: dto.SnapStoreAuthStatus{
 			Authenticated:   true,
 			Source:          saved.Source,
@@ -592,7 +525,8 @@ func (s *Service) LogoutSnapStore(ctx context.Context) (*dto.SnapStoreAuthLogout
 	}, nil
 }
 
-// BeginCharmhub starts a new Charmhub SSO auth flow and stores its server-side state.
+// BeginCharmhub requests a root macaroon from Charmhub.
+// The client must discharge this macaroon locally using httpbakery.
 func (s *Service) BeginCharmhub(ctx context.Context) (*dto.CharmhubAuthBeginResult, error) {
 	if s.charmhubAuth == nil {
 		return nil, fmt.Errorf("charmhub authenticator not configured")
@@ -612,73 +546,24 @@ func (s *Service) BeginCharmhub(ctx context.Context) (*dto.CharmhubAuthBeginResu
 	if err != nil {
 		return nil, fmt.Errorf("starting charmhub auth: %w", err)
 	}
-	flowID, err := s.newFlowID()
-	if err != nil {
-		return nil, fmt.Errorf("generating auth flow ID: %w", err)
-	}
-	flow.ID = flowID
-
-	if s.charmhubFlows != nil {
-		if err := s.charmhubFlows.Put(ctx, flow); err != nil {
-			return nil, fmt.Errorf("storing charmhub auth flow: %w", err)
-		}
-	}
 
 	return &dto.CharmhubAuthBeginResult{
-		FlowID:    flow.ID,
-		VisitURL:  flow.VisitURL,
-		ExpiresAt: flow.ExpiresAt,
+		RootMacaroon: flow.RootMacaroon,
 	}, nil
 }
 
-// FinalizeCharmhub completes a pending Charmhub SSO auth flow and persists credentials.
-// openURL is called when the user must visit a URL in their browser to authenticate.
-func (s *Service) FinalizeCharmhub(ctx context.Context, flowID string, openURL func(string) error) (*dto.CharmhubAuthFinalizeResult, error) {
-	if s.charmhubAuth == nil {
-		return nil, fmt.Errorf("charmhub authenticator not configured")
-	}
-	if s.charmhubFlows == nil {
-		return nil, fmt.Errorf("charmhub flow store not configured")
+// SaveCharmhubCredential persists a discharged Charmhub credential.
+func (s *Service) SaveCharmhubCredential(ctx context.Context, macaroon string) (*dto.CharmhubAuthSaveResult, error) {
+	if s.charmhubStore == nil {
+		return nil, fmt.Errorf("charmhub credential store not configured")
 	}
 
-	flow, err := s.charmhubFlows.Get(ctx, flowID)
-	if err != nil {
-		switch {
-		case errors.Is(err, sa.ErrPendingAuthFlowNotFound):
-			return nil, ErrCharmhubAuthFlowNotFound
-		case errors.Is(err, sa.ErrPendingAuthFlowExpired):
-			return nil, ErrCharmhubAuthFlowExpired
-		default:
-			return nil, fmt.Errorf("loading charmhub auth flow: %w", err)
-		}
-	}
-
-	credential, err := s.charmhubAuth.PollAuth(ctx, flow, openURL)
-	if err != nil {
-		switch {
-		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-			return nil, err
-		case errors.Is(err, sa.ErrDischargeDenied):
-			_ = s.charmhubFlows.Delete(ctx, flowID)
-			return nil, ErrCharmhubAuthDenied
-		case errors.Is(err, sa.ErrDischargeExpired):
-			_ = s.charmhubFlows.Delete(ctx, flowID)
-			return nil, ErrCharmhubAuthFlowExpired
-		default:
-			return nil, fmt.Errorf("polling charmhub SSO discharge: %w", err)
-		}
-	}
-
-	if err := s.charmhubFlows.Delete(ctx, flowID); err != nil {
-		return nil, fmt.Errorf("deleting completed charmhub auth flow: %w", err)
-	}
-
-	saved, err := s.charmhubStore.Save(ctx, credential)
+	saved, err := s.charmhubStore.Save(ctx, macaroon)
 	if err != nil {
 		return nil, fmt.Errorf("saving charmhub credentials: %w", err)
 	}
 
-	return &dto.CharmhubAuthFinalizeResult{
+	return &dto.CharmhubAuthSaveResult{
 		Charmhub: dto.CharmhubAuthStatus{
 			Authenticated:   true,
 			Source:          saved.Source,

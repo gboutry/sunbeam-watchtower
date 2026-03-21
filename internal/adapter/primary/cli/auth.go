@@ -220,20 +220,20 @@ func newAuthSnapStoreLoginCmd(opts *Options) *cobra.Command {
 			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
 			fmt.Fprintln(opts.Out, "Starting Snap Store SSO flow...")
 			workflow := opts.Frontend().Auth()
-			login, err := workflow.LoginSnapStore(cmd.Context(), func(ctx context.Context, begin *dto.SnapStoreAuthBeginResult) error {
-				fmt.Fprintf(opts.Out, "\n%s\n\n  %s\n\n%s\n", styler.Section("Open this URL in your browser to authenticate:"), styler.DetailValue("URL", begin.VisitURL), styler.Key("Waiting for Snap Store authorization..."))
+			login, err := workflow.LoginSnapStore(cmd.Context(), func(ctx context.Context, visitURL string) error {
+				fmt.Fprintf(opts.Out, "\n%s\n\n  %s\n\n%s\n", styler.Section("Open this URL in your browser to authenticate:"), styler.DetailValue("URL", visitURL), styler.Key("Waiting for Snap Store authorization..."))
 				return nil
 			})
 			if err != nil {
 				return err
 			}
 
-			finalized := login.Finalized
-			if finalized.SnapStore.Authenticated {
+			saved := login.Saved
+			if saved.SnapStore.Authenticated {
 				fmt.Fprintf(opts.Out, "%s\n", styler.Action("Snap Store credentials saved."))
 			}
-			if finalized.SnapStore.CredentialsPath != "" {
-				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), finalized.SnapStore.CredentialsPath)
+			if saved.SnapStore.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), saved.SnapStore.CredentialsPath)
 			}
 			return nil
 		},
@@ -284,20 +284,20 @@ func newAuthCharmhubLoginCmd(opts *Options) *cobra.Command {
 			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
 			fmt.Fprintln(opts.Out, "Starting Charmhub SSO flow...")
 			workflow := opts.Frontend().Auth()
-			login, err := workflow.LoginCharmhub(cmd.Context(), func(ctx context.Context, begin *dto.CharmhubAuthBeginResult) error {
-				fmt.Fprintf(opts.Out, "\n%s\n\n  %s\n\n%s\n", styler.Section("Open this URL in your browser to authenticate:"), styler.DetailValue("URL", begin.VisitURL), styler.Key("Waiting for Charmhub authorization..."))
+			login, err := workflow.LoginCharmhub(cmd.Context(), func(ctx context.Context, visitURL string) error {
+				fmt.Fprintf(opts.Out, "\n%s\n\n  %s\n\n%s\n", styler.Section("Open this URL in your browser to authenticate:"), styler.DetailValue("URL", visitURL), styler.Key("Waiting for Charmhub authorization..."))
 				return nil
 			})
 			if err != nil {
 				return err
 			}
 
-			finalized := login.Finalized
-			if finalized.Charmhub.Authenticated {
+			saved := login.Saved
+			if saved.Charmhub.Authenticated {
 				fmt.Fprintf(opts.Out, "%s\n", styler.Action("Charmhub credentials saved."))
 			}
-			if finalized.Charmhub.CredentialsPath != "" {
-				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), finalized.Charmhub.CredentialsPath)
+			if saved.Charmhub.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), saved.Charmhub.CredentialsPath)
 			}
 			return nil
 		},
