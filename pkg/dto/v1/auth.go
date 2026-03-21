@@ -108,13 +108,23 @@ type SnapStoreAuthStatus struct {
 // SchemaName disambiguates SnapStoreAuthStatus in OpenAPI generation.
 func (SnapStoreAuthStatus) SchemaName() string { return "SnapStoreAuthStatus" }
 
-// SnapStoreAuthLoginResult contains the resulting Snap Store auth status after login.
-type SnapStoreAuthLoginResult struct {
+// SnapStoreAuthBeginResult contains the public state needed to continue SSO discharge.
+type SnapStoreAuthBeginResult struct {
+	FlowID    string    `json:"flow_id"`
+	VisitURL  string    `json:"visit_url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// SchemaName disambiguates SnapStoreAuthBeginResult in OpenAPI generation.
+func (SnapStoreAuthBeginResult) SchemaName() string { return "SnapStoreAuthBeginResult" }
+
+// SnapStoreAuthFinalizeResult contains the resulting Snap Store auth status after finalize.
+type SnapStoreAuthFinalizeResult struct {
 	SnapStore SnapStoreAuthStatus `json:"snap_store"`
 }
 
-// SchemaName disambiguates SnapStoreAuthLoginResult in OpenAPI generation.
-func (SnapStoreAuthLoginResult) SchemaName() string { return "SnapStoreAuthLoginResult" }
+// SchemaName disambiguates SnapStoreAuthFinalizeResult in OpenAPI generation.
+func (SnapStoreAuthFinalizeResult) SchemaName() string { return "SnapStoreAuthFinalizeResult" }
 
 // SnapStoreAuthLogoutResult describes the outcome of a Snap Store logout operation.
 type SnapStoreAuthLogoutResult struct {
@@ -135,13 +145,23 @@ type CharmhubAuthStatus struct {
 // SchemaName disambiguates CharmhubAuthStatus in OpenAPI generation.
 func (CharmhubAuthStatus) SchemaName() string { return "CharmhubAuthStatus" }
 
-// CharmhubAuthLoginResult contains the resulting Charmhub auth status after login.
-type CharmhubAuthLoginResult struct {
+// CharmhubAuthBeginResult contains the public state needed to continue SSO discharge.
+type CharmhubAuthBeginResult struct {
+	FlowID    string    `json:"flow_id"`
+	VisitURL  string    `json:"visit_url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// SchemaName disambiguates CharmhubAuthBeginResult in OpenAPI generation.
+func (CharmhubAuthBeginResult) SchemaName() string { return "CharmhubAuthBeginResult" }
+
+// CharmhubAuthFinalizeResult contains the resulting Charmhub auth status after finalize.
+type CharmhubAuthFinalizeResult struct {
 	Charmhub CharmhubAuthStatus `json:"charmhub"`
 }
 
-// SchemaName disambiguates CharmhubAuthLoginResult in OpenAPI generation.
-func (CharmhubAuthLoginResult) SchemaName() string { return "CharmhubAuthLoginResult" }
+// SchemaName disambiguates CharmhubAuthFinalizeResult in OpenAPI generation.
+func (CharmhubAuthFinalizeResult) SchemaName() string { return "CharmhubAuthFinalizeResult" }
 
 // CharmhubAuthLogoutResult describes the outcome of a Charmhub logout operation.
 type CharmhubAuthLogoutResult struct {

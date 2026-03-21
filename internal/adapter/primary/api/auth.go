@@ -66,16 +66,21 @@ type AuthGitHubLogoutOutput struct {
 	Body dto.GitHubAuthLogoutResult
 }
 
-// AuthSnapStoreLoginInput is the request body for Snap Store login.
-type AuthSnapStoreLoginInput struct {
+// AuthSnapStoreBeginOutput is the response for beginning a Snap Store auth flow.
+type AuthSnapStoreBeginOutput struct {
+	Body dto.SnapStoreAuthBeginResult
+}
+
+// AuthSnapStoreFinalizeInput is the request body for finalizing a Snap Store auth flow.
+type AuthSnapStoreFinalizeInput struct {
 	Body struct {
-		Macaroon string `json:"macaroon" doc:"Pre-obtained Snap Store macaroon string"`
+		FlowID string `json:"flow_id" doc:"Opaque flow ID returned by /api/v1/auth/snapstore/begin"`
 	}
 }
 
-// AuthSnapStoreLoginOutput is the response for Snap Store login.
-type AuthSnapStoreLoginOutput struct {
-	Body dto.SnapStoreAuthLoginResult
+// AuthSnapStoreFinalizeOutput is the response for completing a Snap Store auth flow.
+type AuthSnapStoreFinalizeOutput struct {
+	Body dto.SnapStoreAuthFinalizeResult
 }
 
 // AuthSnapStoreLogoutOutput is the response for logging out from Snap Store.
@@ -83,16 +88,21 @@ type AuthSnapStoreLogoutOutput struct {
 	Body dto.SnapStoreAuthLogoutResult
 }
 
-// AuthCharmhubLoginInput is the request body for Charmhub login.
-type AuthCharmhubLoginInput struct {
+// AuthCharmhubBeginOutput is the response for beginning a Charmhub auth flow.
+type AuthCharmhubBeginOutput struct {
+	Body dto.CharmhubAuthBeginResult
+}
+
+// AuthCharmhubFinalizeInput is the request body for finalizing a Charmhub auth flow.
+type AuthCharmhubFinalizeInput struct {
 	Body struct {
-		Macaroon string `json:"macaroon" doc:"Pre-obtained Charmhub macaroon string"`
+		FlowID string `json:"flow_id" doc:"Opaque flow ID returned by /api/v1/auth/charmhub/begin"`
 	}
 }
 
-// AuthCharmhubLoginOutput is the response for Charmhub login.
-type AuthCharmhubLoginOutput struct {
-	Body dto.CharmhubAuthLoginResult
+// AuthCharmhubFinalizeOutput is the response for completing a Charmhub auth flow.
+type AuthCharmhubFinalizeOutput struct {
+	Body dto.CharmhubAuthFinalizeResult
 }
 
 // AuthCharmhubLogoutOutput is the response for logging out from Charmhub.
@@ -265,22 +275,49 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 	})
 
 	huma.Register(api, huma.Operation{
-		OperationID: "auth-snapstore-login",
+		OperationID: "auth-snapstore-begin",
 		Method:      http.MethodPost,
-		Path:        "/api/v1/auth/snapstore/login",
-		Summary:     "Save Snap Store credentials",
-		Description: "Saves a pre-obtained Snap Store macaroon for authenticated API access.",
+		Path:        "/api/v1/auth/snapstore/begin",
+		Summary:     "Begin Snap Store authentication",
+		Description: "Starts an Ubuntu SSO discharge flow and returns a visit URL plus an opaque flow ID.",
 		Tags:        []string{"auth"},
-	}, func(ctx context.Context, input *AuthSnapStoreLoginInput) (*AuthSnapStoreLoginOutput, error) {
-		result, err := facade.Auth().LoginSnapStore(ctx, input.Body.Macaroon)
+	}, func(ctx context.Context, _ *struct{}) (*AuthSnapStoreBeginOutput, error) {
+		result, err := facade.Auth().BeginSnapStore(ctx)
 		if err != nil {
 			if errors.Is(err, authsvc.ErrSnapStoreEnvironmentCredentials) {
 				return nil, huma.Error400BadRequest(err.Error())
 			}
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to save Snap Store credentials: %v", err))
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to begin Snap Store auth: %v", err))
 		}
 
-		out := &AuthSnapStoreLoginOutput{}
+		out := &AuthSnapStoreBeginOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-snapstore-finalize",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/snapstore/finalize",
+		Summary:     "Finalize Snap Store authentication",
+		Description: "Polls the SSO discharge using the opaque flow ID returned by begin.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, input *AuthSnapStoreFinalizeInput) (*AuthSnapStoreFinalizeOutput, error) {
+		result, err := facade.Auth().FinalizeSnapStore(ctx, input.Body.FlowID)
+		if err != nil {
+			switch {
+			case errors.Is(err, authsvc.ErrSnapStoreAuthFlowNotFound):
+				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, authsvc.ErrSnapStoreAuthFlowExpired), errors.Is(err, authsvc.ErrSnapStoreAuthDenied):
+				return nil, huma.Error400BadRequest(err.Error())
+			case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+				return nil, huma.Error400BadRequest(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to finalize Snap Store auth: %v", err))
+			}
+		}
+
+		out := &AuthSnapStoreFinalizeOutput{}
 		out.Body = *result
 		return out, nil
 	})
@@ -307,22 +344,49 @@ func RegisterAuthAPI(api huma.API, application *app.App) {
 	})
 
 	huma.Register(api, huma.Operation{
-		OperationID: "auth-charmhub-login",
+		OperationID: "auth-charmhub-begin",
 		Method:      http.MethodPost,
-		Path:        "/api/v1/auth/charmhub/login",
-		Summary:     "Save Charmhub credentials",
-		Description: "Saves a pre-obtained Charmhub macaroon for authenticated API access.",
+		Path:        "/api/v1/auth/charmhub/begin",
+		Summary:     "Begin Charmhub authentication",
+		Description: "Starts an Ubuntu SSO discharge flow and returns a visit URL plus an opaque flow ID.",
 		Tags:        []string{"auth"},
-	}, func(ctx context.Context, input *AuthCharmhubLoginInput) (*AuthCharmhubLoginOutput, error) {
-		result, err := facade.Auth().LoginCharmhub(ctx, input.Body.Macaroon)
+	}, func(ctx context.Context, _ *struct{}) (*AuthCharmhubBeginOutput, error) {
+		result, err := facade.Auth().BeginCharmhub(ctx)
 		if err != nil {
 			if errors.Is(err, authsvc.ErrCharmhubEnvironmentCredentials) {
 				return nil, huma.Error400BadRequest(err.Error())
 			}
-			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to save Charmhub credentials: %v", err))
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to begin Charmhub auth: %v", err))
 		}
 
-		out := &AuthCharmhubLoginOutput{}
+		out := &AuthCharmhubBeginOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "auth-charmhub-finalize",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/charmhub/finalize",
+		Summary:     "Finalize Charmhub authentication",
+		Description: "Polls the SSO discharge using the opaque flow ID returned by begin.",
+		Tags:        []string{"auth"},
+	}, func(ctx context.Context, input *AuthCharmhubFinalizeInput) (*AuthCharmhubFinalizeOutput, error) {
+		result, err := facade.Auth().FinalizeCharmhub(ctx, input.Body.FlowID)
+		if err != nil {
+			switch {
+			case errors.Is(err, authsvc.ErrCharmhubAuthFlowNotFound):
+				return nil, huma.Error404NotFound(err.Error())
+			case errors.Is(err, authsvc.ErrCharmhubAuthFlowExpired), errors.Is(err, authsvc.ErrCharmhubAuthDenied):
+				return nil, huma.Error400BadRequest(err.Error())
+			case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+				return nil, huma.Error400BadRequest(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to finalize Charmhub auth: %v", err))
+			}
+		}
+
+		out := &AuthCharmhubFinalizeOutput{}
 		out.Body = *result
 		return out, nil
 	})

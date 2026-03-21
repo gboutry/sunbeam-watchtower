@@ -9,6 +9,7 @@ import (
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
+	sa "github.com/gboutry/sunbeam-watchtower/pkg/storeauth/v1"
 )
 
 // LaunchpadCredentialStore manages persisted Launchpad credentials.
@@ -67,4 +68,40 @@ type CharmhubCredentialStore interface {
 	Load(ctx context.Context) (*dto.StoreCredentialRecord, error)
 	Save(ctx context.Context, macaroon string) (*dto.StoreCredentialRecord, error)
 	Clear(ctx context.Context) error
+}
+
+// SnapStoreAuthenticator performs Snap Store macaroon discharge via Ubuntu SSO.
+type SnapStoreAuthenticator interface {
+	// BeginAuth requests a root macaroon from the store, extracts the
+	// third-party caveat, and initiates an SSO discharge flow.
+	// Returns a pending flow with a URL the user must visit in a browser.
+	BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, error)
+
+	// PollAuth polls the SSO wait URL until the user has authenticated.
+	// Returns the serialized credential (bound macaroon) ready for store API use.
+	PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) (string, error)
+}
+
+// CharmhubAuthenticator performs Charmhub macaroon discharge via Ubuntu SSO.
+type CharmhubAuthenticator interface {
+	// BeginAuth requests a root macaroon from Charmhub, extracts the
+	// third-party caveat, and initiates an SSO discharge flow.
+	BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, error)
+
+	// PollAuth polls the SSO wait URL until the user has authenticated.
+	PollAuth(ctx context.Context, flow *sa.PendingAuthFlow) (string, error)
+}
+
+// SnapStorePendingAuthFlowStore stores short-lived pending Snap Store auth flows.
+type SnapStorePendingAuthFlowStore interface {
+	Put(ctx context.Context, flow *sa.PendingAuthFlow) error
+	Get(ctx context.Context, id string) (*sa.PendingAuthFlow, error)
+	Delete(ctx context.Context, id string) error
+}
+
+// CharmhubPendingAuthFlowStore stores short-lived pending Charmhub auth flows.
+type CharmhubPendingAuthFlowStore interface {
+	Put(ctx context.Context, flow *sa.PendingAuthFlow) error
+	Get(ctx context.Context, id string) (*sa.PendingAuthFlow, error)
+	Delete(ctx context.Context, id string) error
 }

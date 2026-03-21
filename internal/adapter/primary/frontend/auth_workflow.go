@@ -97,13 +97,22 @@ func (w *AuthWorkflow) LogoutGitHub(ctx context.Context) (*dto.GitHubAuthLogoutR
 	return service.LogoutGitHub(ctx)
 }
 
-// LoginSnapStore saves a pre-obtained Snap Store macaroon.
-func (w *AuthWorkflow) LoginSnapStore(ctx context.Context, macaroon string) (*dto.SnapStoreAuthLoginResult, error) {
+// BeginSnapStore starts a Snap Store authentication flow.
+func (w *AuthWorkflow) BeginSnapStore(ctx context.Context) (*dto.SnapStoreAuthBeginResult, error) {
 	service, err := w.resolveService()
 	if err != nil {
 		return nil, err
 	}
-	return service.LoginSnapStore(ctx, macaroon)
+	return service.BeginSnapStore(ctx)
+}
+
+// FinalizeSnapStore completes a pending Snap Store authentication flow.
+func (w *AuthWorkflow) FinalizeSnapStore(ctx context.Context, flowID string) (*dto.SnapStoreAuthFinalizeResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.FinalizeSnapStore(ctx, flowID)
 }
 
 // LogoutSnapStore clears persisted Snap Store credentials.
@@ -115,13 +124,22 @@ func (w *AuthWorkflow) LogoutSnapStore(ctx context.Context) (*dto.SnapStoreAuthL
 	return service.LogoutSnapStore(ctx)
 }
 
-// LoginCharmhub saves a pre-obtained Charmhub macaroon.
-func (w *AuthWorkflow) LoginCharmhub(ctx context.Context, macaroon string) (*dto.CharmhubAuthLoginResult, error) {
+// BeginCharmhub starts a Charmhub authentication flow.
+func (w *AuthWorkflow) BeginCharmhub(ctx context.Context) (*dto.CharmhubAuthBeginResult, error) {
 	service, err := w.resolveService()
 	if err != nil {
 		return nil, err
 	}
-	return service.LoginCharmhub(ctx, macaroon)
+	return service.BeginCharmhub(ctx)
+}
+
+// FinalizeCharmhub completes a pending Charmhub authentication flow.
+func (w *AuthWorkflow) FinalizeCharmhub(ctx context.Context, flowID string) (*dto.CharmhubAuthFinalizeResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.FinalizeCharmhub(ctx, flowID)
 }
 
 // LogoutCharmhub clears persisted Charmhub credentials.
