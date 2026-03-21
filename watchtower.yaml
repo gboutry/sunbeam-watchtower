@@ -1,3 +1,6 @@
+collaborators:
+  launchpad_team: sunbeam
+  email_overrides: /tmp/overrides.yaml
 launchpad:
   default_owner: sunbeam
   use_keyring: true
