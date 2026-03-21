@@ -17,6 +17,7 @@ import (
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
+	sa "github.com/gboutry/sunbeam-watchtower/pkg/storeauth/v1"
 )
 
 type fakeCredentialStore struct {
@@ -863,6 +864,53 @@ func (s *fakeStoreCredentialStore) Clear(context.Context) error {
 	return nil
 }
 
+type fakeStoreAuthenticator struct {
+	flow     *sa.PendingAuthFlow
+	cred     string
+	pollErr  error
+	beginErr error
+}
+
+func (a *fakeStoreAuthenticator) BeginAuth(context.Context) (*sa.PendingAuthFlow, error) {
+	if a.beginErr != nil {
+		return nil, a.beginErr
+	}
+	return a.flow, nil
+}
+
+func (a *fakeStoreAuthenticator) PollAuth(context.Context, *sa.PendingAuthFlow) (string, error) {
+	if a.pollErr != nil {
+		return "", a.pollErr
+	}
+	return a.cred, nil
+}
+
+type fakeStoreFlowStore struct {
+	flows map[string]sa.PendingAuthFlow
+}
+
+func (s *fakeStoreFlowStore) Put(_ context.Context, flow *sa.PendingAuthFlow) error {
+	if s.flows == nil {
+		s.flows = make(map[string]sa.PendingAuthFlow)
+	}
+	s.flows[flow.ID] = *flow
+	return nil
+}
+
+func (s *fakeStoreFlowStore) Get(_ context.Context, id string) (*sa.PendingAuthFlow, error) {
+	flow, ok := s.flows[id]
+	if !ok {
+		return nil, sa.ErrPendingAuthFlowNotFound
+	}
+	flowCopy := flow
+	return &flowCopy, nil
+}
+
+func (s *fakeStoreFlowStore) Delete(_ context.Context, id string) error {
+	delete(s.flows, id)
+	return nil
+}
+
 func newServiceWithStores(snapStore, charmhubStore *fakeStoreCredentialStore) *Service {
 	var ss port.SnapStoreCredentialStore
 	if snapStore != nil {
@@ -877,46 +925,212 @@ func newServiceWithStores(snapStore, charmhubStore *fakeStoreCredentialStore) *S
 		&fakeFlowStore{},
 		&fakeLaunchpadAuthenticator{},
 		nil, nil, nil, nil,
-		ss,
-		cs,
+		ss, nil, nil,
+		cs, nil, nil,
 		testLogger(),
 	)
 }
 
-func TestLoginSnapStoreSavesCredentials(t *testing.T) {
-	store := &fakeStoreCredentialStore{}
-	svc := newServiceWithStores(store, nil)
+func newServiceWithStoreAuth(
+	snapStore *fakeStoreCredentialStore,
+	snapAuth *fakeStoreAuthenticator,
+	charmhubStore *fakeStoreCredentialStore,
+	charmhubAuth *fakeStoreAuthenticator,
+) *Service {
+	var ss port.SnapStoreCredentialStore
+	if snapStore != nil {
+		ss = snapStore
+	}
+	var cs port.CharmhubCredentialStore
+	if charmhubStore != nil {
+		cs = charmhubStore
+	}
+	var ssAuth port.SnapStoreAuthenticator
+	if snapAuth != nil {
+		ssAuth = snapAuth
+	}
+	var csAuth port.CharmhubAuthenticator
+	if charmhubAuth != nil {
+		csAuth = charmhubAuth
+	}
+	ssFlows := &fakeStoreFlowStore{}
+	csFlows := &fakeStoreFlowStore{}
+	return NewServiceWithStores(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		nil, nil, nil, nil,
+		ss, ssFlows, ssAuth,
+		cs, csFlows, csAuth,
+		testLogger(),
+	)
+}
 
-	result, err := svc.LoginSnapStore(context.Background(), "my-macaroon")
+func TestBeginSnapStoreStartsFlow(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{
+			RootMacaroon: "root-mac",
+			CaveatID:     "caveat-id",
+			VisitURL:     "https://login.ubuntu.com/visit",
+			WaitURL:      "https://login.ubuntu.com/wait",
+		},
+		cred: "bound-credential",
+	}
+	svc := newServiceWithStoreAuth(store, auth, nil, nil)
+
+	result, err := svc.BeginSnapStore(context.Background())
 	if err != nil {
-		t.Fatalf("LoginSnapStore() error = %v", err)
+		t.Fatalf("BeginSnapStore() error = %v", err)
 	}
-	if !result.SnapStore.Authenticated {
-		t.Fatal("expected authenticated status after login")
+	if result.FlowID == "" {
+		t.Fatal("BeginSnapStore() returned empty flow ID")
 	}
-	if store.record == nil || store.record.Macaroon != "my-macaroon" {
-		t.Fatalf("expected macaroon to be saved, got %+v", store.record)
+	if result.VisitURL != "https://login.ubuntu.com/visit" {
+		t.Fatalf("BeginSnapStore() VisitURL = %q", result.VisitURL)
 	}
 }
 
-func TestLoginSnapStoreRejectsEnvironmentCredentials(t *testing.T) {
+func TestFinalizeSnapStoreSavesCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{
+			RootMacaroon: "root-mac",
+			CaveatID:     "caveat-id",
+			VisitURL:     "https://login.ubuntu.com/visit",
+			WaitURL:      "https://login.ubuntu.com/wait",
+		},
+		cred: "bound-credential",
+	}
+	svc := newServiceWithStoreAuth(store, auth, nil, nil)
+
+	begin, err := svc.BeginSnapStore(context.Background())
+	if err != nil {
+		t.Fatalf("BeginSnapStore() error = %v", err)
+	}
+
+	result, err := svc.FinalizeSnapStore(context.Background(), begin.FlowID)
+	if err != nil {
+		t.Fatalf("FinalizeSnapStore() error = %v", err)
+	}
+	if !result.SnapStore.Authenticated {
+		t.Fatal("expected authenticated status after finalize")
+	}
+	if store.record == nil || store.record.Macaroon != "bound-credential" {
+		t.Fatalf("expected credential to be saved, got %+v", store.record)
+	}
+}
+
+func TestBeginSnapStoreRejectsEnvironmentCredentials(t *testing.T) {
 	store := &fakeStoreCredentialStore{
 		record: &dto.StoreCredentialRecord{Macaroon: "env-mac", Source: "environment"},
 	}
-	svc := newServiceWithStores(store, nil)
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{VisitURL: "https://example.com", WaitURL: "https://example.com"},
+	}
+	svc := newServiceWithStoreAuth(store, auth, nil, nil)
 
-	_, err := svc.LoginSnapStore(context.Background(), "new-mac")
+	_, err := svc.BeginSnapStore(context.Background())
 	if !errors.Is(err, ErrSnapStoreEnvironmentCredentials) {
-		t.Fatalf("LoginSnapStore() error = %v, want %v", err, ErrSnapStoreEnvironmentCredentials)
+		t.Fatalf("BeginSnapStore() error = %v, want %v", err, ErrSnapStoreEnvironmentCredentials)
 	}
 }
 
-func TestLoginSnapStoreRejectsNilStore(t *testing.T) {
+func TestBeginSnapStoreRejectsNilAuthenticator(t *testing.T) {
 	svc := newServiceWithStores(nil, nil)
 
-	_, err := svc.LoginSnapStore(context.Background(), "mac")
+	_, err := svc.BeginSnapStore(context.Background())
 	if err == nil {
-		t.Fatal("expected error when store is nil")
+		t.Fatal("expected error when authenticator is nil")
+	}
+}
+
+func TestBeginSnapStoreRejectsNilStore(t *testing.T) {
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{VisitURL: "https://example.com", WaitURL: "https://example.com"},
+	}
+	svc := NewServiceWithStores(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		nil, nil, nil, nil,
+		nil, &fakeStoreFlowStore{}, auth,
+		nil, nil, nil,
+		testLogger(),
+	)
+
+	_, err := svc.BeginSnapStore(context.Background())
+	if err == nil {
+		t.Fatal("expected error when credential store is nil")
+	}
+}
+
+func TestFinalizeSnapStoreUnknownFlow(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{VisitURL: "https://example.com", WaitURL: "https://example.com"},
+		cred: "cred",
+	}
+	svc := newServiceWithStoreAuth(store, auth, nil, nil)
+
+	_, err := svc.FinalizeSnapStore(context.Background(), "missing-flow")
+	if !errors.Is(err, ErrSnapStoreAuthFlowNotFound) {
+		t.Fatalf("FinalizeSnapStore() error = %v, want %v", err, ErrSnapStoreAuthFlowNotFound)
+	}
+}
+
+func TestFinalizeSnapStoreDenied(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{
+			RootMacaroon: "root-mac",
+			VisitURL:     "https://example.com",
+			WaitURL:      "https://example.com",
+		},
+		pollErr: sa.ErrDischargeDenied,
+	}
+	svc := newServiceWithStoreAuth(store, auth, nil, nil)
+
+	begin, err := svc.BeginSnapStore(context.Background())
+	if err != nil {
+		t.Fatalf("BeginSnapStore() error = %v", err)
+	}
+
+	_, err = svc.FinalizeSnapStore(context.Background(), begin.FlowID)
+	if !errors.Is(err, ErrSnapStoreAuthDenied) {
+		t.Fatalf("FinalizeSnapStore() error = %v, want %v", err, ErrSnapStoreAuthDenied)
+	}
+}
+
+func TestFinalizeSnapStoreExpired(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{
+			RootMacaroon: "root-mac",
+			VisitURL:     "https://example.com",
+			WaitURL:      "https://example.com",
+		},
+		pollErr: sa.ErrDischargeExpired,
+	}
+	svc := newServiceWithStoreAuth(store, auth, nil, nil)
+
+	begin, err := svc.BeginSnapStore(context.Background())
+	if err != nil {
+		t.Fatalf("BeginSnapStore() error = %v", err)
+	}
+
+	_, err = svc.FinalizeSnapStore(context.Background(), begin.FlowID)
+	if !errors.Is(err, ErrSnapStoreAuthFlowExpired) {
+		t.Fatalf("FinalizeSnapStore() error = %v, want %v", err, ErrSnapStoreAuthFlowExpired)
+	}
+}
+
+func TestFinalizeSnapStoreRejectsNilAuthenticator(t *testing.T) {
+	svc := newServiceWithStores(nil, nil)
+
+	_, err := svc.FinalizeSnapStore(context.Background(), "flow-id")
+	if err == nil {
+		t.Fatal("expected error when authenticator is nil")
 	}
 }
 
@@ -963,40 +1177,171 @@ func TestLogoutSnapStoreNoCredentials(t *testing.T) {
 	}
 }
 
-func TestLoginCharmhubSavesCredentials(t *testing.T) {
+func TestBeginCharmhubStartsFlow(t *testing.T) {
 	store := &fakeStoreCredentialStore{}
-	svc := newServiceWithStores(nil, store)
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{
+			RootMacaroon: "root-mac",
+			CaveatID:     "caveat-id",
+			VisitURL:     "https://login.ubuntu.com/visit",
+			WaitURL:      "https://login.ubuntu.com/wait",
+		},
+		cred: "bound-credential",
+	}
+	svc := newServiceWithStoreAuth(nil, nil, store, auth)
 
-	result, err := svc.LoginCharmhub(context.Background(), "my-macaroon")
+	result, err := svc.BeginCharmhub(context.Background())
 	if err != nil {
-		t.Fatalf("LoginCharmhub() error = %v", err)
+		t.Fatalf("BeginCharmhub() error = %v", err)
 	}
-	if !result.Charmhub.Authenticated {
-		t.Fatal("expected authenticated status after login")
+	if result.FlowID == "" {
+		t.Fatal("BeginCharmhub() returned empty flow ID")
 	}
-	if store.record == nil || store.record.Macaroon != "my-macaroon" {
-		t.Fatalf("expected macaroon to be saved, got %+v", store.record)
+	if result.VisitURL != "https://login.ubuntu.com/visit" {
+		t.Fatalf("BeginCharmhub() VisitURL = %q", result.VisitURL)
 	}
 }
 
-func TestLoginCharmhubRejectsEnvironmentCredentials(t *testing.T) {
+func TestFinalizeCharmhubSavesCredentials(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{
+			RootMacaroon: "root-mac",
+			CaveatID:     "caveat-id",
+			VisitURL:     "https://login.ubuntu.com/visit",
+			WaitURL:      "https://login.ubuntu.com/wait",
+		},
+		cred: "bound-credential",
+	}
+	svc := newServiceWithStoreAuth(nil, nil, store, auth)
+
+	begin, err := svc.BeginCharmhub(context.Background())
+	if err != nil {
+		t.Fatalf("BeginCharmhub() error = %v", err)
+	}
+
+	result, err := svc.FinalizeCharmhub(context.Background(), begin.FlowID)
+	if err != nil {
+		t.Fatalf("FinalizeCharmhub() error = %v", err)
+	}
+	if !result.Charmhub.Authenticated {
+		t.Fatal("expected authenticated status after finalize")
+	}
+	if store.record == nil || store.record.Macaroon != "bound-credential" {
+		t.Fatalf("expected credential to be saved, got %+v", store.record)
+	}
+}
+
+func TestBeginCharmhubRejectsEnvironmentCredentials(t *testing.T) {
 	store := &fakeStoreCredentialStore{
 		record: &dto.StoreCredentialRecord{Macaroon: "env-mac", Source: "environment"},
 	}
-	svc := newServiceWithStores(nil, store)
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{VisitURL: "https://example.com", WaitURL: "https://example.com"},
+	}
+	svc := newServiceWithStoreAuth(nil, nil, store, auth)
 
-	_, err := svc.LoginCharmhub(context.Background(), "new-mac")
+	_, err := svc.BeginCharmhub(context.Background())
 	if !errors.Is(err, ErrCharmhubEnvironmentCredentials) {
-		t.Fatalf("LoginCharmhub() error = %v, want %v", err, ErrCharmhubEnvironmentCredentials)
+		t.Fatalf("BeginCharmhub() error = %v, want %v", err, ErrCharmhubEnvironmentCredentials)
 	}
 }
 
-func TestLoginCharmhubRejectsNilStore(t *testing.T) {
+func TestBeginCharmhubRejectsNilAuthenticator(t *testing.T) {
 	svc := newServiceWithStores(nil, nil)
 
-	_, err := svc.LoginCharmhub(context.Background(), "mac")
+	_, err := svc.BeginCharmhub(context.Background())
 	if err == nil {
-		t.Fatal("expected error when store is nil")
+		t.Fatal("expected error when authenticator is nil")
+	}
+}
+
+func TestBeginCharmhubRejectsNilStore(t *testing.T) {
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{VisitURL: "https://example.com", WaitURL: "https://example.com"},
+	}
+	svc := NewServiceWithStores(
+		&fakeCredentialStore{},
+		&fakeFlowStore{},
+		&fakeLaunchpadAuthenticator{},
+		nil, nil, nil, nil,
+		nil, nil, nil,
+		nil, &fakeStoreFlowStore{}, auth,
+		testLogger(),
+	)
+
+	_, err := svc.BeginCharmhub(context.Background())
+	if err == nil {
+		t.Fatal("expected error when credential store is nil")
+	}
+}
+
+func TestFinalizeCharmhubUnknownFlow(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{VisitURL: "https://example.com", WaitURL: "https://example.com"},
+		cred: "cred",
+	}
+	svc := newServiceWithStoreAuth(nil, nil, store, auth)
+
+	_, err := svc.FinalizeCharmhub(context.Background(), "missing-flow")
+	if !errors.Is(err, ErrCharmhubAuthFlowNotFound) {
+		t.Fatalf("FinalizeCharmhub() error = %v, want %v", err, ErrCharmhubAuthFlowNotFound)
+	}
+}
+
+func TestFinalizeCharmhubDenied(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{
+			RootMacaroon: "root-mac",
+			VisitURL:     "https://example.com",
+			WaitURL:      "https://example.com",
+		},
+		pollErr: sa.ErrDischargeDenied,
+	}
+	svc := newServiceWithStoreAuth(nil, nil, store, auth)
+
+	begin, err := svc.BeginCharmhub(context.Background())
+	if err != nil {
+		t.Fatalf("BeginCharmhub() error = %v", err)
+	}
+
+	_, err = svc.FinalizeCharmhub(context.Background(), begin.FlowID)
+	if !errors.Is(err, ErrCharmhubAuthDenied) {
+		t.Fatalf("FinalizeCharmhub() error = %v, want %v", err, ErrCharmhubAuthDenied)
+	}
+}
+
+func TestFinalizeCharmhubExpired(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow: &sa.PendingAuthFlow{
+			RootMacaroon: "root-mac",
+			VisitURL:     "https://example.com",
+			WaitURL:      "https://example.com",
+		},
+		pollErr: sa.ErrDischargeExpired,
+	}
+	svc := newServiceWithStoreAuth(nil, nil, store, auth)
+
+	begin, err := svc.BeginCharmhub(context.Background())
+	if err != nil {
+		t.Fatalf("BeginCharmhub() error = %v", err)
+	}
+
+	_, err = svc.FinalizeCharmhub(context.Background(), begin.FlowID)
+	if !errors.Is(err, ErrCharmhubAuthFlowExpired) {
+		t.Fatalf("FinalizeCharmhub() error = %v, want %v", err, ErrCharmhubAuthFlowExpired)
+	}
+}
+
+func TestFinalizeCharmhubRejectsNilAuthenticator(t *testing.T) {
+	svc := newServiceWithStores(nil, nil)
+
+	_, err := svc.FinalizeCharmhub(context.Background(), "flow-id")
+	if err == nil {
+		t.Fatal("expected error when authenticator is nil")
 	}
 }
 

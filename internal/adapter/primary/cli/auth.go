@@ -212,40 +212,32 @@ func newAuthSnapStoreCmd(opts *Options) *cobra.Command {
 }
 
 func newAuthSnapStoreLoginCmd(opts *Options) *cobra.Command {
-	var credentials string
-	cmd := withActionID(&cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "login",
-		Short: "Save Snap Store credentials",
-		Long:  "Save a pre-obtained Snap Store macaroon. Get one from 'snapcraft export-login'.",
+		Short: "Authenticate with the Snap Store",
+		Long:  "Start Ubuntu SSO browser-based authentication for the Snap Store.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
-			if credentials == "" {
-				fmt.Fprint(opts.Out, styler.Key("Macaroon: "))
-				scanner := bufio.NewScanner(cmd.InOrStdin())
-				if scanner.Scan() {
-					credentials = scanner.Text()
-				}
-				if credentials == "" {
-					return fmt.Errorf("macaroon is required")
-				}
-			}
-
+			fmt.Fprintln(opts.Out, "Starting Snap Store SSO flow...")
 			workflow := opts.Frontend().Auth()
-			result, err := workflow.LoginSnapStore(cmd.Context(), credentials)
+			login, err := workflow.LoginSnapStore(cmd.Context(), func(ctx context.Context, begin *dto.SnapStoreAuthBeginResult) error {
+				fmt.Fprintf(opts.Out, "\n%s\n\n  %s\n\n%s\n", styler.Section("Open this URL in your browser to authenticate:"), styler.DetailValue("URL", begin.VisitURL), styler.Key("Waiting for Snap Store authorization..."))
+				return nil
+			})
 			if err != nil {
 				return err
 			}
-			if result.SnapStore.Authenticated {
+
+			finalized := login.Finalized
+			if finalized.SnapStore.Authenticated {
 				fmt.Fprintf(opts.Out, "%s\n", styler.Action("Snap Store credentials saved."))
 			}
-			if result.SnapStore.CredentialsPath != "" {
-				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), result.SnapStore.CredentialsPath)
+			if finalized.SnapStore.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), finalized.SnapStore.CredentialsPath)
 			}
 			return nil
 		},
-	}, frontend.ActionAuthSnapStoreLogin)
-	cmd.Flags().StringVar(&credentials, "credentials", "", "Snap Store macaroon string")
-	return cmd
+	}, frontend.ActionAuthSnapStoreBegin)
 }
 
 func newAuthSnapStoreLogoutCmd(opts *Options) *cobra.Command {
@@ -284,40 +276,32 @@ func newAuthCharmhubCmd(opts *Options) *cobra.Command {
 }
 
 func newAuthCharmhubLoginCmd(opts *Options) *cobra.Command {
-	var credentials string
-	cmd := withActionID(&cobra.Command{
+	return withActionID(&cobra.Command{
 		Use:   "login",
-		Short: "Save Charmhub credentials",
-		Long:  "Save a pre-obtained Charmhub macaroon. Get one from 'charmcraft login --export'.",
+		Short: "Authenticate with Charmhub",
+		Long:  "Start Ubuntu SSO browser-based authentication for Charmhub.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
-			if credentials == "" {
-				fmt.Fprint(opts.Out, styler.Key("Macaroon: "))
-				scanner := bufio.NewScanner(cmd.InOrStdin())
-				if scanner.Scan() {
-					credentials = scanner.Text()
-				}
-				if credentials == "" {
-					return fmt.Errorf("macaroon is required")
-				}
-			}
-
+			fmt.Fprintln(opts.Out, "Starting Charmhub SSO flow...")
 			workflow := opts.Frontend().Auth()
-			result, err := workflow.LoginCharmhub(cmd.Context(), credentials)
+			login, err := workflow.LoginCharmhub(cmd.Context(), func(ctx context.Context, begin *dto.CharmhubAuthBeginResult) error {
+				fmt.Fprintf(opts.Out, "\n%s\n\n  %s\n\n%s\n", styler.Section("Open this URL in your browser to authenticate:"), styler.DetailValue("URL", begin.VisitURL), styler.Key("Waiting for Charmhub authorization..."))
+				return nil
+			})
 			if err != nil {
 				return err
 			}
-			if result.Charmhub.Authenticated {
+
+			finalized := login.Finalized
+			if finalized.Charmhub.Authenticated {
 				fmt.Fprintf(opts.Out, "%s\n", styler.Action("Charmhub credentials saved."))
 			}
-			if result.Charmhub.CredentialsPath != "" {
-				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), result.Charmhub.CredentialsPath)
+			if finalized.Charmhub.CredentialsPath != "" {
+				fmt.Fprintf(opts.Out, "%s %s\n", styler.Key("Credentials saved to"), finalized.Charmhub.CredentialsPath)
 			}
 			return nil
 		},
-	}, frontend.ActionAuthCharmhubLogin)
-	cmd.Flags().StringVar(&credentials, "credentials", "", "Charmhub macaroon string")
-	return cmd
+	}, frontend.ActionAuthCharmhubBegin)
 }
 
 func newAuthCharmhubLogoutCmd(opts *Options) *cobra.Command {

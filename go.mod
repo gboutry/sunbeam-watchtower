@@ -29,6 +29,7 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.18.0
 	go.opentelemetry.io/otel/trace v1.42.0
 	golang.org/x/term v0.40.0
+	gopkg.in/macaroon.v2 v2.1.0
 	gopkg.in/yaml.v3 v3.0.1
 	pault.ag/go/debian v0.19.0
 )

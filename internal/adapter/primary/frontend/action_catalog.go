@@ -49,9 +49,11 @@ const (
 	ActionAuthGitHubBegin       ActionID = "auth.github.begin"
 	ActionAuthGitHubFinalize    ActionID = "auth.github.finalize"
 	ActionAuthGitHubLogout      ActionID = "auth.github.logout"
-	ActionAuthSnapStoreLogin    ActionID = "auth.snapstore.login"
+	ActionAuthSnapStoreBegin    ActionID = "auth.snapstore.begin"
+	ActionAuthSnapStoreFinalize ActionID = "auth.snapstore.finalize"
 	ActionAuthSnapStoreLogout   ActionID = "auth.snapstore.logout"
-	ActionAuthCharmhubLogin     ActionID = "auth.charmhub.login"
+	ActionAuthCharmhubBegin     ActionID = "auth.charmhub.begin"
+	ActionAuthCharmhubFinalize  ActionID = "auth.charmhub.finalize"
 	ActionAuthCharmhubLogout    ActionID = "auth.charmhub.logout"
 	ActionBuildTrigger          ActionID = "build.trigger"
 	ActionBuildList             ActionID = "build.list"
@@ -132,9 +134,11 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionAuthGitHubBegin:       descriptor(ActionAuthGitHubBegin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Begin GitHub authentication."),
 	ActionAuthGitHubFinalize:    descriptor(ActionAuthGitHubFinalize, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Finalize GitHub authentication."),
 	ActionAuthGitHubLogout:      descriptor(ActionAuthGitHubLogout, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Clear persisted GitHub credentials."),
-	ActionAuthSnapStoreLogin:    descriptor(ActionAuthSnapStoreLogin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Save Snap Store credentials."),
+	ActionAuthSnapStoreBegin:    descriptor(ActionAuthSnapStoreBegin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Begin Snap Store authentication."),
+	ActionAuthSnapStoreFinalize: descriptor(ActionAuthSnapStoreFinalize, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Finalize Snap Store authentication."),
 	ActionAuthSnapStoreLogout:   descriptor(ActionAuthSnapStoreLogout, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Clear persisted Snap Store credentials."),
-	ActionAuthCharmhubLogin:     descriptor(ActionAuthCharmhubLogin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Save Charmhub credentials."),
+	ActionAuthCharmhubBegin:     descriptor(ActionAuthCharmhubBegin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Begin Charmhub authentication."),
+	ActionAuthCharmhubFinalize:  descriptor(ActionAuthCharmhubFinalize, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Finalize Charmhub authentication."),
 	ActionAuthCharmhubLogout:    descriptor(ActionAuthCharmhubLogout, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Clear persisted Charmhub credentials."),
 	ActionBuildTrigger:          descriptor(ActionBuildTrigger, "build", "build", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Trigger builds for a project."),
 	ActionBuildList:             descriptor(ActionBuildList, "build", "build", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List builds."),

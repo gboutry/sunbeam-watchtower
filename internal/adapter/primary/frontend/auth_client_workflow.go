@@ -16,6 +16,12 @@ type LaunchpadAuthorizationHandler func(context.Context, *dto.LaunchpadAuthBegin
 // GitHubAuthorizationHandler handles the user-facing device-code authorization step.
 type GitHubAuthorizationHandler func(context.Context, *dto.GitHubAuthBeginResult) error
 
+// SnapStoreAuthorizationHandler handles the user-facing SSO browser authorization step.
+type SnapStoreAuthorizationHandler func(context.Context, *dto.SnapStoreAuthBeginResult) error
+
+// CharmhubAuthorizationHandler handles the user-facing SSO browser authorization step.
+type CharmhubAuthorizationHandler func(context.Context, *dto.CharmhubAuthBeginResult) error
+
 // AuthLoginResult contains both halves of a completed login workflow.
 type AuthLoginResult struct {
 	Begin     *dto.LaunchpadAuthBeginResult
@@ -26,6 +32,18 @@ type AuthLoginResult struct {
 type GitHubAuthLoginResult struct {
 	Begin     *dto.GitHubAuthBeginResult
 	Finalized *dto.GitHubAuthFinalizeResult
+}
+
+// SnapStoreAuthLoginResult contains both halves of a completed Snap Store login workflow.
+type SnapStoreAuthLoginResult struct {
+	Begin     *dto.SnapStoreAuthBeginResult
+	Finalized *dto.SnapStoreAuthFinalizeResult
+}
+
+// CharmhubAuthLoginResult contains both halves of a completed Charmhub login workflow.
+type CharmhubAuthLoginResult struct {
+	Begin     *dto.CharmhubAuthBeginResult
+	Finalized *dto.CharmhubAuthFinalizeResult
 }
 
 // AuthClientWorkflow exposes reusable client-side auth workflows for CLI/TUI/MCP frontends.
@@ -155,13 +173,49 @@ func (w *AuthClientWorkflow) LogoutGitHub(ctx context.Context) (*dto.GitHubAuthL
 	return apiClient.AuthGitHubLogout(ctx)
 }
 
-// LoginSnapStore saves a pre-obtained Snap Store macaroon through the API.
-func (w *AuthClientWorkflow) LoginSnapStore(ctx context.Context, macaroon string) (*dto.SnapStoreAuthLoginResult, error) {
+// BeginSnapStore starts a remote Snap Store auth flow.
+func (w *AuthClientWorkflow) BeginSnapStore(ctx context.Context) (*dto.SnapStoreAuthBeginResult, error) {
 	apiClient, err := w.resolveClient()
 	if err != nil {
 		return nil, err
 	}
-	return apiClient.AuthSnapStoreLogin(ctx, macaroon)
+	return apiClient.AuthSnapStoreBegin(ctx)
+}
+
+// FinalizeSnapStore completes one remote Snap Store auth flow.
+func (w *AuthClientWorkflow) FinalizeSnapStore(ctx context.Context, flowID string) (*dto.SnapStoreAuthFinalizeResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthSnapStoreFinalize(ctx, flowID)
+}
+
+// LoginSnapStore runs the full begin -> authorize -> finalize client workflow.
+func (w *AuthClientWorkflow) LoginSnapStore(
+	ctx context.Context,
+	handler SnapStoreAuthorizationHandler,
+) (*SnapStoreAuthLoginResult, error) {
+	if handler == nil {
+		return nil, errors.New("snap store authorization handler is required")
+	}
+
+	begin, err := w.BeginSnapStore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := handler(ctx, begin); err != nil {
+		return nil, err
+	}
+
+	finalized, err := w.FinalizeSnapStore(ctx, begin.FlowID)
+	if err != nil {
+		return nil, err
+	}
+	return &SnapStoreAuthLoginResult{
+		Begin:     begin,
+		Finalized: finalized,
+	}, nil
 }
 
 // LogoutSnapStore clears persisted Snap Store credentials through the API.
@@ -173,13 +227,49 @@ func (w *AuthClientWorkflow) LogoutSnapStore(ctx context.Context) (*dto.SnapStor
 	return apiClient.AuthSnapStoreLogout(ctx)
 }
 
-// LoginCharmhub saves a pre-obtained Charmhub macaroon through the API.
-func (w *AuthClientWorkflow) LoginCharmhub(ctx context.Context, macaroon string) (*dto.CharmhubAuthLoginResult, error) {
+// BeginCharmhub starts a remote Charmhub auth flow.
+func (w *AuthClientWorkflow) BeginCharmhub(ctx context.Context) (*dto.CharmhubAuthBeginResult, error) {
 	apiClient, err := w.resolveClient()
 	if err != nil {
 		return nil, err
 	}
-	return apiClient.AuthCharmhubLogin(ctx, macaroon)
+	return apiClient.AuthCharmhubBegin(ctx)
+}
+
+// FinalizeCharmhub completes one remote Charmhub auth flow.
+func (w *AuthClientWorkflow) FinalizeCharmhub(ctx context.Context, flowID string) (*dto.CharmhubAuthFinalizeResult, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	return apiClient.AuthCharmhubFinalize(ctx, flowID)
+}
+
+// LoginCharmhub runs the full begin -> authorize -> finalize client workflow.
+func (w *AuthClientWorkflow) LoginCharmhub(
+	ctx context.Context,
+	handler CharmhubAuthorizationHandler,
+) (*CharmhubAuthLoginResult, error) {
+	if handler == nil {
+		return nil, errors.New("charmhub authorization handler is required")
+	}
+
+	begin, err := w.BeginCharmhub(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := handler(ctx, begin); err != nil {
+		return nil, err
+	}
+
+	finalized, err := w.FinalizeCharmhub(ctx, begin.FlowID)
+	if err != nil {
+		return nil, err
+	}
+	return &CharmhubAuthLoginResult{
+		Begin:     begin,
+		Finalized: finalized,
+	}, nil
 }
 
 // LogoutCharmhub clears persisted Charmhub credentials through the API.

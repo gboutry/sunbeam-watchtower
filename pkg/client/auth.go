@@ -64,10 +64,20 @@ func (c *Client) AuthGitHubLogout(ctx context.Context) (*dto.GitHubAuthLogoutRes
 	return &result, err
 }
 
-// AuthSnapStoreLogin saves a pre-obtained Snap Store macaroon.
-func (c *Client) AuthSnapStoreLogin(ctx context.Context, macaroon string) (*dto.SnapStoreAuthLoginResult, error) {
-	var result dto.SnapStoreAuthLoginResult
-	err := c.post(ctx, "/api/v1/auth/snapstore/login", map[string]string{"macaroon": macaroon}, &result)
+// AuthSnapStoreBegin starts a Snap Store auth flow.
+func (c *Client) AuthSnapStoreBegin(ctx context.Context) (*dto.SnapStoreAuthBeginResult, error) {
+	var result dto.SnapStoreAuthBeginResult
+	err := c.post(ctx, "/api/v1/auth/snapstore/begin", nil, &result)
+	return &result, err
+}
+
+// AuthSnapStoreFinalize completes a pending Snap Store auth flow.
+func (c *Client) AuthSnapStoreFinalize(
+	ctx context.Context,
+	flowID string,
+) (*dto.SnapStoreAuthFinalizeResult, error) {
+	var result dto.SnapStoreAuthFinalizeResult
+	err := c.post(ctx, "/api/v1/auth/snapstore/finalize", map[string]string{"flow_id": flowID}, &result)
 	return &result, err
 }
 
@@ -78,10 +88,20 @@ func (c *Client) AuthSnapStoreLogout(ctx context.Context) (*dto.SnapStoreAuthLog
 	return &result, err
 }
 
-// AuthCharmhubLogin saves a pre-obtained Charmhub macaroon.
-func (c *Client) AuthCharmhubLogin(ctx context.Context, macaroon string) (*dto.CharmhubAuthLoginResult, error) {
-	var result dto.CharmhubAuthLoginResult
-	err := c.post(ctx, "/api/v1/auth/charmhub/login", map[string]string{"macaroon": macaroon}, &result)
+// AuthCharmhubBegin starts a Charmhub auth flow.
+func (c *Client) AuthCharmhubBegin(ctx context.Context) (*dto.CharmhubAuthBeginResult, error) {
+	var result dto.CharmhubAuthBeginResult
+	err := c.post(ctx, "/api/v1/auth/charmhub/begin", nil, &result)
+	return &result, err
+}
+
+// AuthCharmhubFinalize completes a pending Charmhub auth flow.
+func (c *Client) AuthCharmhubFinalize(
+	ctx context.Context,
+	flowID string,
+) (*dto.CharmhubAuthFinalizeResult, error) {
+	var result dto.CharmhubAuthFinalizeResult
+	err := c.post(ctx, "/api/v1/auth/charmhub/finalize", map[string]string{"flow_id": flowID}, &result)
 	return &result, err
 }
 
