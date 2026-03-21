@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gopkg.in/macaroon.v2"
 
@@ -55,10 +56,10 @@ func ExtractSSOCaveatID(serializedMacaroon string, ssoBaseURL string) (string, e
 			locations = append(locations, loc)
 		}
 		if loc != "" && strings.Contains(loc, "login.ubuntu.com") {
-			return string(caveat.Id), nil
+			return encodeCaveatID(caveat.Id), nil
 		}
 		if ssoBaseURL != "" && loc != "" && strings.Contains(loc, ssoBaseURL) {
-			return string(caveat.Id), nil
+			return encodeCaveatID(caveat.Id), nil
 		}
 	}
 
@@ -251,6 +252,18 @@ func BindDischarge(rootSerialized, dischargeSerialized string) (string, error) {
 	dischargeB64 := base64.RawURLEncoding.EncodeToString(dischargeBin)
 
 	return rootB64 + " " + dischargeB64, nil
+}
+
+// encodeCaveatID returns the caveat ID as a string suitable for the discharge
+// request. If the raw bytes are valid UTF-8 text (e.g. already base64-encoded
+// by the macaroon issuer), they are returned as-is. Otherwise the bytes are
+// base64-encoded.
+func encodeCaveatID(id []byte) string {
+	s := string(id)
+	if utf8.ValidString(s) && len(s) > 0 {
+		return s
+	}
+	return base64.StdEncoding.EncodeToString(id)
 }
 
 func firstNonEmpty(values ...string) string {
