@@ -6,8 +6,10 @@ package port
 import (
 	"context"
 
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
+	sa "github.com/gboutry/sunbeam-watchtower/pkg/storeauth/v1"
 )
 
 // LaunchpadCredentialStore manages persisted Launchpad credentials.
@@ -53,3 +55,30 @@ type GitHubPendingAuthFlowStore interface {
 	Get(ctx context.Context, id string) (*gh.PendingAuthFlow, error)
 	Delete(ctx context.Context, id string) error
 }
+
+// SnapStoreCredentialStore manages persisted Snap Store credentials.
+type SnapStoreCredentialStore interface {
+	Load(ctx context.Context) (*dto.StoreCredentialRecord, error)
+	Save(ctx context.Context, macaroon string) (*dto.StoreCredentialRecord, error)
+	Clear(ctx context.Context) error
+}
+
+// CharmhubCredentialStore manages persisted Charmhub credentials.
+type CharmhubCredentialStore interface {
+	Load(ctx context.Context) (*dto.StoreCredentialRecord, error)
+	Save(ctx context.Context, macaroon string) (*dto.StoreCredentialRecord, error)
+	Clear(ctx context.Context) error
+}
+
+// StoreAuthenticator requests root macaroons from a store API.
+// Used for both Snap Store and Charmhub. Discharge happens client-side.
+type StoreAuthenticator interface {
+	// BeginAuth requests a root macaroon from the store.
+	BeginAuth(ctx context.Context) (*sa.PendingAuthFlow, error)
+}
+
+// SnapStoreAuthenticator is an alias for StoreAuthenticator used for Snap Store auth.
+type SnapStoreAuthenticator = StoreAuthenticator
+
+// CharmhubAuthenticator is an alias for StoreAuthenticator used for Charmhub auth.
+type CharmhubAuthenticator = StoreAuthenticator

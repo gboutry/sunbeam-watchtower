@@ -74,6 +74,7 @@ func TestDryRunAndApplyVariantsDiffer(t *testing.T) {
 		{readAction: ActionBuildCleanupDryRun, writeAction: ActionBuildCleanupApply},
 		{readAction: ActionProjectSyncDryRun, writeAction: ActionProjectSyncApply},
 		{readAction: ActionBugSyncDryRun, writeAction: ActionBugSyncApply},
+		{readAction: ActionTeamSyncDryRun, writeAction: ActionTeamSyncApply},
 	}
 
 	for _, tt := range tests {

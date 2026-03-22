@@ -426,6 +426,7 @@ func NewConfiguredServer(logger *slog.Logger, application *app.App, serverOpts a
 	api.RegisterBuildsAPI(srv.API(), application)
 	api.RegisterReleasesAPI(srv.API(), application)
 	api.RegisterProjectsAPI(srv.API(), application)
+	api.RegisterTeamAPI(srv.API(), application)
 	api.RegisterOperationsAPI(srv.API(), application)
 	return srv
 }

@@ -63,3 +63,45 @@ func (c *Client) AuthGitHubLogout(ctx context.Context) (*dto.GitHubAuthLogoutRes
 	err := c.post(ctx, "/api/v1/auth/github/logout", nil, &result)
 	return &result, err
 }
+
+// AuthSnapStoreBegin starts a Snap Store auth flow and returns the root macaroon.
+func (c *Client) AuthSnapStoreBegin(ctx context.Context) (*dto.SnapStoreAuthBeginResult, error) {
+	var result dto.SnapStoreAuthBeginResult
+	err := c.post(ctx, "/api/v1/auth/snapstore/begin", nil, &result)
+	return &result, err
+}
+
+// AuthSnapStoreSave persists a discharged Snap Store credential.
+func (c *Client) AuthSnapStoreSave(ctx context.Context, macaroon string) (*dto.SnapStoreAuthSaveResult, error) {
+	var result dto.SnapStoreAuthSaveResult
+	err := c.post(ctx, "/api/v1/auth/snapstore/save", map[string]string{"macaroon": macaroon}, &result)
+	return &result, err
+}
+
+// AuthSnapStoreLogout clears persisted Snap Store credentials.
+func (c *Client) AuthSnapStoreLogout(ctx context.Context) (*dto.SnapStoreAuthLogoutResult, error) {
+	var result dto.SnapStoreAuthLogoutResult
+	err := c.post(ctx, "/api/v1/auth/snapstore/logout", nil, &result)
+	return &result, err
+}
+
+// AuthCharmhubBegin starts a Charmhub auth flow and returns the root macaroon.
+func (c *Client) AuthCharmhubBegin(ctx context.Context) (*dto.CharmhubAuthBeginResult, error) {
+	var result dto.CharmhubAuthBeginResult
+	err := c.post(ctx, "/api/v1/auth/charmhub/begin", nil, &result)
+	return &result, err
+}
+
+// AuthCharmhubSave persists a discharged Charmhub credential.
+func (c *Client) AuthCharmhubSave(ctx context.Context, macaroon string) (*dto.CharmhubAuthSaveResult, error) {
+	var result dto.CharmhubAuthSaveResult
+	err := c.post(ctx, "/api/v1/auth/charmhub/save", map[string]string{"macaroon": macaroon}, &result)
+	return &result, err
+}
+
+// AuthCharmhubLogout clears persisted Charmhub credentials.
+func (c *Client) AuthCharmhubLogout(ctx context.Context) (*dto.CharmhubAuthLogoutResult, error) {
+	var result dto.CharmhubAuthLogoutResult
+	err := c.post(ctx, "/api/v1/auth/charmhub/logout", nil, &result)
+	return &result, err
+}

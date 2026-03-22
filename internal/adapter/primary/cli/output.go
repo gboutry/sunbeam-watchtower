@@ -643,6 +643,50 @@ func renderProjectSyncTable(w io.Writer, styler *outputStyler, result *dto.Proje
 	return nil
 }
 
+// renderTeamSyncResult writes team sync results in the requested format.
+func renderTeamSyncResult(w io.Writer, format string, styler *outputStyler, result *dto.TeamSyncResult, dryRun bool) error {
+	switch format {
+	case "json":
+		return renderJSON(w, result)
+	case "yaml":
+		return renderYAML(w, result)
+	default:
+		return renderTeamSyncTable(w, styler, result, dryRun)
+	}
+}
+
+func renderTeamSyncTable(w io.Writer, styler *outputStyler, result *dto.TeamSyncResult, dryRun bool) error {
+	if len(result.Artifacts) == 0 {
+		fmt.Fprintln(w, "No artifacts to sync.")
+		return nil
+	}
+	prefix := ""
+	if dryRun {
+		prefix = styler.Dim("would") + " "
+	}
+	for _, a := range result.Artifacts {
+		label := fmt.Sprintf("%s/%s (%s)", a.Project, a.StoreName, a.ArtifactType.String())
+		if a.Error != "" {
+			fmt.Fprintf(w, "%s %s: %s\n", styler.Action("error:"), label, a.Error)
+			continue
+		}
+		if a.AlreadySync {
+			fmt.Fprintf(w, "%s %s\n", styler.Action("in-sync:"), label)
+			continue
+		}
+		for _, u := range a.Invited {
+			fmt.Fprintf(w, "%s%s %s -> %s\n", prefix, styler.Action("invite:"), label, u)
+		}
+		for _, u := range a.Extra {
+			fmt.Fprintf(w, "%s %s extra collaborator: %s\n", styler.Action("warn:"), label, u)
+		}
+		for _, u := range a.Pending {
+			fmt.Fprintf(w, "%s %s pending invite: %s\n", styler.Action("pending:"), label, u)
+		}
+	}
+	return nil
+}
+
 // renderStringList writes a list of strings in the requested format.
 func renderStringList(w io.Writer, format string, styler *outputStyler, items []string) error {
 	switch format {

@@ -7,9 +7,11 @@ import (
 	"os"
 	"time"
 
+	chadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/charmhub"
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/credentials"
 	ghadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/githubauth"
 	lpadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/launchpad"
+	ssadapter "github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/snapstore"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	authsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/auth"
 	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
@@ -69,13 +71,29 @@ func (a *App) OperationService() (*opsvc.Service, error) {
 	return a.operationService, nil
 }
 
+// SnapStoreCredentialStore returns the shared Snap Store credential store.
+func (a *App) SnapStoreCredentialStore() port.SnapStoreCredentialStore {
+	a.snapStoreCredsOnce.Do(func() {
+		a.snapStoreCredsStore = credentials.NewSnapStoreStore("")
+	})
+	return a.snapStoreCredsStore
+}
+
+// CharmhubCredentialStore returns the shared Charmhub credential store.
+func (a *App) CharmhubCredentialStore() port.CharmhubCredentialStore {
+	a.charmhubCredsOnce.Do(func() {
+		a.charmhubCredsStore = credentials.NewCharmhubStore("")
+	})
+	return a.charmhubCredsStore
+}
+
 // AuthService creates the shared auth service.
 func (a *App) AuthService() (*authsvc.Service, error) {
 	var githubMutableErr error
 	if a.Config != nil && a.Config.GitHub.UseKeyring {
 		githubMutableErr = authsvc.ErrGitHubKeyringNotImplemented
 	}
-	return authsvc.NewServiceWithGitHub(
+	return authsvc.NewServiceWithStores(
 		a.LaunchpadCredentialStore(),
 		a.LaunchpadPendingAuthFlowStore(),
 		lpadapter.NewAuthenticator(lp.ConsumerKey(), a.Logger),
@@ -83,6 +101,10 @@ func (a *App) AuthService() (*authsvc.Service, error) {
 		a.GitHubPendingAuthFlowStore(),
 		ghadapter.NewAuthenticator(a.GitHubClientID(), a.Logger, a.upstreamHTTPClient("github", 30*time.Second)),
 		githubMutableErr,
+		a.SnapStoreCredentialStore(),
+		ssadapter.NewAuthenticator(a.Logger, a.upstreamHTTPClient("snapstore", 30*time.Second)),
+		a.CharmhubCredentialStore(),
+		chadapter.NewAuthenticator(a.Logger, a.upstreamHTTPClient("charmhub", 30*time.Second)),
 		a.Logger,
 	), nil
 }

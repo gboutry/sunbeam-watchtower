@@ -245,6 +245,12 @@ type TUIConfig struct {
 	Panes       TUIPanesConfig `mapstructure:"panes" yaml:"panes,omitempty"`
 }
 
+// CollaboratorsConfig holds settings for team-to-store collaborator sync.
+type CollaboratorsConfig struct {
+	LaunchpadTeam  string `mapstructure:"launchpad_team" yaml:"launchpad_team"`
+	EmailOverrides string `mapstructure:"email_overrides" yaml:"email_overrides,omitempty"`
+}
+
 // ProjectConfig defines a project tracked across forges.
 type ProjectConfig struct {
 	Name             string                `mapstructure:"name" yaml:"name"`
@@ -408,16 +414,17 @@ type OTelConfig struct {
 
 // Config is the top-level configuration.
 type Config struct {
-	Launchpad LaunchpadConfig           `mapstructure:"launchpad" yaml:"launchpad"`
-	GitHub    GitHubConfig              `mapstructure:"github" yaml:"github"`
-	Gerrit    GerritConfig              `mapstructure:"gerrit" yaml:"gerrit"`
-	BugGroups map[string]BugGroupConfig `mapstructure:"bug_groups" yaml:"bug_groups,omitempty"`
-	Projects  []ProjectConfig           `mapstructure:"projects" yaml:"projects"`
-	Build     BuildConfig               `mapstructure:"build" yaml:"build"`
-	Releases  ReleasesConfig            `mapstructure:"releases" yaml:"releases,omitempty"`
-	Packages  PackagesConfig            `mapstructure:"packages" yaml:"packages,omitempty"`
-	TUI       TUIConfig                 `mapstructure:"tui" yaml:"tui,omitempty"`
-	OTel      OTelConfig                `mapstructure:"otel" yaml:"otel,omitempty"`
+	Launchpad     LaunchpadConfig           `mapstructure:"launchpad" yaml:"launchpad"`
+	GitHub        GitHubConfig              `mapstructure:"github" yaml:"github"`
+	Gerrit        GerritConfig              `mapstructure:"gerrit" yaml:"gerrit"`
+	BugGroups     map[string]BugGroupConfig `mapstructure:"bug_groups" yaml:"bug_groups,omitempty"`
+	Projects      []ProjectConfig           `mapstructure:"projects" yaml:"projects"`
+	Build         BuildConfig               `mapstructure:"build" yaml:"build"`
+	Releases      ReleasesConfig            `mapstructure:"releases" yaml:"releases,omitempty"`
+	Packages      PackagesConfig            `mapstructure:"packages" yaml:"packages,omitempty"`
+	TUI           TUIConfig                 `mapstructure:"tui" yaml:"tui,omitempty"`
+	OTel          OTelConfig                `mapstructure:"otel" yaml:"otel,omitempty"`
+	Collaborators *CollaboratorsConfig      `mapstructure:"collaborators" yaml:"collaborators,omitempty"`
 }
 
 // Load reads configuration from the given path. If configPath is empty,
@@ -696,6 +703,9 @@ func (c *Config) Validate() error {
 		if !projects[group.CommonProject] {
 			return fmt.Errorf("bug_groups.%s.common_project %q must match one of the grouped tracker projects", groupName, group.CommonProject)
 		}
+	}
+	if c.Collaborators != nil && c.Collaborators.LaunchpadTeam == "" {
+		return fmt.Errorf("collaborators.launchpad_team must not be empty when collaborators block is present")
 	}
 	return nil
 }
