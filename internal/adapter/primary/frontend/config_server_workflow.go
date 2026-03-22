@@ -27,10 +27,12 @@ func (w *ConfigServerWorkflow) Show(context.Context) (*dto.Config, error) {
 	if w.application == nil || w.application.Config == nil {
 		return nil, errors.New("no configuration loaded")
 	}
-	return configToDTO(w.application.Config), nil
+	return ConfigToDTO(w.application.Config), nil
 }
 
-func configToDTO(cfg *config.Config) *dto.Config {
+// ConfigToDTO converts an internal config to a public DTO. Exported so the
+// TUI can use the locally-loaded config without going through the server API.
+func ConfigToDTO(cfg *config.Config) *dto.Config {
 	if cfg == nil {
 		return nil
 	}

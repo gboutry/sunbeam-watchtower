@@ -1513,7 +1513,15 @@ func (m *rootModel) setToast(message, level string) {
 
 func loadTUIBootstrapCmd(session *runtimeadapter.Session) tea.Cmd {
 	return func() tea.Msg {
-		if session == nil || session.Frontend == nil {
+		if session == nil {
+			return tuiBootstrapLoadedMsg{err: errors.New("runtime session not available")}
+		}
+		// Prefer the locally-loaded config so TUI presets work regardless of
+		// which config file the server was started with.
+		if session.Config != nil {
+			return tuiBootstrapLoadedMsg{config: frontend.ConfigToDTO(session.Config)}
+		}
+		if session.Frontend == nil {
 			return tuiBootstrapLoadedMsg{err: errors.New("runtime session does not expose config workflow")}
 		}
 		cfg, err := session.Frontend.Config().Show(context.Background())
