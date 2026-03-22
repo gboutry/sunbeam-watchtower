@@ -51,7 +51,7 @@ The following are implemented and should be treated as the current baseline:
 
 - strict hexagonal layout under `internal/adapter/*`, `internal/core/*`, and `pkg/*`
 - HTTP API for auth, builds, releases, cache, packages, bugs, reviews, commits, config, and project sync
-- shared frontend facade for auth, operations, project, build, cache, package, bug, review, commit, release, and config workflows
+- shared frontend facade for auth, operations, project, build, cache, package, bug, review, commit, release, config, and team workflows
 - shared runtime/bootstrap layer for env defaults, logger setup, config loading, embedded server startup, local daemon management, and target resolution
 - TUI sessions now prefer an already running local daemon on startup and only fall back to an embedded session when no persistent daemon is available
 - shared runtime session target policies for CLI and TUI, covering embedded, discovered-daemon, and persistent-daemon resolution
@@ -80,12 +80,15 @@ The following are implemented and should be treated as the current baseline:
 - `watchtower.yaml` can now declare TUI startup presets, including `tui.default_pane`, per-pane default filters, and explicit startup modes for Packages and Commits
 - the TUI now exposes meta-overlay mutation workflows for cache sync/clear plus project and bug sync, while keeping those write actions out of the read-only content tabs
 - the TUI form system now supports reusable multi-select fields with `Space` toggles and visual-range `v` + `gg`/`G` motions for known finite multi-value inputs, and cache sync/clear for git/bugs/reviews now accepts multiple projects end to end instead of single-project bodies only
+- team collaborator sync is wired end-to-end (CLI/API/TUI) but still in progress: the core sync service diffs LP team members against store collaborators with dry-run/apply semantics; manifest discovery scans local worktrees for `snapcraft.yaml`/`charmcraft.yaml` in both single-artifact and monorepo layouts; the `TeamSyncService()` lazy factory adapts the LP client to `port.LaunchpadTeamProvider` with email override support for members with hidden emails; the server-side `TeamServerWorkflow.Sync` builds sync targets from config and delegates to the service; the async `Facade.StartTeamSync` runs the real sync inside the operation runner with per-artifact progress reporting; **remaining work**: the Snap Store collaborator API endpoints are not yet correct (per-snap collaborator management may require the Brand Stores API or undocumented endpoints), and the Charmhub collaborator adapter needs to use the documented `/v1/charm/{name}/collaborators` endpoints instead of the current placeholder paths
+- Snap Store and Charmhub authentication uses client-side httpbakery macaroon discharge: the server requests a root macaroon from the store and returns it to the client; the client runs `httpbakery.DischargeAll` locally (so the browser opens on the user's machine) via the Candid identity provider; the discharged credential is sent back to the server for storage; `SNAPCRAFT_STORE_CREDENTIALS` and `CHARMCRAFT_AUTH` environment variables take precedence over file-cached credentials; login/logout is exposed through CLI, API, and TUI
 
 ## Current Gaps
 
 These are the main known gaps that still matter:
 
-- Launchpad and GitHub auth are implemented, but the same authenticated-flow model is not yet extended to other forges such as Gerrit
+- team collaborator sync store adapters need correct API endpoints: Charmhub should use `/v1/charm/{name}/collaborators` (documented) and `/v1/charm/{name}/collaborators/invites` for invitations; Snap Store per-snap collaborator management may require the Brand Stores API (`/api/v2/stores/{store_id}/users`) or investigation of undocumented endpoints
+- Launchpad, GitHub, Snap Store, and Charmhub auth are implemented with interactive flows, but the same authenticated-flow model is not yet extended to other forges such as Gerrit
 - the TUI now covers the main read-only workflows and cache/project/bug mutation entrypoints, but it still does not expose direct build retry/cancel flows
 - the `Packages` and `Commits` TUI tabs now have read-only submodes, but deeper workflow actions remain CLI/API-first
 - some forge/package bootstrap paths in `internal/app` still contain logic that should continue moving into narrower builders/factories

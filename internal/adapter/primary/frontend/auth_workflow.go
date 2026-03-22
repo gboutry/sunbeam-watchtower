@@ -96,3 +96,57 @@ func (w *AuthWorkflow) LogoutGitHub(ctx context.Context) (*dto.GitHubAuthLogoutR
 	}
 	return service.LogoutGitHub(ctx)
 }
+
+// BeginSnapStore starts a Snap Store authentication flow.
+func (w *AuthWorkflow) BeginSnapStore(ctx context.Context) (*dto.SnapStoreAuthBeginResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.BeginSnapStore(ctx)
+}
+
+// SaveSnapStoreCredential persists a discharged Snap Store credential.
+func (w *AuthWorkflow) SaveSnapStoreCredential(ctx context.Context, macaroon string) (*dto.SnapStoreAuthSaveResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.SaveSnapStoreCredential(ctx, macaroon)
+}
+
+// LogoutSnapStore clears persisted Snap Store credentials.
+func (w *AuthWorkflow) LogoutSnapStore(ctx context.Context) (*dto.SnapStoreAuthLogoutResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.LogoutSnapStore(ctx)
+}
+
+// BeginCharmhub starts a Charmhub authentication flow.
+func (w *AuthWorkflow) BeginCharmhub(ctx context.Context) (*dto.CharmhubAuthBeginResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.BeginCharmhub(ctx)
+}
+
+// SaveCharmhubCredential persists a discharged Charmhub credential.
+func (w *AuthWorkflow) SaveCharmhubCredential(ctx context.Context, macaroon string) (*dto.CharmhubAuthSaveResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.SaveCharmhubCredential(ctx, macaroon)
+}
+
+// LogoutCharmhub clears persisted Charmhub credentials.
+func (w *AuthWorkflow) LogoutCharmhub(ctx context.Context) (*dto.CharmhubAuthLogoutResult, error) {
+	service, err := w.resolveService()
+	if err != nil {
+		return nil, err
+	}
+	return service.LogoutCharmhub(ctx)
+}

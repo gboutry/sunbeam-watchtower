@@ -49,6 +49,12 @@ const (
 	ActionAuthGitHubBegin       ActionID = "auth.github.begin"
 	ActionAuthGitHubFinalize    ActionID = "auth.github.finalize"
 	ActionAuthGitHubLogout      ActionID = "auth.github.logout"
+	ActionAuthSnapStoreBegin    ActionID = "auth.snapstore.begin"
+	ActionAuthSnapStoreSave     ActionID = "auth.snapstore.save"
+	ActionAuthSnapStoreLogout   ActionID = "auth.snapstore.logout"
+	ActionAuthCharmhubBegin     ActionID = "auth.charmhub.begin"
+	ActionAuthCharmhubSave      ActionID = "auth.charmhub.save"
+	ActionAuthCharmhubLogout    ActionID = "auth.charmhub.logout"
 	ActionBuildTrigger          ActionID = "build.trigger"
 	ActionBuildList             ActionID = "build.list"
 	ActionBuildDownload         ActionID = "build.download"
@@ -94,6 +100,8 @@ const (
 	ActionPackagesExcusesShow   ActionID = "packages.excuses.show"
 	ActionProjectSyncDryRun     ActionID = "project.sync.dry_run"
 	ActionProjectSyncApply      ActionID = "project.sync.apply"
+	ActionTeamSyncDryRun        ActionID = "team.sync.dry_run"
+	ActionTeamSyncApply         ActionID = "team.sync.apply"
 	ActionReleaseList           ActionID = "releases.list"
 	ActionReleaseShow           ActionID = "releases.show"
 	ActionReviewList            ActionID = "review.list"
@@ -126,6 +134,12 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionAuthGitHubBegin:       descriptor(ActionAuthGitHubBegin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Begin GitHub authentication."),
 	ActionAuthGitHubFinalize:    descriptor(ActionAuthGitHubFinalize, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Finalize GitHub authentication."),
 	ActionAuthGitHubLogout:      descriptor(ActionAuthGitHubLogout, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Clear persisted GitHub credentials."),
+	ActionAuthSnapStoreBegin:    descriptor(ActionAuthSnapStoreBegin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Begin Snap Store authentication."),
+	ActionAuthSnapStoreSave:     descriptor(ActionAuthSnapStoreSave, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Save discharged Snap Store credential."),
+	ActionAuthSnapStoreLogout:   descriptor(ActionAuthSnapStoreLogout, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Clear persisted Snap Store credentials."),
+	ActionAuthCharmhubBegin:     descriptor(ActionAuthCharmhubBegin, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Begin Charmhub authentication."),
+	ActionAuthCharmhubSave:      descriptor(ActionAuthCharmhubSave, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Save discharged Charmhub credential."),
+	ActionAuthCharmhubLogout:    descriptor(ActionAuthCharmhubLogout, "auth", "auth", MutabilityWrite, LocalEffectNone, RuntimePersistentRequired, ExportPolicyAllowed, "Clear persisted Charmhub credentials."),
 	ActionBuildTrigger:          descriptor(ActionBuildTrigger, "build", "build", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Trigger builds for a project."),
 	ActionBuildList:             descriptor(ActionBuildList, "build", "build", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List builds."),
 	ActionBuildDownload:         descriptor(ActionBuildDownload, "build", "build", MutabilityRead, LocalEffectWrite, RuntimeEmbeddedOK, ExportPolicyAllowed, "Download build artifacts to the local machine."),
@@ -171,6 +185,8 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionPackagesExcusesShow:   descriptor(ActionPackagesExcusesShow, "package", "package", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Show one migration excuse."),
 	ActionProjectSyncDryRun:     descriptor(ActionProjectSyncDryRun, "project", "project", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Preview project synchronization."),
 	ActionProjectSyncApply:      descriptor(ActionProjectSyncApply, "project", "project", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Synchronize Launchpad project metadata."),
+	ActionTeamSyncDryRun:        descriptor(ActionTeamSyncDryRun, "team", "team", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Preview team collaborator synchronization."),
+	ActionTeamSyncApply:         descriptor(ActionTeamSyncApply, "team", "team", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Synchronize team members as store collaborators."),
 	ActionReleaseList:           descriptor(ActionReleaseList, "release", "release", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List releases."),
 	ActionReleaseShow:           descriptor(ActionReleaseShow, "release", "release", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Show one release."),
 	ActionReviewList:            descriptor(ActionReviewList, "review", "review", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List reviews."),

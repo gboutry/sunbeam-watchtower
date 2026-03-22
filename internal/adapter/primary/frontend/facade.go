@@ -34,6 +34,12 @@ type ProjectSyncOptions struct {
 	DryRun   bool
 }
 
+// TeamSyncOptions holds the inputs for starting an async team sync operation.
+type TeamSyncOptions struct {
+	Projects []string
+	DryRun   bool
+}
+
 // NewFacade creates a frontend-oriented facade on top of the application wiring.
 func NewFacade(application *app.App) *Facade {
 	return &Facade{
@@ -104,6 +110,60 @@ func (f *Facade) StartBuildTrigger(ctx context.Context, opts BuildTriggerOptions
 			Message: summary,
 			Current: len(result.RecipeResults),
 			Total:   len(result.RecipeResults),
+		})
+		return summary, nil
+	})
+}
+
+// StartTeamSync starts an async team-sync workflow.
+func (f *Facade) StartTeamSync(ctx context.Context, opts TeamSyncOptions) (*dto.OperationJob, error) {
+	// Resolve the server workflow to perform the sync inside the operation runner.
+	sw := NewTeamServerWorkflow(f.application, f)
+
+	attributes := map[string]string{}
+	if opts.DryRun {
+		attributes["dry_run"] = "true"
+	}
+	if len(opts.Projects) > 0 {
+		attributes["projects"] = fmt.Sprintf("%d", len(opts.Projects))
+	}
+
+	return f.operations.Start(ctx, dto.OperationKindTeamSync, attributes, func(runCtx context.Context, reporter *opsvc.Reporter) (string, error) {
+		reporter.Event("starting team collaborator sync")
+		reporter.Progress(dto.OperationProgress{
+			Phase:         "syncing",
+			Message:       "checking team members against store collaborators",
+			Indeterminate: true,
+		})
+
+		result, err := sw.Sync(runCtx, dto.TeamSyncRequest{
+			Projects: opts.Projects,
+			DryRun:   opts.DryRun,
+		})
+		if err != nil {
+			return "", err
+		}
+
+		for _, art := range result.Artifacts {
+			if art.Error != "" {
+				reporter.Event(fmt.Sprintf("artifact %s/%s: %s", art.Project, art.StoreName, art.Error))
+			} else if art.AlreadySync {
+				reporter.Event(fmt.Sprintf("artifact %s/%s: already in sync", art.Project, art.StoreName))
+			} else {
+				reporter.Event(fmt.Sprintf("artifact %s/%s: invited=%d extra=%d pending=%d",
+					art.Project, art.StoreName, len(art.Invited), len(art.Extra), len(art.Pending)))
+			}
+		}
+		for _, w := range result.Warnings {
+			reporter.Event(fmt.Sprintf("warning: %s", w))
+		}
+
+		summary := teamSyncSummary(result, opts.DryRun)
+		reporter.Progress(dto.OperationProgress{
+			Phase:   "completed",
+			Message: summary,
+			Current: len(result.Artifacts),
+			Total:   len(result.Artifacts),
 		})
 		return summary, nil
 	})
@@ -214,4 +274,29 @@ func projectSyncActionMessage(action dto.ProjectSyncAction) string {
 	default:
 		return fmt.Sprintf("project %q: completed %q", action.Project, action.ActionType)
 	}
+}
+
+func teamSyncSummary(result *dto.TeamSyncResult, dryRun bool) string {
+	mode := "applied"
+	if dryRun {
+		mode = "planned"
+	}
+
+	invited := 0
+	extra := 0
+	synced := 0
+	for _, art := range result.Artifacts {
+		invited += len(art.Invited)
+		extra += len(art.Extra)
+		if art.AlreadySync {
+			synced++
+		}
+	}
+
+	summary := fmt.Sprintf("%s team sync across %d artifacts: %d invited, %d extra, %d already in sync",
+		mode, len(result.Artifacts), invited, extra, synced)
+	if len(result.Warnings) > 0 {
+		summary = fmt.Sprintf("%s (%d warnings)", summary, len(result.Warnings))
+	}
+	return summary
 }

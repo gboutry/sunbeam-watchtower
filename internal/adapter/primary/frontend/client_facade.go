@@ -20,6 +20,7 @@ type ClientFacade struct {
 	reviews    *ReviewClientWorkflow
 	commits    *CommitClientWorkflow
 	config     *ConfigClientWorkflow
+	teams      *TeamClientWorkflow
 
 	localBuildPreparationErr error
 }
@@ -49,6 +50,7 @@ func NewClientFacade(apiClient *ClientTransport, application *app.App) *ClientFa
 		reviews:                  NewReviewClientWorkflow(apiClient),
 		commits:                  NewCommitClientWorkflow(apiClient),
 		config:                   NewConfigClientWorkflow(apiClient),
+		teams:                    NewTeamClientWorkflow(apiClient),
 		localBuildPreparationErr: localBuildPreparationErr,
 	}
 }
@@ -85,6 +87,9 @@ func (f *ClientFacade) Commits() *CommitClientWorkflow { return f.commits }
 
 // Config returns reusable config workflows.
 func (f *ClientFacade) Config() *ConfigClientWorkflow { return f.config }
+
+// Teams returns reusable team workflows.
+func (f *ClientFacade) Teams() *TeamClientWorkflow { return f.teams }
 
 // LocalBuildPreparationError reports whether local build preparation could be wired from the application.
 func (f *ClientFacade) LocalBuildPreparationError() error { return f.localBuildPreparationErr }

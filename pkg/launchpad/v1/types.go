@@ -16,30 +16,31 @@ type Collection[T any] struct {
 
 // Person is a Launchpad person or team.
 type Person struct {
-	Name                  string `json:"name"`
-	DisplayName           string `json:"display_name"`
-	SelfLink              string `json:"self_link"`
-	WebLink               string `json:"web_link"`
-	ResourceTypeLink      string `json:"resource_type_link"`
-	HTTPEtag              string `json:"http_etag"`
-	IsTeam                bool   `json:"is_team"`
-	IsValid               bool   `json:"is_valid"`
-	Karma                 int    `json:"karma"`
-	Description           string `json:"description"`
-	DateCreated           *Time  `json:"date_created,omitempty"`
-	TimeZone              string `json:"time_zone"`
-	Private               bool   `json:"private"`
-	Visibility            string `json:"visibility"`
-	AccountStatus         string `json:"account_status"`
-	HideEmailAddresses    bool   `json:"hide_email_addresses"`
-	IsProbationary        bool   `json:"is_probationary"`
-	IsUbuntuCocSigner     bool   `json:"is_ubuntu_coc_signer"`
-	ArchiveLink           string `json:"archive_link"`
-	PPAsCollectionLink    string `json:"ppas_collection_link"`
-	MembersCollectionLink string `json:"members_collection_link"`
-	TeamOwnerLink         string `json:"team_owner_link"`
-	LogoLink              string `json:"logo_link"`
-	MugshotLink           string `json:"mugshot_link"`
+	Name                      string `json:"name"`
+	DisplayName               string `json:"display_name"`
+	SelfLink                  string `json:"self_link"`
+	WebLink                   string `json:"web_link"`
+	ResourceTypeLink          string `json:"resource_type_link"`
+	HTTPEtag                  string `json:"http_etag"`
+	IsTeam                    bool   `json:"is_team"`
+	IsValid                   bool   `json:"is_valid"`
+	Karma                     int    `json:"karma"`
+	Description               string `json:"description"`
+	DateCreated               *Time  `json:"date_created,omitempty"`
+	TimeZone                  string `json:"time_zone"`
+	Private                   bool   `json:"private"`
+	Visibility                string `json:"visibility"`
+	AccountStatus             string `json:"account_status"`
+	HideEmailAddresses        bool   `json:"hide_email_addresses"`
+	PreferredEmailAddressLink string `json:"preferred_email_address_link,omitempty"`
+	IsProbationary            bool   `json:"is_probationary"`
+	IsUbuntuCocSigner         bool   `json:"is_ubuntu_coc_signer"`
+	ArchiveLink               string `json:"archive_link"`
+	PPAsCollectionLink        string `json:"ppas_collection_link"`
+	MembersCollectionLink     string `json:"members_collection_link"`
+	TeamOwnerLink             string `json:"team_owner_link"`
+	LogoLink                  string `json:"logo_link"`
+	MugshotLink               string `json:"mugshot_link"`
 }
 
 // Project represents a Launchpad project (product).
