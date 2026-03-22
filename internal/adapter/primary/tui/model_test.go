@@ -73,7 +73,7 @@ func TestRenderReviewRowsKeepsColumnsAlignedWithLongFields(t *testing.T) {
 		},
 	}
 
-	rendered := renderReviewRows(tm, rows, -1, 90)
+	rendered := renderReviewRows(tm, rows, -1, 90, true)
 	lines := strings.Split(rendered, "\n")
 	if len(lines) != 2 {
 		t.Fatalf("renderReviewRows() produced %d lines, want 2", len(lines))
@@ -103,7 +103,7 @@ func TestRenderReviewRowsTruncatesToSingleLineInNarrowPane(t *testing.T) {
 		Title:  "This merge request title is also intentionally very long to prove it never wraps into a second line\nwith a second raw line",
 	}}
 
-	rendered := renderReviewRows(tm, rows, -1, 40)
+	rendered := renderReviewRows(tm, rows, -1, 40, true)
 	if strings.Contains(rendered, "\n") {
 		t.Fatalf("renderReviewRows() wrapped to multiple lines:\n%s", rendered)
 	}
@@ -122,7 +122,7 @@ func TestRenderBugRowsTruncatesToSingleLineInNarrowPane(t *testing.T) {
 		Title:      "This bug title is intentionally very long to prove it stays on one line\nwith a second raw line",
 	}}
 
-	rendered := renderBugRows(tm, rows, -1, 40)
+	rendered := renderBugRows(tm, rows, -1, 40, true)
 	if strings.Contains(rendered, "\n") {
 		t.Fatalf("renderBugRows() wrapped to multiple lines:\n%s", rendered)
 	}
@@ -140,7 +140,7 @@ func TestRenderBugRowsStripsRepeatedBugPrefix(t *testing.T) {
 		Title:   "Bug #2143746 in Openstack Snap: \"nova-compute fails to refresh placement inventory\"",
 	}}
 
-	rendered := renderBugRows(tm, rows, -1, 120)
+	rendered := renderBugRows(tm, rows, -1, 120, true)
 	if strings.Contains(rendered, "Bug #2143746 in Openstack Snap:") {
 		t.Fatalf("renderBugRows() kept repeated bug prefix:\n%s", rendered)
 	}
@@ -162,7 +162,7 @@ func TestRenderCommitRowsTruncatesToSingleLineInNarrowPane(t *testing.T) {
 		Message: "This commit message is intentionally very long to prove it stays on one line\nwith a second raw line",
 	}}
 
-	rendered := renderCommitRows(tm, rows, -1, 40)
+	rendered := renderCommitRows(tm, rows, -1, 40, true)
 	if strings.Contains(rendered, "\n") {
 		t.Fatalf("renderCommitRows() wrapped to multiple lines:\n%s", rendered)
 	}
@@ -1035,13 +1035,13 @@ func TestFormHelpersAndUtilityRendering(t *testing.T) {
 		}
 	}
 
-	if got := renderBuildRows(newTheme(), []dto.Build{{Project: "demo", Title: "build-a", State: dto.BuildPending}}, 0, 80); !strings.Contains(got, "build-a") {
+	if got := renderBuildRows(newTheme(), []dto.Build{{Project: "demo", Title: "build-a", State: dto.BuildPending}}, 0, 80, true); !strings.Contains(got, "build-a") {
 		t.Fatalf("renderBuildRows missing build title:\n%s", got)
 	}
 	if got := renderBuildDetail(newTheme(), &dto.Build{Project: "demo", Recipe: "recipe", Title: "build-a", State: dto.BuildPending, CreatedAt: time.Unix(0, 0)}, 80); !strings.Contains(got, "Project: demo") {
 		t.Fatalf("renderBuildDetail missing project:\n%s", got)
 	}
-	if got := renderReleaseArtifacts(newTheme(), []releaseArtifactSummary{{Name: "artifact-a", ArtifactType: dto.ArtifactCharm, ReleasedAt: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)}}, 0, 40); !strings.Contains(got, "artifact-a") {
+	if got := renderReleaseArtifacts(newTheme(), []releaseArtifactSummary{{Name: "artifact-a", ArtifactType: dto.ArtifactCharm, ReleasedAt: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)}}, 0, 40, true); !strings.Contains(got, "artifact-a") {
 		t.Fatalf("renderReleaseArtifacts missing artifact:\n%s", got)
 	}
 	if got := renderOperationRows(newTheme(), []dto.OperationJob{{State: dto.OperationStateQueued, Kind: dto.OperationKindBuildTrigger, Summary: "build"}}, 0); !strings.Contains(got, "build") {

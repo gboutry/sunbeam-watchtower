@@ -788,7 +788,7 @@ func renderBugs(theme theme, width int, model bugsModel) string {
 	if warnings := renderWarningsInline(theme, model.warnings, innerPanelWidth(theme.panel, listWidth)); warnings != "" {
 		header += "\n\n" + warnings
 	}
-	list := renderBugRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth))
+	list := renderBugRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth), model.loaded)
 	detail := renderBugPane(theme, model.detail, innerPanelWidth(theme.panel, detailWidth))
 	if width >= 120 {
 		left := renderPanel(theme.panel, listWidth, theme.panelTitle.Render("Bugs"), header+"\n\n"+list)
@@ -808,7 +808,7 @@ func renderReviews(theme theme, width int, model reviewsModel) string {
 	if warnings := renderWarningsInline(theme, model.warnings, innerPanelWidth(theme.panel, listWidth)); warnings != "" {
 		header += "\n\n" + warnings
 	}
-	list := renderReviewRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth))
+	list := renderReviewRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth), model.loaded)
 	detail := renderReviewPane(theme, model.detail, model.detailErr, innerPanelWidth(theme.panel, detailWidth))
 	if width >= 120 {
 		left := renderPanel(theme.panel, listWidth, theme.panelTitle.Render("Reviews"), header+"\n\n"+list)
@@ -831,7 +831,7 @@ func renderCommits(theme theme, width int, model commitsModel) string {
 	if warnings := renderWarningsInline(theme, model.warnings, innerPanelWidth(theme.panel, listWidth)); warnings != "" {
 		header += "\n\n" + warnings
 	}
-	list := renderCommitRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth))
+	list := renderCommitRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth), model.loaded)
 	detail := renderCommitPane(theme, selectedCommit(model.rows, model.index), innerPanelWidth(theme.panel, detailWidth))
 	if width >= 120 {
 		left := renderPanel(theme.panel, listWidth, theme.panelTitle.Render("Commits / "+commitModeName(model.filters.mode)), header+"\n\n"+list)
@@ -848,7 +848,7 @@ func renderProjects(theme theme, width int, model projectsModel) string {
 		fmt.Sprintf("name=%s  type=%s  code forge=%s  bug forge=%s  has build=%s  has release=%s",
 			emptyAsAny(model.filters.name), emptyAsAny(model.filters.artifactType), emptyAsAny(model.filters.codeForge),
 			emptyAsAny(model.filters.bugForge), emptyAsAny(model.filters.hasBuild), emptyAsAny(model.filters.hasRelease))
-	list := renderProjectRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth))
+	list := renderProjectRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth), model.loaded)
 	detail := renderProjectPane(theme, selectedProject(model.rows, model.index), innerPanelWidth(theme.panel, detailWidth))
 	if width >= 120 {
 		left := renderPanel(theme.panel, listWidth, theme.panelTitle.Render("Projects"), header+"\n\n"+list)
@@ -902,6 +902,9 @@ func renderPackagesRows(t theme, model packagesModel, width int) string {
 	switch model.filters.mode {
 	case packageModeDiff:
 		if len(model.diffRows) == 0 {
+			if !model.loaded {
+				return t.subtle.Render("Loading packages...")
+			}
 			return t.subtle.Render("No package diff rows.")
 		}
 		lines := make([]string, 0, len(model.diffRows))
@@ -915,6 +918,9 @@ func renderPackagesRows(t theme, model packagesModel, width int) string {
 		return strings.Join(lines, "\n")
 	case packageModeExcuses:
 		if len(model.excuseRows) == 0 {
+			if !model.loaded {
+				return t.subtle.Render("Loading excuses...")
+			}
 			return t.subtle.Render("No excuses.")
 		}
 		lines := make([]string, 0, len(model.excuseRows))
@@ -928,6 +934,9 @@ func renderPackagesRows(t theme, model packagesModel, width int) string {
 		return strings.Join(lines, "\n")
 	default:
 		if len(model.inventoryRows) == 0 {
+			if !model.loaded {
+				return t.subtle.Render("Loading packages...")
+			}
 			return t.subtle.Render("No packages.")
 		}
 		lines := make([]string, 0, len(model.inventoryRows))
@@ -962,8 +971,11 @@ func renderPackagesDetail(t theme, model packagesModel, width int) string {
 	}
 }
 
-func renderBugRows(t theme, rows []forge.BugTask, selected int, width int) string {
+func renderBugRows(t theme, rows []forge.BugTask, selected int, width int, loaded bool) string {
 	if len(rows) == 0 {
+		if !loaded {
+			return t.subtle.Render("Loading bugs...")
+		}
 		return t.subtle.Render("No bug tasks.")
 	}
 	const (
@@ -1080,8 +1092,11 @@ func renderBugPane(t theme, bug *forge.Bug, width int) string {
 	return fitBlock(strings.Join(lines, "\n"), width)
 }
 
-func renderReviewRows(t theme, rows []forge.MergeRequest, selected int, width int) string {
+func renderReviewRows(t theme, rows []forge.MergeRequest, selected int, width int, loaded bool) string {
 	if len(rows) == 0 {
+		if !loaded {
+			return t.subtle.Render("Loading reviews...")
+		}
 		return t.subtle.Render("No reviews.")
 	}
 	const (
@@ -1175,8 +1190,11 @@ func renderReviewPane(t theme, mr *forge.MergeRequest, detailErr string, width i
 	return fitBlock(strings.Join(lines, "\n"), width)
 }
 
-func renderCommitRows(t theme, rows []forge.Commit, selected int, width int) string {
+func renderCommitRows(t theme, rows []forge.Commit, selected int, width int, loaded bool) string {
 	if len(rows) == 0 {
+		if !loaded {
+			return t.subtle.Render("Loading commits...")
+		}
 		return t.subtle.Render("No commits.")
 	}
 	const (
@@ -1240,8 +1258,11 @@ func renderCommitPane(t theme, commit *forge.Commit, width int) string {
 	return fitBlock(strings.Join(lines, "\n"), width)
 }
 
-func renderProjectRows(t theme, rows []projectSummary, selected int, width int) string {
+func renderProjectRows(t theme, rows []projectSummary, selected int, width int, loaded bool) string {
 	if len(rows) == 0 {
+		if !loaded {
+			return t.subtle.Render("Loading projects...")
+		}
 		return t.subtle.Render("No configured projects.")
 	}
 	lines := make([]string, 0, len(rows))

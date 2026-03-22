@@ -414,7 +414,7 @@ type rootModel struct {
 
 	lastRefresh   time.Time
 	toast         toastState
-	contentScroll int
+	viewScrolls   [8]int
 	overlayScroll int
 	pendingG      bool
 
@@ -900,6 +900,10 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pendingG = false
 	}
 	switch msg.String() {
+	case "esc":
+		m.pendingG = false
+		m.setContentScroll(0)
+		return m, nil
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "m", "?":
@@ -939,57 +943,44 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, loadLocalServerStatusCmd(m.session)
 	case "1":
 		m.activeView = viewDashboard
-		m.contentScroll = 0
 		return m, nil
 	case "2":
 		m.activeView = viewBuilds
-		m.contentScroll = 0
 		return m, nil
 	case "3":
 		m.activeView = viewReleases
-		m.contentScroll = 0
 		return m, nil
 	case "4":
 		m.activeView = viewPackages
-		m.contentScroll = 0
 		return m, nil
 	case "5":
 		m.activeView = viewBugs
-		m.contentScroll = 0
 		return m, nil
 	case "6":
 		m.activeView = viewReviews
-		m.contentScroll = 0
 		return m, nil
 	case "7":
 		m.activeView = viewCommits
-		m.contentScroll = 0
 		return m, nil
 	case "8":
 		m.activeView = viewProjects
-		m.contentScroll = 0
 		return m, nil
 	case "tab":
 		m.activeView = (m.activeView + 1) % 8
-		m.contentScroll = 0
 		return m, nil
 	case "shift+tab":
 		m.activeView--
 		if m.activeView < 0 {
 			m.activeView = viewProjects
 		}
-		m.contentScroll = 0
 		return m, nil
 	case "r":
 		return m, m.refreshActiveView()
 	case "pgdown", "ctrl+d":
-		m.contentScroll += m.scrollStep()
+		m.setContentScroll(m.contentScroll() + m.scrollStep())
 		return m, nil
 	case "pgup", "ctrl+u":
-		m.contentScroll -= m.scrollStep()
-		if m.contentScroll < 0 {
-			m.contentScroll = 0
-		}
+		m.setContentScroll(m.contentScroll() - m.scrollStep())
 		return m, nil
 	case "/":
 		switch m.activeView {
@@ -1066,6 +1057,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case viewReleases:
 			if m.releases.index > 0 {
 				m.releases.index--
+				m.ensureCursorVisible()
 				if artifact := m.selectedReleaseArtifact(); artifact != nil {
 					return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 				}
@@ -1073,11 +1065,13 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case viewPackages:
 			if m.packages.index > 0 {
 				m.packages.index--
+				m.ensureCursorVisible()
 				return m, loadPackageDetailCmd(m.session, m.packages)
 			}
 		case viewBugs:
 			if m.bugs.index > 0 {
 				m.bugs.index--
+				m.ensureCursorVisible()
 				if task := selectedBug(m.bugs.rows, m.bugs.index); task != nil {
 					return m, loadBugDetailCmd(m.session, *task)
 				}
@@ -1085,6 +1079,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case viewReviews:
 			if m.reviews.index > 0 {
 				m.reviews.index--
+				m.ensureCursorVisible()
 				if review := selectedReview(m.reviews.rows, m.reviews.index); review != nil {
 					return m, loadReviewDetailCmd(m.session, *review)
 				}
@@ -1098,6 +1093,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.projects.index--
 			}
 		}
+		m.ensureCursorVisible()
 	case "down", "j":
 		switch m.activeView {
 		case viewDashboard:
@@ -1111,6 +1107,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case viewReleases:
 			if m.releases.index < len(m.releases.artifacts)-1 {
 				m.releases.index++
+				m.ensureCursorVisible()
 				if artifact := m.selectedReleaseArtifact(); artifact != nil {
 					return m, loadReleaseDetailCmd(m.session, *artifact, m.releases.filters)
 				}
@@ -1118,11 +1115,13 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case viewPackages:
 			if m.packages.index < m.packages.rowCount()-1 {
 				m.packages.index++
+				m.ensureCursorVisible()
 				return m, loadPackageDetailCmd(m.session, m.packages)
 			}
 		case viewBugs:
 			if m.bugs.index < len(m.bugs.rows)-1 {
 				m.bugs.index++
+				m.ensureCursorVisible()
 				if task := selectedBug(m.bugs.rows, m.bugs.index); task != nil {
 					return m, loadBugDetailCmd(m.session, *task)
 				}
@@ -1130,6 +1129,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case viewReviews:
 			if m.reviews.index < len(m.reviews.rows)-1 {
 				m.reviews.index++
+				m.ensureCursorVisible()
 				if review := selectedReview(m.reviews.rows, m.reviews.index); review != nil {
 					return m, loadReviewDetailCmd(m.session, *review)
 				}
@@ -1143,6 +1143,7 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.projects.index++
 			}
 		}
+		m.ensureCursorVisible()
 	case "enter":
 		switch m.activeView {
 		case viewDashboard:
@@ -1243,7 +1244,7 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, logoutLaunchpadAuthCmd(m.session)
-		case "g":
+		case "h":
 			if m.session.Target().Kind == runtimeadapter.TargetKindEmbedded {
 				m.openUpgradePrompt(deferredAction{kind: deferredGitHubAuthLogin})
 				return m, nil
@@ -1843,7 +1844,7 @@ func (m rootModel) View() string {
 	if bodyHeight < 10 {
 		bodyHeight = 10
 	}
-	content = renderViewport(content, bodyHeight, m.contentScroll)
+	content = renderViewport(content, bodyHeight, m.contentScroll())
 	base := lipgloss.JoinVertical(lipgloss.Left, header, tabs, content, status)
 	if m.overlay != overlayNone {
 		return m.renderOverlay(base)
@@ -1917,7 +1918,10 @@ func (m rootModel) renderStatusBar() string {
 	auth := renderAuthSummaryText(m.dashboard.auth)
 	runningOps := countRunningOperations(m.dashboard.ops)
 	left := fmt.Sprintf("Mode %s  %s  Ops %d/%d", target, auth, runningOps, len(m.dashboard.ops))
-	right := "m Meta  a Auth  o Ops  c Cache  l Logs  s Server  r Refresh  q Quit"
+	right := "m Meta  a Auth  o Ops  c Cache  l Logs  s Server  r Refresh  esc Reset  q Quit"
+	if m.pendingG {
+		right = "g- (pending jump)  " + right
+	}
 	return m.theme.statusBar.Width(m.width).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top,
 			m.theme.statusLeft.Render(left),
@@ -2014,7 +2018,7 @@ func (m rootModel) renderBuilds() string {
 			m.builds.filters.active,
 			emptyAsAny(m.builds.filters.source),
 		)
-	list := renderBuildRows(m.theme, m.builds.rows, m.builds.index, innerPanelWidth(m.theme.panel, listWidth))
+	list := renderBuildRows(m.theme, m.builds.rows, m.builds.index, innerPanelWidth(m.theme.panel, listWidth), m.builds.loaded)
 	detail := renderBuildDetail(m.theme, selectedBuild(m.builds.rows, m.builds.index), innerPanelWidth(m.theme.panel, detailWidth))
 	if m.width >= 120 {
 		left := renderPanel(m.theme.panel, listWidth, "", header+"\n\n"+list)
@@ -2039,7 +2043,7 @@ func (m rootModel) renderReleases() string {
 			emptyAsAny(m.releases.filters.track),
 			emptyAsAny(m.releases.filters.branch),
 		)
-	list := renderReleaseArtifacts(m.theme, m.releases.artifacts, m.releases.index, innerPanelWidth(m.theme.panel, listWidth))
+	list := renderReleaseArtifacts(m.theme, m.releases.artifacts, m.releases.index, innerPanelWidth(m.theme.panel, listWidth), m.releases.loaded)
 	detail := renderReleaseDetail(m.theme, m.releases.detail, m.selectedReleaseArtifact(), innerPanelWidth(m.theme.panel, detailWidth))
 	if m.width >= 120 {
 		left := renderPanel(m.theme.panel, listWidth, m.theme.panelTitle.Render("Artifacts"), header+"\n\n"+list)
@@ -2123,7 +2127,7 @@ func (m rootModel) renderHelp() string {
 		"Shortcuts",
 		"1..8 switch workflow",
 		"Tab / Shift+Tab cycle workflows",
-		"[/] cycle submodes on Packages and Commits",
+		"[ / ] cycle submodes on Packages and Commits",
 		"j/k or arrows move selection",
 		"gg jump to the beginning",
 		"G jump to the end",
@@ -2165,7 +2169,7 @@ func (m rootModel) renderAuthModal() string {
 	if m.auth.githubBegin != nil {
 		lines = append(lines, "", "GitHub verification URI:", m.auth.githubBegin.VerificationURI, "GitHub code: "+m.auth.githubBegin.UserCode)
 	}
-	lines = append(lines, "", "[l] LP login  [x] LP logout  [g] GH login  [d] GH logout  [o] open browser  [Esc] close")
+	lines = append(lines, "", "[l] LP login  [x] LP logout  [h] GH login  [d] GH logout  [o] open browser  [Esc] close")
 	return m.theme.panel.Width(maxInt(50, m.width-4)).Render(strings.Join(lines, "\n"))
 }
 
@@ -2321,7 +2325,7 @@ func (m rootModel) refreshActiveView() tea.Cmd {
 }
 
 func (m rootModel) jumpActiveTop() (tea.Model, tea.Cmd) {
-	m.contentScroll = 0
+	m.setContentScroll(0)
 	switch m.activeView {
 	case viewDashboard:
 		m.dashboard.section = 0
@@ -2353,7 +2357,7 @@ func (m rootModel) jumpActiveTop() (tea.Model, tea.Cmd) {
 }
 
 func (m rootModel) jumpActiveBottom() (tea.Model, tea.Cmd) {
-	m.contentScroll = viewportEndOffset()
+	m.setContentScroll(viewportEndOffset())
 	switch m.activeView {
 	case viewDashboard:
 		m.dashboard.section = 3
@@ -3597,8 +3601,11 @@ func renderFormModal(t theme, modal formModalModel, totalWidth, totalHeight int)
 	return t.panel.Width(innerWidth).MaxWidth(modalWidth).Height(modalHeight).Render(strings.Join(lines, "\n"))
 }
 
-func renderBuildRows(t theme, rows []dto.Build, selected int, width int) string {
+func renderBuildRows(t theme, rows []dto.Build, selected int, width int, loaded bool) string {
 	if len(rows) == 0 {
+		if !loaded {
+			return t.subtle.Render("Loading builds...")
+		}
 		return t.subtle.Render("No builds.")
 	}
 	lines := make([]string, 0, len(rows))
@@ -3634,8 +3641,11 @@ func renderBuildDetail(t theme, build *dto.Build, width int) string {
 	}, "\n"), width)
 }
 
-func renderReleaseArtifacts(t theme, artifacts []releaseArtifactSummary, selected int, width int) string {
+func renderReleaseArtifacts(t theme, artifacts []releaseArtifactSummary, selected int, width int, loaded bool) string {
 	if len(artifacts) == 0 {
+		if !loaded {
+			return t.subtle.Render("Loading releases...")
+		}
 		return t.subtle.Render("No artifacts.")
 	}
 	const (
@@ -3985,6 +3995,17 @@ func viewportEndOffset() int {
 	return 1 << 30
 }
 
+func (m rootModel) contentScroll() int {
+	return m.viewScrolls[m.activeView]
+}
+
+func (m *rootModel) setContentScroll(v int) {
+	if v < 0 {
+		v = 0
+	}
+	m.viewScrolls[m.activeView] = v
+}
+
 func (m rootModel) scrollStep() int {
 	if m.height <= 0 {
 		return 5
@@ -3994,6 +4015,50 @@ func (m rootModel) scrollStep() int {
 		return 3
 	}
 	return step
+}
+
+// activeIndex returns the selected row index for the current view.
+func (m rootModel) activeIndex() int {
+	switch m.activeView {
+	case viewDashboard:
+		return m.dashboard.section
+	case viewBuilds:
+		return m.builds.index
+	case viewReleases:
+		return m.releases.index
+	case viewPackages:
+		return m.packages.index
+	case viewBugs:
+		return m.bugs.index
+	case viewReviews:
+		return m.reviews.index
+	case viewCommits:
+		return m.commits.index
+	case viewProjects:
+		return m.projects.index
+	default:
+		return 0
+	}
+}
+
+// ensureCursorVisible adjusts the content scroll so the selected list item
+// stays within the visible viewport. Each list row is 1 line; overhead lines
+// (panel borders, title, filter header) are estimated at ~6 lines.
+func (m *rootModel) ensureCursorVisible() {
+	bodyHeight := m.height - 4
+	if bodyHeight < 10 {
+		bodyHeight = 10
+	}
+	const headerLines = 6
+	cursorLine := headerLines + m.activeIndex()
+	scroll := m.contentScroll()
+	if cursorLine >= scroll+bodyHeight {
+		scroll = cursorLine - bodyHeight + 1
+	}
+	if cursorLine < scroll+headerLines {
+		scroll = maxInt(0, cursorLine-headerLines)
+	}
+	m.setContentScroll(scroll)
 }
 
 func projectSuggestions(session *runtimeadapter.Session) []string {
