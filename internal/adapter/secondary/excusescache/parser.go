@@ -188,21 +188,23 @@ func parseGenericExcuse(entry map[string]any) (dto.PackageExcuse, error) {
 		}
 	}
 
+	var cleanMessages []string
 	for _, line := range excuse.Messages {
 		lower := strings.ToLower(line)
 		switch {
 		case strings.Contains(lower, "autopkgtest"):
-			excuse.Autopkgtests = append(excuse.Autopkgtests, dto.ExcuseAutopkgtest{
-				Message: line,
-				Status:  "unknown",
-			})
+			excuse.Autopkgtests = append(excuse.Autopkgtests, parseAutopkgtestLine(line)...)
 		case strings.Contains(lower, "build"):
+			cleaned := stripHTML(line)
 			excuse.BuildFailures = append(excuse.BuildFailures, dto.ExcuseBuildFailure{
-				Message: line,
-				Kind:    normalizeReasonCode(line),
+				Message: cleaned,
+				Kind:    normalizeReasonCode(cleaned),
 			})
+		default:
+			cleanMessages = append(cleanMessages, stripHTML(line))
 		}
 	}
+	excuse.Messages = cleanMessages
 
 	return excuse, nil
 }

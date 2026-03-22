@@ -149,6 +149,66 @@ ubuntu-desktop:
 	}
 }
 
+func TestParseUbuntuExcuse_HTMLAutopkgtests(t *testing.T) {
+	data := `
+sources:
+  - item-name: alembic
+    source: alembic
+    new-version: 1.18.4-1
+    old-version: 1.16.4-4
+    excuses:
+      - 'autopkgtest for alembic/1.18.4-1: <a href="https://autopkgtest.ubuntu.com/packages/a/alembic/resolute/amd64">amd64</a>: <a href="https://example.com/log1"><span style="background:#87d96c">Pass</span></a>, <a href="https://autopkgtest.ubuntu.com/packages/a/alembic/resolute/arm64">arm64</a>: <a href="https://example.com/log2"><span style="background:#99ddff">Test in progress</span></a>'
+      - "Additional info:"
+    reason:
+      - autopkgtest
+    policy_info:
+      age:
+        current-age: 3
+`
+	results, err := parseExcusesYAML([]byte(data), dto.ExcusesSource{Tracker: dto.ExcusesTrackerUbuntu})
+	if err != nil {
+		t.Fatalf("parseExcusesYAML() error = %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	got := results[0]
+	if len(got.Autopkgtests) != 2 {
+		t.Fatalf("expected 2 autopkgtest entries, got %d", len(got.Autopkgtests))
+	}
+	if got.Autopkgtests[0].Package != "alembic/1.18.4-1" {
+		t.Errorf("Autopkgtests[0].Package = %q", got.Autopkgtests[0].Package)
+	}
+	if got.Autopkgtests[0].Architecture != "amd64" {
+		t.Errorf("Autopkgtests[0].Architecture = %q", got.Autopkgtests[0].Architecture)
+	}
+	if got.Autopkgtests[0].Status != "pass" {
+		t.Errorf("Autopkgtests[0].Status = %q", got.Autopkgtests[0].Status)
+	}
+	if got.Autopkgtests[0].URL != "https://example.com/log1" {
+		t.Errorf("Autopkgtests[0].URL = %q", got.Autopkgtests[0].URL)
+	}
+	if got.Autopkgtests[1].Architecture != "arm64" {
+		t.Errorf("Autopkgtests[1].Architecture = %q", got.Autopkgtests[1].Architecture)
+	}
+	if got.Autopkgtests[1].Status != "in-progress" {
+		t.Errorf("Autopkgtests[1].Status = %q", got.Autopkgtests[1].Status)
+	}
+	// Messages should be clean (no autopkgtest lines, no HTML) and contain
+	// only the residual human-readable lines.
+	if len(got.Messages) != 1 || !strings.Contains(got.Messages[0], "Additional info") {
+		t.Errorf("expected Messages to contain only the non-autopkgtest line, got %#v", got.Messages)
+	}
+	for _, msg := range got.Messages {
+		if strings.Contains(msg, "<a") || strings.Contains(msg, "<span") {
+			t.Errorf("Messages should not contain HTML: %q", msg)
+		}
+		if strings.Contains(strings.ToLower(msg), "autopkgtest") {
+			t.Errorf("autopkgtest lines should be separated from Messages: %q", msg)
+		}
+	}
+}
+
 func TestApplyExcuseTeams(t *testing.T) {
 	excuses := []dto.PackageExcuse{
 		{PackageExcuseSummary: dto.PackageExcuseSummary{Package: "libimagequant", Version: "4.4.1-1"}},

@@ -13,6 +13,7 @@ type theme struct {
 	tabActive    lipgloss.Style
 	success      lipgloss.Style
 	pending      lipgloss.Style
+	warning      lipgloss.Style
 	errorText    lipgloss.Style
 	info         lipgloss.Style
 	project      lipgloss.Style
@@ -37,6 +38,7 @@ func newTheme() theme {
 		tabActive:    lipgloss.NewStyle().Foreground(lipgloss.Color("#E2E8F0")).Background(lipgloss.Color("#334155")).Bold(true).Padding(0, 1),
 		success:      lipgloss.NewStyle().Foreground(lipgloss.Color("#86EFAC")).Bold(true),
 		pending:      lipgloss.NewStyle().Foreground(lipgloss.Color("#C4B5FD")).Bold(true),
+		warning:      lipgloss.NewStyle().Foreground(lipgloss.Color("#FCD34D")).Bold(true),
 		errorText:    lipgloss.NewStyle().Foreground(lipgloss.Color("#FCA5A5")).Bold(true),
 		info:         lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC")),
 		project:      lipgloss.NewStyle().Foreground(lipgloss.Color("#99F6E4")),
@@ -63,5 +65,20 @@ func (t theme) semantic(text string) string {
 		return t.errorText.Render(text)
 	default:
 		return t.info.Render(text)
+	}
+}
+
+func (t theme) autopkgtestStatus(status string) string {
+	switch status {
+	case "pass":
+		return t.success.Render(status)
+	case "in-progress":
+		return t.pending.Render(status)
+	case "no-results", "not-regression", "always-failed":
+		return t.warning.Render(status)
+	case "regression":
+		return t.errorText.Render(status)
+	default:
+		return t.info.Render(status)
 	}
 }
