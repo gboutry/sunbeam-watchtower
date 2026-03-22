@@ -101,6 +101,89 @@ func TestWriteWarningLine_PlainWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestRenderAutopkgtestSection_GroupedOutput(t *testing.T) {
+	var out bytes.Buffer
+	styler := newOutputStyler(false)
+	tests := []dto.ExcuseAutopkgtest{
+		{Package: "nova/1:29.0.0", Architecture: "amd64", Status: "pass", URL: "https://example.com/log1"},
+		{Package: "nova/1:29.0.0", Architecture: "arm64", Status: "in-progress", URL: "https://example.com/log2"},
+		{Package: "keystone/27.0.0", Architecture: "amd64", Status: "regression", URL: ""},
+	}
+
+	if err := renderAutopkgtestSection(&out, styler, tests); err != nil {
+		t.Fatalf("renderAutopkgtestSection() error = %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "nova/1:29.0.0:") {
+		t.Fatalf("expected grouped package label: %q", got)
+	}
+	if !strings.Contains(got, "amd64=pass") && !strings.Contains(got, "\x1b]8;;") {
+		t.Fatalf("expected arch=status pairs (possibly hyperlinked): %q", got)
+	}
+	if !strings.Contains(got, "keystone/27.0.0:") {
+		t.Fatalf("expected second package group: %q", got)
+	}
+}
+
+func TestRenderAutopkgtestSection_FallbackEntries(t *testing.T) {
+	var out bytes.Buffer
+	styler := newOutputStyler(false)
+	tests := []dto.ExcuseAutopkgtest{
+		{Package: "", Architecture: "", Status: "unknown", Message: "arch:armhf not built yet, autopkgtest delayed there"},
+	}
+
+	if err := renderAutopkgtestSection(&out, styler, tests); err != nil {
+		t.Fatalf("renderAutopkgtestSection() error = %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "arch:armhf not built yet") {
+		t.Fatalf("expected fallback message: %q", got)
+	}
+}
+
+func TestHyperlink_EmitsOSC8WhenEnabled(t *testing.T) {
+	styler := newOutputStyler(true)
+	got := styler.Hyperlink("click", "https://example.com")
+	if !strings.Contains(got, "\x1b]8;;https://example.com\a") {
+		t.Fatalf("expected OSC 8 escape sequence: %q", got)
+	}
+	if !strings.Contains(got, "click") {
+		t.Fatalf("expected text content: %q", got)
+	}
+}
+
+func TestHyperlink_PlainWhenDisabled(t *testing.T) {
+	styler := newOutputStyler(false)
+	got := styler.Hyperlink("click", "https://example.com")
+	if got != "click" {
+		t.Fatalf("expected plain text, got %q", got)
+	}
+}
+
+func TestSemanticAutopkgtestStatuses(t *testing.T) {
+	styler := newOutputStyler(true)
+	tests := []struct {
+		status string
+		expect string // Should contain ANSI codes
+	}{
+		{"pass", "\x1b["},
+		{"in-progress", "\x1b["},
+		{"regression", "\x1b["},
+		{"no-results", "\x1b["},
+		{"autopkgtest", "\x1b["},
+		{"ftbfs", "\x1b["},
+		{"dependency", "\x1b["},
+	}
+	for _, tt := range tests {
+		got := styler.semantic(tt.status)
+		if !strings.Contains(got, tt.expect) {
+			t.Errorf("semantic(%q) should contain ANSI codes, got %q", tt.status, got)
+		}
+	}
+}
+
 func TestRenderBugTasks_TableStripsLaunchpadPrefixAndQuotes(t *testing.T) {
 	var out bytes.Buffer
 	err := renderBugTasks(&out, "table", newOutputStyler(false), []forge.BugTask{{

@@ -953,7 +953,7 @@ func renderPackagesDetail(t theme, model packagesModel, width int) string {
 		if model.excuseDetail == nil {
 			return t.subtle.Render("Select an excuse to load its blockers.")
 		}
-		return fitBlock(renderExcuseDetailText(model.excuseDetail), width)
+		return fitBlock(renderExcuseDetailText(t, model.excuseDetail), width)
 	default:
 		if model.inventoryDetail == nil {
 			return t.subtle.Render("Select a package to load metadata.")
@@ -1338,33 +1338,76 @@ func renderDiffDetailText(detail *frontend.PackagesShowVersionResponse) string {
 	return strings.Join(lines, "\n")
 }
 
-func renderExcuseDetailText(detail *dto.PackageExcuse) string {
+func renderExcuseDetailText(t theme, detail *dto.PackageExcuse) string {
 	lines := []string{
-		"Tracker: " + detail.Tracker,
-		"Package: " + detail.Package,
-		"Version: " + detail.Version,
-		"Verdict: " + emptyAsDash(detail.Verdict),
-		"Reason: " + emptyAsDash(detail.PrimaryReason),
+		t.key.Render("Tracker:") + " " + detail.Tracker,
+		t.key.Render("Package:") + " " + t.project.Render(detail.Package),
+		t.key.Render("Version:") + " " + detail.Version,
+		t.key.Render("Verdict:") + " " + t.semantic(emptyAsDash(detail.Verdict)),
+		t.key.Render("Reason:") + " " + t.semantic(emptyAsDash(detail.PrimaryReason)),
 	}
 	if len(detail.Reasons) > 0 {
-		lines = append(lines, "", "Reasons:")
+		lines = append(lines, "", t.panelTitle.Render("Reasons:"))
 		for _, reason := range detail.Reasons {
-			lines = append(lines, fmt.Sprintf("- %s  %s", reason.Code, emptyAsDash(reason.Message)))
+			lines = append(lines, fmt.Sprintf("- %s  %s", t.semantic(reason.Code), emptyAsDash(reason.Message)))
 		}
 	}
 	if len(detail.Dependencies) > 0 {
-		lines = append(lines, "", "Dependencies:")
+		lines = append(lines, "", t.panelTitle.Render("Dependencies:"))
 		for _, dep := range detail.Dependencies {
-			lines = append(lines, fmt.Sprintf("- %s  %s", dep.Kind, dep.Package))
+			lines = append(lines, fmt.Sprintf("- %s  %s", t.metadata.Render(dep.Kind), dep.Package))
 		}
 	}
 	if len(detail.Autopkgtests) > 0 {
-		lines = append(lines, "", "Autopkgtests:")
-		for _, test := range detail.Autopkgtests {
-			lines = append(lines, fmt.Sprintf("- %s  %s  %s", emptyAsDash(test.Package), emptyAsDash(test.Architecture), emptyAsDash(test.Status)))
+		lines = append(lines, "", t.panelTitle.Render("Autopkgtests:"))
+		lines = append(lines, renderExcuseAutopkgtests(t, detail.Autopkgtests)...)
+	}
+	if len(detail.Messages) > 0 {
+		lines = append(lines, "", t.panelTitle.Render("Messages:"))
+		for _, message := range detail.Messages {
+			lines = append(lines, "- "+t.subtle.Render(message))
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func renderExcuseAutopkgtests(t theme, tests []dto.ExcuseAutopkgtest) []string {
+	// Group by Package, preserving insertion order.
+	var pkgOrder []string
+	pkgMap := map[string][]dto.ExcuseAutopkgtest{}
+	for _, test := range tests {
+		pkg := test.Package
+		if _, seen := pkgMap[pkg]; !seen {
+			pkgOrder = append(pkgOrder, pkg)
+		}
+		pkgMap[pkg] = append(pkgMap[pkg], test)
+	}
+
+	var lines []string
+	for _, pkg := range pkgOrder {
+		entries := pkgMap[pkg]
+
+		// Fallback entries: plain-text messages without structured fields.
+		if len(entries) > 0 && entries[0].Architecture == "" {
+			for _, e := range entries {
+				lines = append(lines, "  - "+t.subtle.Render(e.Message))
+			}
+			continue
+		}
+
+		parts := make([]string, 0, len(entries))
+		for _, e := range entries {
+			arch := emptyAsDash(e.Architecture)
+			status := t.autopkgtestStatus(e.Status)
+			parts = append(parts, arch+"="+status)
+		}
+		label := pkg
+		if label == "" {
+			label = "(unknown)"
+		}
+		lines = append(lines, "  "+t.project.Render(label)+": "+strings.Join(parts, "  "))
+	}
+	return lines
 }
 
 func compactDiffSummary(row dto.PackageDiffResult) string {

@@ -263,8 +263,8 @@ func renderPackageExcuseTable(w io.Writer, styler *outputStyler, excuse *dto.Pac
 		if err := writeSectionTitle(w, styler, "Autopkgtests:"); err != nil {
 			return err
 		}
-		for _, test := range excuse.Autopkgtests {
-			fmt.Fprintf(w, "  - %s\n", test.Message)
+		if err := renderAutopkgtestSection(w, styler, excuse.Autopkgtests); err != nil {
+			return err
 		}
 	}
 
@@ -275,6 +275,55 @@ func renderPackageExcuseTable(w io.Writer, styler *outputStyler, excuse *dto.Pac
 		}
 		for _, message := range excuse.Messages {
 			fmt.Fprintf(w, "  - %s\n", message)
+		}
+	}
+	return nil
+}
+
+// renderAutopkgtestSection renders autopkgtest results grouped by triggering
+// package, with colored statuses and OSC 8 hyperlinks.
+func renderAutopkgtestSection(w io.Writer, styler *outputStyler, tests []dto.ExcuseAutopkgtest) error {
+	// Group by Package, preserving insertion order.
+	var pkgOrder []string
+	pkgMap := map[string][]dto.ExcuseAutopkgtest{}
+	for _, test := range tests {
+		pkg := test.Package
+		if _, seen := pkgMap[pkg]; !seen {
+			pkgOrder = append(pkgOrder, pkg)
+		}
+		pkgMap[pkg] = append(pkgMap[pkg], test)
+	}
+
+	for _, pkg := range pkgOrder {
+		entries := pkgMap[pkg]
+
+		// Fallback entries (no architecture) are plain-text messages; render
+		// the stripped message directly instead of the arch=status format.
+		if len(entries) > 0 && entries[0].Architecture == "" {
+			for _, e := range entries {
+				if _, err := fmt.Fprintf(w, "  - %s\n", styler.Dim(e.Message)); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+
+		parts := make([]string, 0, len(entries))
+		for _, e := range entries {
+			arch := e.Architecture
+			if arch == "" {
+				arch = "-"
+			}
+			status := styler.semantic(e.Status)
+			pair := arch + "=" + status
+			parts = append(parts, styler.Hyperlink(pair, e.URL))
+		}
+		label := pkg
+		if label == "" {
+			label = "(unknown)"
+		}
+		if _, err := fmt.Fprintf(w, "  %s: %s\n", styler.apply(styler.project, label), strings.Join(parts, "  ")); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -157,6 +157,15 @@ func (s *outputStyler) Placeholder(text string) string {
 	return s.apply(s.placeholder, text)
 }
 
+// Hyperlink wraps text in an OSC 8 terminal hyperlink escape sequence.
+// When styling is disabled or url is empty, it returns text unchanged.
+func (s *outputStyler) Hyperlink(text, url string) string {
+	if !s.enabled || url == "" || s.profile == termenv.Ascii {
+		return text
+	}
+	return "\x1b]8;;" + url + "\a" + text + "\x1b]8;;\a"
+}
+
 func (s *outputStyler) Value(column, value string) string {
 	if value == "" {
 		return value
@@ -234,13 +243,17 @@ func (s *outputStyler) boolean(v bool) string {
 
 func (s *outputStyler) semantic(text string) string {
 	switch strings.ToLower(strings.TrimSpace(text)) {
-	case "ok", "stable", "succeeded", "completed", "success", "merged", "authenticated", "done":
+	case "ok", "stable", "succeeded", "completed", "success", "merged", "authenticated", "done",
+		"pass":
 		return s.apply(s.success, text)
-	case "queued", "running", "building", "candidate", "in progress", "beta", "edge", "started":
+	case "queued", "running", "building", "candidate", "in progress", "beta", "edge", "started",
+		"in-progress":
 		return s.apply(s.pending, text)
-	case "failed", "error", "cancelled", "canceled", "blocked", "invalid", "interrupted":
+	case "failed", "error", "cancelled", "canceled", "blocked", "invalid", "interrupted",
+		"autopkgtest", "ftbfs", "regression":
 		return s.apply(s.failure, text)
-	case "warning":
+	case "warning",
+		"no-results", "not-regression", "always-failed", "dependency":
 		return s.apply(s.warning, text)
 	default:
 		return text
