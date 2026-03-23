@@ -3540,11 +3540,12 @@ func renderFormModal(t theme, modal formModalModel, totalWidth, totalHeight int)
 			style = t.inputFocused
 		}
 		fieldForRender := field
-		fieldForRender.Width = maxInt(8, innerWidth-style.GetHorizontalFrameSize()-lipgloss.Width(fieldForRender.Prompt)-4)
+		contentWidth := innerWidth - style.GetHorizontalFrameSize()
+		fieldForRender.Width = maxInt(8, contentWidth-lipgloss.Width(fieldForRender.Prompt))
 		if modal.kinds[i] == fieldKindMultiSelect {
 			fieldForRender.SetValue(multiSelectDisplay(modal.selected[i]))
 		}
-		fieldLines = append(fieldLines, style.Render(fieldForRender.View()))
+		fieldLines = append(fieldLines, style.Width(contentWidth).Render(fieldForRender.View()))
 		if modal.kinds[i] == fieldKindEnum && i == modal.active && len(modal.options[i]) > 0 {
 			for j, option := range modal.options[i] {
 				line := "  " + option
