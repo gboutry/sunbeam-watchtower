@@ -39,8 +39,33 @@ type Cache struct {
 }
 
 type trackerMeta struct {
-	URL         string    `json:"url"`
-	LastUpdated time.Time `json:"last_updated"`
+	URL              string    `json:"url"`
+	LastUpdated      time.Time `json:"last_updated"`
+	LastModified     string    `json:"last_modified,omitempty"`
+	TeamLastModified string    `json:"team_last_modified,omitempty"`
+}
+
+// providerFeeds holds the well-known feed URLs for an excuses provider.
+type providerFeeds struct {
+	mainURL string
+	teamURL string
+}
+
+// feedsForProvider returns the feed URLs for a known provider.
+func feedsForProvider(provider string) providerFeeds {
+	switch provider {
+	case dto.ExcusesTrackerUbuntu:
+		return providerFeeds{
+			mainURL: "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses.yaml.xz",
+			teamURL: "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml",
+		}
+	case dto.ExcusesTrackerDebian:
+		return providerFeeds{
+			mainURL: "https://release.debian.org/britney/excuses.yaml",
+		}
+	default:
+		return providerFeeds{}
+	}
 }
 
 // NewCache creates a new excuses cache rooted at baseDir.
@@ -104,14 +129,46 @@ func (c *Cache) Remove(tracker string) error {
 	return os.RemoveAll(c.rawDir(tracker))
 }
 
-// Update downloads, parses, and indexes one excuses tracker.
+// Update downloads, parses, and indexes one excuses tracker. It uses HEAD
+// requests to check Last-Modified timestamps and skips re-downloading feeds
+// that haven't changed since the last sync.
 func (c *Cache) Update(ctx context.Context, source dto.ExcusesSource) error {
-	c.logger.Info("downloading excuses", "tracker", source.Tracker, "url", source.URL)
-	rawData, err := c.download(ctx, source.URL)
+	feeds := feedsForProvider(source.Provider)
+	if feeds.mainURL == "" {
+		return fmt.Errorf("unknown excuses provider %q", source.Provider)
+	}
+	storedMeta := c.loadTrackerMeta(source.Tracker)
+
+	// Check main feed freshness via HEAD.
+	mainLastMod, err := c.headLastModified(ctx, feeds.mainURL)
+	if err != nil {
+		c.logger.Warn("HEAD request failed, will download unconditionally", "url", feeds.mainURL, "err", err)
+	}
+	mainChanged := mainLastMod == "" || mainLastMod != storedMeta.LastModified
+
+	// Check team feed freshness independently.
+	var teamLastMod string
+	teamChanged := false
+	if feeds.teamURL != "" {
+		teamLastMod, err = c.headLastModified(ctx, feeds.teamURL)
+		if err != nil {
+			c.logger.Warn("HEAD request failed, will download unconditionally", "url", feeds.teamURL, "err", err)
+		}
+		teamChanged = teamLastMod == "" || teamLastMod != storedMeta.TeamLastModified
+	}
+
+	if !mainChanged && !teamChanged {
+		c.logger.Info("excuses feeds not modified, skipping sync", "tracker", source.Tracker)
+		return nil
+	}
+
+	// Download and parse the main feed.
+	c.logger.Info("downloading excuses", "tracker", source.Tracker, "url", feeds.mainURL)
+	rawData, err := c.download(ctx, feeds.mainURL)
 	if err != nil {
 		return err
 	}
-	if err := c.storeRaw(source, rawData); err != nil {
+	if err := c.storeRawFile(source.Tracker, feeds.mainURL, rawData); err != nil {
 		return err
 	}
 
@@ -123,18 +180,15 @@ func (c *Cache) Update(ctx context.Context, source dto.ExcusesSource) error {
 	if err != nil {
 		return err
 	}
-	if source.TeamURL != "" {
-		teamSource := dto.ExcusesSource{
-			Tracker:  source.Tracker,
-			Provider: source.Provider,
-			URL:      source.TeamURL,
-		}
-		c.logger.Info("downloading excuses team mapping", "tracker", source.Tracker, "url", teamSource.URL)
-		teamRaw, err := c.download(ctx, teamSource.URL)
+
+	// Download and merge team feed if present.
+	if feeds.teamURL != "" {
+		c.logger.Info("downloading excuses team mapping", "tracker", source.Tracker, "url", feeds.teamURL)
+		teamRaw, err := c.download(ctx, feeds.teamURL)
 		if err != nil {
 			return err
 		}
-		if err := c.storeRaw(teamSource, teamRaw); err != nil {
+		if err := c.storeRawFile(source.Tracker, feeds.teamURL, teamRaw); err != nil {
 			return err
 		}
 		teamDecoded, err := decodeRaw(teamRaw)
@@ -148,7 +202,14 @@ func (c *Cache) Update(ctx context.Context, source dto.ExcusesSource) error {
 		applyExcuseTeams(excuses, exactTeams, packageTeams)
 	}
 
-	if err := c.db.Update(func(tx *bbolt.Tx) error {
+	newMeta := trackerMeta{
+		URL:              feeds.mainURL,
+		LastUpdated:      time.Now().UTC(),
+		LastModified:     mainLastMod,
+		TeamLastModified: teamLastMod,
+	}
+
+	return c.db.Update(func(tx *bbolt.Tx) error {
 		_ = tx.DeleteBucket(recordsBucketName(source.Tracker))
 		b, err := tx.CreateBucket(recordsBucketName(source.Tracker))
 		if err != nil {
@@ -164,20 +225,51 @@ func (c *Cache) Update(ctx context.Context, source dto.ExcusesSource) error {
 			}
 		}
 
-		metaBucket, err := tx.CreateBucketIfNotExists([]byte(metaBucket))
+		mb, err := tx.CreateBucketIfNotExists([]byte(metaBucket))
 		if err != nil {
 			return fmt.Errorf("creating meta bucket: %w", err)
 		}
-		meta, err := marshalJSON(trackerMeta{URL: source.URL, LastUpdated: time.Now().UTC()})
+		meta, err := marshalJSON(newMeta)
 		if err != nil {
 			return fmt.Errorf("marshalling tracker meta: %w", err)
 		}
-		return metaBucket.Put([]byte(source.Tracker), meta)
-	}); err != nil {
-		return err
-	}
+		return mb.Put([]byte(source.Tracker), meta)
+	})
+}
 
-	return nil
+// headLastModified performs a HEAD request and returns the Last-Modified header value.
+func (c *Cache) headLastModified(ctx context.Context, rawURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("creating HEAD request: %w", err)
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("HEAD request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HEAD request: HTTP %d", resp.StatusCode)
+	}
+	return resp.Header.Get("Last-Modified"), nil
+}
+
+// loadTrackerMeta reads the stored metadata for a tracker from bbolt.
+func (c *Cache) loadTrackerMeta(tracker string) trackerMeta {
+	var meta trackerMeta
+	_ = c.db.View(func(tx *bbolt.Tx) error {
+		mb := tx.Bucket([]byte(metaBucket))
+		if mb == nil {
+			return nil
+		}
+		data := mb.Get([]byte(tracker))
+		if data == nil {
+			return nil
+		}
+		_ = unmarshalJSON(data, &meta)
+		return nil
+	})
+	return meta
 }
 
 func (c *Cache) download(ctx context.Context, rawURL string) ([]byte, error) {
@@ -340,9 +432,10 @@ func (c *Cache) Status() ([]dto.ExcusesCacheStatus, error) {
 	err := c.db.View(func(tx *bbolt.Tx) error {
 		meta := tx.Bucket([]byte(metaBucket))
 		for _, source := range c.sources {
+			feeds := feedsForProvider(source.Provider)
 			status := dto.ExcusesCacheStatus{
 				Tracker:  source.Tracker,
-				URL:      source.URL,
+				URL:      feeds.mainURL,
 				DiskSize: dirSize(c.rawDir(source.Tracker)),
 			}
 			if b := tx.Bucket(recordsBucketName(source.Tracker)); b != nil {
@@ -468,12 +561,12 @@ func detectCompression(data []byte) string {
 	return ""
 }
 
-func (c *Cache) storeRaw(source dto.ExcusesSource, data []byte) error {
-	dir := c.rawDir(source.Tracker)
+func (c *Cache) storeRawFile(tracker, rawURL string, data []byte) error {
+	dir := c.rawDir(tracker)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating raw excuses dir: %w", err)
 	}
-	path := filepath.Join(dir, filepath.Base(source.URL))
+	path := filepath.Join(dir, filepath.Base(rawURL))
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("writing raw excuses file: %w", err)
 	}

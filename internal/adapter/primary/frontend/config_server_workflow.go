@@ -194,13 +194,6 @@ func ConfigToDTO(cfg *config.Config) *dto.Config {
 				Components: append([]string(nil), distro.Components...),
 				Releases:   make(map[string]dto.ReleaseConfig, len(distro.Releases)),
 			}
-			if distro.Excuses != nil {
-				outDistro.Excuses = &dto.ExcusesConfig{
-					Provider: distro.Excuses.Provider,
-					URL:      distro.Excuses.URL,
-					TeamURL:  distro.Excuses.TeamURL,
-				}
-			}
 			for releaseName, release := range distro.Releases {
 				outRelease := dto.ReleaseConfig{
 					Suites:    append([]string(nil), release.Suites...),

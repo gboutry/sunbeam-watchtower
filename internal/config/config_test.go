@@ -140,12 +140,6 @@ tui:
 	if cfg.Build.ArtifactsDir != "/tmp/artifacts" {
 		t.Errorf("Build.ArtifactsDir = %q, want %q", cfg.Build.ArtifactsDir, "/tmp/artifacts")
 	}
-	if cfg.Packages.Distros["ubuntu"].Excuses == nil {
-		t.Fatal("Packages.Distros[ubuntu].Excuses = nil, want populated config")
-	}
-	if got := cfg.Packages.Distros["ubuntu"].Excuses.TeamURL; got != "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml" {
-		t.Fatalf("Packages.Distros[ubuntu].Excuses.TeamURL = %q", got)
-	}
 	if cfg.TUI.DefaultPane != "packages" {
 		t.Fatalf("TUI.DefaultPane = %q, want packages", cfg.TUI.DefaultPane)
 	}
@@ -219,7 +213,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 		Packages: PackagesConfig{
 			Distros: map[string]DistroConfig{
 				"ubuntu": {
-					Excuses: &ExcusesConfig{URL: "https://example.invalid/ubuntu-excuses.yaml.xz"},
+
 				},
 			},
 		},
@@ -261,21 +255,6 @@ func TestValidate_InvalidTUIDefaultPane(t *testing.T) {
 	cfg := &Config{TUI: TUIConfig{DefaultPane: "not-a-pane"}}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() should error for invalid tui default pane")
-	}
-}
-
-func TestValidate_ExcusesMissingURL(t *testing.T) {
-	cfg := &Config{
-		Packages: PackagesConfig{
-			Distros: map[string]DistroConfig{
-				"ubuntu": {
-					Excuses: &ExcusesConfig{},
-				},
-			},
-		},
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() should error for distro excuses missing url")
 	}
 }
 
@@ -982,7 +961,7 @@ func TestValidateTUIConfig_AllPaneEnumsAccepted(t *testing.T) {
 		Packages: PackagesConfig{
 			Distros: map[string]DistroConfig{
 				"ubuntu": {
-					Excuses: &ExcusesConfig{URL: "https://example.invalid/excuses.yaml"},
+
 					Releases: map[string]ReleaseConfig{
 						"noble": {
 							Backports: map[string]BackportConfig{
@@ -1040,7 +1019,7 @@ func TestValidateTUIConfig_InvalidValues(t *testing.T) {
 		Packages: PackagesConfig{
 			Distros: map[string]DistroConfig{
 				"ubuntu": {
-					Excuses: &ExcusesConfig{URL: "https://example.invalid/excuses.yaml"},
+
 				},
 			},
 		},
@@ -1054,7 +1033,7 @@ func TestValidateTUIConfig_InvalidValues(t *testing.T) {
 		{name: "invalid release artifact", tui: TUIConfig{Panes: TUIPanesConfig{Releases: &TUIReleasesPaneConfig{Filters: TUIReleasesFiltersConfig{ArtifactType: "deb"}}}}},
 		{name: "invalid release risk", tui: TUIConfig{Panes: TUIPanesConfig{Releases: &TUIReleasesPaneConfig{Filters: TUIReleasesFiltersConfig{Risk: "daily"}}}}},
 		{name: "invalid package mode", tui: TUIConfig{Panes: TUIPanesConfig{Packages: &TUIPackagesPaneConfig{Mode: "browse"}}}},
-		{name: "invalid package tracker", tui: TUIConfig{Panes: TUIPanesConfig{Packages: &TUIPackagesPaneConfig{Filters: TUIPackagesFiltersConfig{Tracker: "debian"}}}}},
+		{name: "invalid package tracker", tui: TUIConfig{Panes: TUIPanesConfig{Packages: &TUIPackagesPaneConfig{Filters: TUIPackagesFiltersConfig{Tracker: "nonexistent"}}}}},
 		{name: "invalid bug status", tui: TUIConfig{Panes: TUIPanesConfig{Bugs: &TUIBugsPaneConfig{Filters: TUIBugsFiltersConfig{Status: "Done"}}}}},
 		{name: "invalid review forge", tui: TUIConfig{Panes: TUIPanesConfig{Reviews: &TUIReviewsPaneConfig{Filters: TUIReviewsFiltersConfig{Forge: "gitlab"}}}}},
 		{name: "invalid commit mode", tui: TUIConfig{Panes: TUIPanesConfig{Commits: &TUICommitsPaneConfig{Mode: "browse"}}}},
@@ -1077,7 +1056,7 @@ func TestTUIHelperFunctions(t *testing.T) {
 		Packages: PackagesConfig{
 			Distros: map[string]DistroConfig{
 				"ubuntu": {
-					Excuses: &ExcusesConfig{URL: "https://example.invalid/excuses.yaml"},
+
 					Releases: map[string]ReleaseConfig{
 						"noble": {
 							Backports: map[string]BackportConfig{

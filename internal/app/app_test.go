@@ -181,68 +181,20 @@ func TestOperationService(t *testing.T) {
 }
 
 func TestExcusesSources(t *testing.T) {
-	t.Run("uses explicit distro excuses config", func(t *testing.T) {
-		a := NewApp(&config.Config{
-			Packages: config.PackagesConfig{
-				Distros: map[string]config.DistroConfig{
-					"ubuntu": {
-						Excuses: &config.ExcusesConfig{
-							Provider: "ubuntu",
-							URL:      "https://example.invalid/ubuntu-excuses.yaml.xz",
-							TeamURL:  "https://example.invalid/ubuntu-teams.yaml",
-						},
-					},
-				},
-			},
-		}, slog.Default())
-
-		sources := a.ExcusesSources()
-		if len(sources) != 1 {
-			t.Fatalf("len(ExcusesSources()) = %d, want 1", len(sources))
-		}
-		if sources[0].Tracker != "ubuntu" || sources[0].Provider != "ubuntu" || sources[0].URL != "https://example.invalid/ubuntu-excuses.yaml.xz" {
-			t.Fatalf("unexpected source: %+v", sources[0])
-		}
-		if sources[0].TeamURL != "https://example.invalid/ubuntu-teams.yaml" {
-			t.Fatalf("unexpected team URL: %+v", sources[0])
-		}
-	})
-
-	t.Run("synthesizes built-in defaults for legacy ubuntu/debian distros", func(t *testing.T) {
-		a := NewApp(&config.Config{
-			Packages: config.PackagesConfig{
-				Distros: map[string]config.DistroConfig{
-					"ubuntu": {},
-					"debian": {},
-				},
-			},
-		}, slog.Default())
-
-		sources := a.ExcusesSources()
-		if len(sources) != 2 {
-			t.Fatalf("len(ExcusesSources()) = %d, want 2", len(sources))
-		}
-		if sources[0].Tracker != "debian" || sources[1].Tracker != "ubuntu" {
-			t.Fatalf("unexpected trackers: %+v", sources)
-		}
-	})
+	a := NewApp(&config.Config{}, slog.Default())
+	sources := a.ExcusesSources()
+	if len(sources) != 2 {
+		t.Fatalf("len(ExcusesSources()) = %d, want 2", len(sources))
+	}
+	if sources[0].Tracker != "ubuntu" || sources[1].Tracker != "debian" {
+		t.Fatalf("unexpected trackers: %+v", sources)
+	}
 }
 
 func TestDefaultExcusesTracker(t *testing.T) {
-	a := NewApp(&config.Config{
-		Packages: config.PackagesConfig{
-			Distros: map[string]config.DistroConfig{
-				"debian": {
-					Excuses: &config.ExcusesConfig{
-						URL: "https://example.invalid/debian-excuses.yaml",
-					},
-				},
-			},
-		},
-	}, slog.Default())
-
-	if got := a.DefaultExcusesTracker(); got != "debian" {
-		t.Fatalf("DefaultExcusesTracker() = %q, want debian", got)
+	a := NewApp(&config.Config{}, slog.Default())
+	if got := a.DefaultExcusesTracker(); got != "ubuntu" {
+		t.Fatalf("DefaultExcusesTracker() = %q, want ubuntu", got)
 	}
 }
 

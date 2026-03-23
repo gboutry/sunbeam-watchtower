@@ -4119,17 +4119,8 @@ func backportSuggestions(session *runtimeadapter.Session) []string {
 	return uniqueSortedStrings(backports...)
 }
 
-func excusesTrackerSuggestions(session *runtimeadapter.Session) []string {
-	if session == nil {
-		return nil
-	}
-	trackers := make([]string, 0)
-	for name, distro := range session.Config.Packages.Distros {
-		if distro.Excuses != nil {
-			trackers = append(trackers, name)
-		}
-	}
-	return uniqueSortedStrings(trackers...)
+func excusesTrackerSuggestions(_ *runtimeadapter.Session) []string {
+	return dto.KnownExcusesTrackers()
 }
 
 func (m rootModel) syncRows() []string {

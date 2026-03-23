@@ -16,28 +16,18 @@ const (
 )
 
 // ExcusesSource identifies one upstream excuses feed and the provider-specific
-// behavior needed to normalize it.
+// behavior needed to normalize it. URLs are owned by the provider; the cache
+// resolves them from the provider name.
 type ExcusesSource struct {
 	Tracker  string `json:"tracker" yaml:"tracker"`
 	Provider string `json:"provider,omitempty" yaml:"provider,omitempty"`
-	URL      string `json:"url" yaml:"url"`
-	TeamURL  string `json:"team_url,omitempty" yaml:"team_url,omitempty"`
 }
 
 // KnownExcusesSources returns the built-in excuses feeds supported by Watchtower.
 func KnownExcusesSources() []ExcusesSource {
 	return []ExcusesSource{
-		{
-			Tracker:  ExcusesTrackerUbuntu,
-			Provider: ExcusesTrackerUbuntu,
-			URL:      "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses.yaml.xz",
-			TeamURL:  "https://ubuntu-archive-team.ubuntu.com/proposed-migration/update_excuses_by_team.yaml",
-		},
-		{
-			Tracker:  ExcusesTrackerDebian,
-			Provider: ExcusesTrackerDebian,
-			URL:      "https://release.debian.org/britney/excuses.yaml",
-		},
+		{Tracker: ExcusesTrackerUbuntu, Provider: ExcusesTrackerUbuntu},
+		{Tracker: ExcusesTrackerDebian, Provider: ExcusesTrackerDebian},
 	}
 }
 

@@ -654,20 +654,8 @@ func parseExcuseAges(filters packagesFilters) (int, int, int, error) {
 	return minAge, maxAge, limit, nil
 }
 
-func configuredExcusesTrackers(session *runtimeadapter.Session) []string {
-	if session == nil || session.Config == nil {
-		return nil
-	}
-	trackers := make([]string, 0, len(session.Config.Packages.Distros))
-	for distroName, distroCfg := range session.Config.Packages.Distros {
-		if distroCfg.Excuses != nil {
-			trackers = append(trackers, distroName)
-		}
-	}
-	if len(trackers) == 0 {
-		return dto.KnownExcusesTrackers()
-	}
-	return uniqueSortedStrings(trackers...)
+func configuredExcusesTrackers(_ *runtimeadapter.Session) []string {
+	return dto.KnownExcusesTrackers()
 }
 
 func packageBackports(value string) []string {
