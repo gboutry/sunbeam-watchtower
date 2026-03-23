@@ -24,7 +24,7 @@ func newPackagesExcusesCmd(opts *Options) *cobra.Command {
 
 func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 	var trackers []string
-	var name, component, team, blockedBy string
+	var name, component, team, blockedBy, set, blockedBySet string
 	var ftbfs, autopkgtest, bugged, reverse bool
 	var minAge, maxAge, limit int
 
@@ -33,18 +33,20 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 		Short: "List package migration excuses",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			results, err := opts.Frontend().Packages().ExcusesList(cmd.Context(), frontend.PackagesExcusesListRequest{
-				Trackers:    trackers,
-				Name:        name,
-				Component:   component,
-				Team:        team,
-				FTBFS:       ftbfs,
-				Autopkgtest: autopkgtest,
-				BlockedBy:   blockedBy,
-				Bugged:      bugged,
-				MinAge:      minAge,
-				MaxAge:      maxAge,
-				Limit:       limit,
-				Reverse:     reverse,
+				Trackers:     trackers,
+				Name:         name,
+				Component:    component,
+				Team:         team,
+				FTBFS:        ftbfs,
+				Autopkgtest:  autopkgtest,
+				BlockedBy:    blockedBy,
+				Bugged:       bugged,
+				MinAge:       minAge,
+				MaxAge:       maxAge,
+				Limit:        limit,
+				Reverse:      reverse,
+				Set:          set,
+				BlockedBySet: blockedBySet,
 			})
 			if err != nil {
 				return err
@@ -65,6 +67,8 @@ func newPackagesExcusesListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().IntVar(&maxAge, "max-age", 0, "only include excuses no older than this many days")
 	cmd.Flags().IntVar(&limit, "limit", 0, "limit the number of results")
 	cmd.Flags().BoolVar(&reverse, "reverse", false, "show older excuses first")
+	cmd.Flags().StringVar(&set, "set", "", "only show excuses for packages in the named config set")
+	cmd.Flags().StringVar(&blockedBySet, "blocked-by-set", "", "only show excuses blocked by packages in the named config set")
 	return cmd
 }
 

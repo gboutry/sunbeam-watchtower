@@ -97,18 +97,20 @@ func ValidateExcusesTrackers(sources []ExcusesSource, trackers []string) error {
 
 // ExcuseQueryOpts controls filtering when listing excuses from the cache.
 type ExcuseQueryOpts struct {
-	Trackers    []string `json:"trackers,omitempty" yaml:"trackers,omitempty"`
-	Name        string   `json:"name,omitempty" yaml:"name,omitempty"`
-	Component   string   `json:"component,omitempty" yaml:"component,omitempty"`
-	Team        string   `json:"team,omitempty" yaml:"team,omitempty"`
-	FTBFS       bool     `json:"ftbfs,omitempty" yaml:"ftbfs,omitempty"`
-	Autopkgtest bool     `json:"autopkgtest,omitempty" yaml:"autopkgtest,omitempty"`
-	BlockedBy   string   `json:"blocked_by,omitempty" yaml:"blocked_by,omitempty"`
-	Bugged      bool     `json:"bugged,omitempty" yaml:"bugged,omitempty"`
-	MinAge      int      `json:"min_age,omitempty" yaml:"min_age,omitempty"`
-	MaxAge      int      `json:"max_age,omitempty" yaml:"max_age,omitempty"`
-	Limit       int      `json:"limit,omitempty" yaml:"limit,omitempty"`
-	Reverse     bool     `json:"reverse,omitempty" yaml:"reverse,omitempty"`
+	Trackers          []string `json:"trackers,omitempty" yaml:"trackers,omitempty"`
+	Name              string   `json:"name,omitempty" yaml:"name,omitempty"`
+	Component         string   `json:"component,omitempty" yaml:"component,omitempty"`
+	Team              string   `json:"team,omitempty" yaml:"team,omitempty"`
+	FTBFS             bool     `json:"ftbfs,omitempty" yaml:"ftbfs,omitempty"`
+	Autopkgtest       bool     `json:"autopkgtest,omitempty" yaml:"autopkgtest,omitempty"`
+	BlockedBy         string   `json:"blocked_by,omitempty" yaml:"blocked_by,omitempty"`
+	Bugged            bool     `json:"bugged,omitempty" yaml:"bugged,omitempty"`
+	MinAge            int      `json:"min_age,omitempty" yaml:"min_age,omitempty"`
+	MaxAge            int      `json:"max_age,omitempty" yaml:"max_age,omitempty"`
+	Limit             int      `json:"limit,omitempty" yaml:"limit,omitempty"`
+	Reverse           bool     `json:"reverse,omitempty" yaml:"reverse,omitempty"`
+	Packages          []string `json:"packages,omitempty" yaml:"packages,omitempty"`
+	BlockedByPackages []string `json:"blocked_by_packages,omitempty" yaml:"blocked_by_packages,omitempty"`
 }
 
 // PackageExcuseSummary holds the normalized fields needed for list/table views.

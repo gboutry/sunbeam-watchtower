@@ -91,18 +91,20 @@ type PackagesRdependsRequest struct {
 
 // PackagesExcusesListRequest describes one excuses-list workflow.
 type PackagesExcusesListRequest struct {
-	Trackers    []string
-	Name        string
-	Component   string
-	Team        string
-	FTBFS       bool
-	Autopkgtest bool
-	BlockedBy   string
-	Bugged      bool
-	MinAge      int
-	MaxAge      int
-	Limit       int
-	Reverse     bool
+	Trackers     []string
+	Name         string
+	Component    string
+	Team         string
+	FTBFS        bool
+	Autopkgtest  bool
+	BlockedBy    string
+	Bugged       bool
+	MinAge       int
+	MaxAge       int
+	Limit        int
+	Reverse      bool
+	Set          string
+	BlockedBySet string
 }
 
 // PackagesExcusesShowRequest describes one excuses-show workflow.
@@ -248,18 +250,20 @@ func (w *PackagesClientWorkflow) ExcusesList(ctx context.Context, req PackagesEx
 		return nil, err
 	}
 	return apiClient.PackagesExcusesList(ctx, client.PackagesExcusesListOptions{
-		Trackers:    req.Trackers,
-		Name:        req.Name,
-		Component:   req.Component,
-		Team:        req.Team,
-		FTBFS:       req.FTBFS,
-		Autopkgtest: req.Autopkgtest,
-		BlockedBy:   req.BlockedBy,
-		Bugged:      req.Bugged,
-		MinAge:      req.MinAge,
-		MaxAge:      req.MaxAge,
-		Limit:       req.Limit,
-		Reverse:     req.Reverse,
+		Trackers:     req.Trackers,
+		Name:         req.Name,
+		Component:    req.Component,
+		Team:         req.Team,
+		FTBFS:        req.FTBFS,
+		Autopkgtest:  req.Autopkgtest,
+		BlockedBy:    req.BlockedBy,
+		Bugged:       req.Bugged,
+		MinAge:       req.MinAge,
+		MaxAge:       req.MaxAge,
+		Limit:        req.Limit,
+		Reverse:      req.Reverse,
+		Set:          req.Set,
+		BlockedBySet: req.BlockedBySet,
 	})
 }
 

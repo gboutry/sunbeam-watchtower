@@ -17,18 +17,20 @@ import (
 
 // PackagesExcusesListInput holds parameters for the excuses list endpoint.
 type PackagesExcusesListInput struct {
-	Trackers    []string `query:"tracker" required:"false" doc:"Excuses tracker(s) to query (default: configured default tracker)"`
-	Name        string   `query:"name" required:"false" doc:"Case-insensitive regex to filter source package names"`
-	Component   string   `query:"component" required:"false" doc:"Archive component filter"`
-	Team        string   `query:"team" required:"false" doc:"Owning team filter"`
-	FTBFS       bool     `query:"ftbfs" required:"false" doc:"Only show FTBFS excuses"`
-	Autopkgtest bool     `query:"autopkgtest" required:"false" doc:"Only show excuses involving autopkgtests"`
-	BlockedBy   string   `query:"blocked_by" required:"false" doc:"Only show excuses blocked by this package"`
-	Bugged      bool     `query:"bugged" required:"false" doc:"Only show excuses with an attached bug reference"`
-	MinAge      int      `query:"min_age" required:"false" doc:"Only include excuses at least this many days old"`
-	MaxAge      int      `query:"max_age" required:"false" doc:"Only include excuses no older than this many days"`
-	Limit       int      `query:"limit" required:"false" doc:"Maximum number of results to return"`
-	Reverse     bool     `query:"reverse" required:"false" doc:"Show older excuses first"`
+	Trackers     []string `query:"tracker" required:"false" doc:"Excuses tracker(s) to query (default: configured default tracker)"`
+	Name         string   `query:"name" required:"false" doc:"Case-insensitive regex to filter source package names"`
+	Component    string   `query:"component" required:"false" doc:"Archive component filter"`
+	Team         string   `query:"team" required:"false" doc:"Owning team filter"`
+	FTBFS        bool     `query:"ftbfs" required:"false" doc:"Only show FTBFS excuses"`
+	Autopkgtest  bool     `query:"autopkgtest" required:"false" doc:"Only show excuses involving autopkgtests"`
+	BlockedBy    string   `query:"blocked_by" required:"false" doc:"Only show excuses blocked by this package"`
+	Bugged       bool     `query:"bugged" required:"false" doc:"Only show excuses with an attached bug reference"`
+	MinAge       int      `query:"min_age" required:"false" doc:"Only include excuses at least this many days old"`
+	MaxAge       int      `query:"max_age" required:"false" doc:"Only include excuses no older than this many days"`
+	Limit        int      `query:"limit" required:"false" doc:"Maximum number of results to return"`
+	Reverse      bool     `query:"reverse" required:"false" doc:"Show older excuses first"`
+	Set          string   `query:"set" required:"false" doc:"Only show excuses for packages in the named config set"`
+	BlockedBySet string   `query:"blocked_by_set" required:"false" doc:"Only show excuses blocked by packages in the named config set"`
 }
 
 // PackagesExcusesListOutput is the response for the excuses list endpoint.
@@ -68,24 +70,42 @@ func registerPackagesExcusesAPI(api huma.API, application *app.App) {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 
+		var packages, blockedByPackages []string
+		if input.Set != "" {
+			pkgs, ok := application.Config.Packages.Sets[input.Set]
+			if !ok {
+				return nil, huma.Error404NotFound(fmt.Sprintf("unknown package set %q", input.Set))
+			}
+			packages = pkgs
+		}
+		if input.BlockedBySet != "" {
+			pkgs, ok := application.Config.Packages.Sets[input.BlockedBySet]
+			if !ok {
+				return nil, huma.Error404NotFound(fmt.Sprintf("unknown package set %q", input.BlockedBySet))
+			}
+			blockedByPackages = pkgs
+		}
+
 		cache, err := application.ExcusesCache()
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open excuses cache: %v", err))
 		}
 		svc := pkg.NewExcusesService(cache, application.Logger)
 		results, err := svc.List(ctx, dto.ExcuseQueryOpts{
-			Trackers:    trackers,
-			Name:        input.Name,
-			Component:   input.Component,
-			Team:        input.Team,
-			FTBFS:       input.FTBFS,
-			Autopkgtest: input.Autopkgtest,
-			BlockedBy:   input.BlockedBy,
-			Bugged:      input.Bugged,
-			MinAge:      input.MinAge,
-			MaxAge:      input.MaxAge,
-			Limit:       input.Limit,
-			Reverse:     input.Reverse,
+			Trackers:          trackers,
+			Name:              input.Name,
+			Component:         input.Component,
+			Team:              input.Team,
+			FTBFS:             input.FTBFS,
+			Autopkgtest:       input.Autopkgtest,
+			BlockedBy:         input.BlockedBy,
+			Bugged:            input.Bugged,
+			MinAge:            input.MinAge,
+			MaxAge:            input.MaxAge,
+			Limit:             input.Limit,
+			Reverse:           input.Reverse,
+			Packages:          packages,
+			BlockedByPackages: blockedByPackages,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("listing excuses failed: %v", err))

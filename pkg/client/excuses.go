@@ -13,18 +13,20 @@ import (
 
 // PackagesExcusesListOptions holds query parameters for listing excuses.
 type PackagesExcusesListOptions struct {
-	Trackers    []string
-	Name        string
-	Component   string
-	Team        string
-	FTBFS       bool
-	Autopkgtest bool
-	BlockedBy   string
-	Bugged      bool
-	MinAge      int
-	MaxAge      int
-	Limit       int
-	Reverse     bool
+	Trackers     []string
+	Name         string
+	Component    string
+	Team         string
+	FTBFS        bool
+	Autopkgtest  bool
+	BlockedBy    string
+	Bugged       bool
+	MinAge       int
+	MaxAge       int
+	Limit        int
+	Reverse      bool
+	Set          string
+	BlockedBySet string
 }
 
 // PackagesExcusesList returns excuses matching the given filters.
@@ -65,6 +67,12 @@ func (c *Client) PackagesExcusesList(ctx context.Context, opts PackagesExcusesLi
 	}
 	if opts.Reverse {
 		q.Set("reverse", "true")
+	}
+	if opts.Set != "" {
+		q.Set("set", opts.Set)
+	}
+	if opts.BlockedBySet != "" {
+		q.Set("blocked_by_set", opts.BlockedBySet)
 	}
 
 	var result []dto.PackageExcuseSummary

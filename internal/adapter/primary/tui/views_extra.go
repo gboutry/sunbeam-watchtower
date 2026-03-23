@@ -58,6 +58,8 @@ type packagesFilters struct {
 	maxAge          string
 	limit           string
 	reverse         bool
+	excuseSet       string
+	blockedBySet    string
 }
 
 type packagesModel struct {
@@ -339,18 +341,20 @@ func loadPackagesCmd(session *runtimeadapter.Session, filters packagesFilters) t
 				return packagesLoadedMsg{err: err}
 			}
 			rows, err := session.Frontend.Packages().ExcusesList(ctx, frontend.PackagesExcusesListRequest{
-				Trackers:    []string{tracker},
-				Name:        filters.name,
-				Component:   filters.component,
-				Team:        filters.team,
-				FTBFS:       filters.ftbfs,
-				Autopkgtest: filters.autopkgtest,
-				BlockedBy:   filters.blockedBy,
-				Bugged:      filters.bugged,
-				MinAge:      minAge,
-				MaxAge:      maxAge,
-				Limit:       limit,
-				Reverse:     filters.reverse,
+				Trackers:     []string{tracker},
+				Name:         filters.name,
+				Component:    filters.component,
+				Team:         filters.team,
+				FTBFS:        filters.ftbfs,
+				Autopkgtest:  filters.autopkgtest,
+				BlockedBy:    filters.blockedBy,
+				Bugged:       filters.bugged,
+				MinAge:       minAge,
+				MaxAge:       maxAge,
+				Limit:        limit,
+				Reverse:      filters.reverse,
+				Set:          filters.excuseSet,
+				BlockedBySet: filters.blockedBySet,
 			})
 			return packagesLoadedMsg{excuseRows: rows, err: err}
 		default:
@@ -866,8 +870,9 @@ func renderPackagesFilterSummary(filters packagesFilters) string {
 			emptyAsAny(filters.backport), filters.merge, emptyAsAny(filters.upstreamRelease), filters.behindUpstream,
 			emptyAsAny(filters.onlyIn), emptyAsAny(filters.constraints))
 	case packageModeExcuses:
-		return fmt.Sprintf("mode=Excuses  tracker=%s  name=%s  component=%s  team=%s  ftbfs=%t  autopkgtest=%t  blocked-by=%s  bugged=%t",
+		return fmt.Sprintf("mode=Excuses  tracker=%s  name=%s  component=%s  team=%s  set=%s  blocked-by-set=%s  ftbfs=%t  autopkgtest=%t  blocked-by=%s  bugged=%t",
 			emptyAsAny(filters.tracker), emptyAsAny(filters.name), emptyAsAny(filters.component), emptyAsAny(filters.team),
+			emptyAsAny(filters.excuseSet), emptyAsAny(filters.blockedBySet),
 			filters.ftbfs, filters.autopkgtest, emptyAsAny(filters.blockedBy), filters.bugged)
 	default:
 		return fmt.Sprintf("mode=Inventory  distro=%s  release=%s  suite=%s  component=%s  backport=%s",
@@ -1752,6 +1757,8 @@ func newPackageFilterForm(session *runtimeadapter.Session, model packagesModel) 
 			{placeholder: "name", value: model.filters.name, resetValue: model.defaults.name, suggestions: s.names},
 			{placeholder: "component", value: model.filters.component, resetValue: model.defaults.component, suggestions: s.components},
 			{placeholder: "team", value: model.filters.team, resetValue: model.defaults.team, suggestions: s.teams},
+			{placeholder: "set", value: model.filters.excuseSet, resetValue: model.defaults.excuseSet, suggestions: s.sets},
+			{placeholder: "blocked by set", value: model.filters.blockedBySet, resetValue: model.defaults.blockedBySet, suggestions: s.sets},
 			{placeholder: "ftbfs", value: fmt.Sprintf("%t", model.filters.ftbfs), resetValue: fmt.Sprintf("%t", model.defaults.ftbfs), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
 			{placeholder: "autopkgtest", value: fmt.Sprintf("%t", model.filters.autopkgtest), resetValue: fmt.Sprintf("%t", model.defaults.autopkgtest), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
 			{placeholder: "blocked by", value: model.filters.blockedBy, resetValue: model.defaults.blockedBy},
@@ -1847,22 +1854,22 @@ func (m rootModel) updatePackageFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 			filters.onlyIn = strings.TrimSpace(values[8])
 			filters.constraints = strings.TrimSpace(values[9])
 		case packageModeExcuses:
-			ftbfs, err := strconv.ParseBool(strings.TrimSpace(values[4]))
+			ftbfs, err := strconv.ParseBool(strings.TrimSpace(values[6]))
 			if err != nil {
 				m.packageFilterForm.errorMsg = "ftbfs must be true or false"
 				return nil
 			}
-			autopkgtest, err := strconv.ParseBool(strings.TrimSpace(values[5]))
+			autopkgtest, err := strconv.ParseBool(strings.TrimSpace(values[7]))
 			if err != nil {
 				m.packageFilterForm.errorMsg = "autopkgtest must be true or false"
 				return nil
 			}
-			bugged, err := strconv.ParseBool(strings.TrimSpace(values[7]))
+			bugged, err := strconv.ParseBool(strings.TrimSpace(values[9]))
 			if err != nil {
 				m.packageFilterForm.errorMsg = "bugged must be true or false"
 				return nil
 			}
-			reverse, err := strconv.ParseBool(strings.TrimSpace(values[11]))
+			reverse, err := strconv.ParseBool(strings.TrimSpace(values[13]))
 			if err != nil {
 				m.packageFilterForm.errorMsg = "reverse must be true or false"
 				return nil
@@ -1871,13 +1878,15 @@ func (m rootModel) updatePackageFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 			filters.name = strings.TrimSpace(values[1])
 			filters.component = strings.TrimSpace(values[2])
 			filters.team = strings.TrimSpace(values[3])
+			filters.excuseSet = strings.TrimSpace(values[4])
+			filters.blockedBySet = strings.TrimSpace(values[5])
 			filters.ftbfs = ftbfs
 			filters.autopkgtest = autopkgtest
-			filters.blockedBy = strings.TrimSpace(values[6])
+			filters.blockedBy = strings.TrimSpace(values[8])
 			filters.bugged = bugged
-			filters.minAge = strings.TrimSpace(values[8])
-			filters.maxAge = strings.TrimSpace(values[9])
-			filters.limit = strings.TrimSpace(values[10])
+			filters.minAge = strings.TrimSpace(values[10])
+			filters.maxAge = strings.TrimSpace(values[11])
+			filters.limit = strings.TrimSpace(values[12])
 			filters.reverse = reverse
 		default:
 			filters.distro = strings.TrimSpace(values[0])

@@ -185,8 +185,8 @@ func TestPackageFilterFormIsModeSpecific(t *testing.T) {
 	if got := len(diff.fields); got != 10 {
 		t.Fatalf("diff filter field count = %d, want 10", got)
 	}
-	if got := len(excuses.fields); got != 12 {
-		t.Fatalf("excuses filter field count = %d, want 12", got)
+	if got := len(excuses.fields); got != 14 {
+		t.Fatalf("excuses filter field count = %d, want 14", got)
 	}
 }
 

@@ -212,6 +212,9 @@ func (c *Cache) List(_ context.Context, opts dto.ExcuseQueryOpts) ([]dto.Package
 		}
 	}
 
+	packagesSet := sliceToSet(opts.Packages)
+	blockedByPkgSet := sliceToSet(opts.BlockedByPackages)
+
 	trackers := opts.Trackers
 	if len(trackers) == 0 {
 		for _, source := range c.sources {
@@ -231,7 +234,7 @@ func (c *Cache) List(_ context.Context, opts dto.ExcuseQueryOpts) ([]dto.Package
 				if err := unmarshalJSON(v, &excuse); err != nil {
 					return err
 				}
-				if !matchesQuery(excuse, opts, nameRe) {
+				if !matchesQuery(excuse, opts, nameRe, packagesSet, blockedByPkgSet) {
 					return nil
 				}
 				results = append(results, excuse.PackageExcuseSummary)
@@ -370,8 +373,11 @@ func (c *Cache) Status() ([]dto.ExcusesCacheStatus, error) {
 	return statuses, nil
 }
 
-func matchesQuery(excuse dto.PackageExcuse, opts dto.ExcuseQueryOpts, nameRe *regexp.Regexp) bool {
+func matchesQuery(excuse dto.PackageExcuse, opts dto.ExcuseQueryOpts, nameRe *regexp.Regexp, packagesSet, blockedByPkgSet map[string]bool) bool {
 	if nameRe != nil && !nameRe.MatchString(excuse.Package) {
+		return false
+	}
+	if len(packagesSet) > 0 && !packagesSet[excuse.Package] {
 		return false
 	}
 	if opts.Component != "" && excuse.Component != opts.Component {
@@ -390,6 +396,18 @@ func matchesQuery(excuse dto.PackageExcuse, opts dto.ExcuseQueryOpts, nameRe *re
 		found := false
 		for _, pkg := range excuse.BlockedBy {
 			if pkg == opts.BlockedBy {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if len(blockedByPkgSet) > 0 {
+		found := false
+		for _, pkg := range excuse.BlockedBy {
+			if blockedByPkgSet[pkg] {
 				found = true
 				break
 			}
@@ -464,6 +482,17 @@ func (c *Cache) storeRaw(source dto.ExcusesSource, data []byte) error {
 
 func (c *Cache) rawDir(tracker string) string {
 	return filepath.Join(c.baseDir, "raw", tracker)
+}
+
+func sliceToSet(s []string) map[string]bool {
+	if len(s) == 0 {
+		return nil
+	}
+	m := make(map[string]bool, len(s))
+	for _, v := range s {
+		m[v] = true
+	}
+	return m
 }
 
 func recordsBucketName(tracker string) []byte {
