@@ -12,6 +12,7 @@ func newConfigCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.AddCommand(newConfigShowCmd(opts))
+	cmd.AddCommand(newConfigReloadCmd(opts))
 	return cmd
 }
 
@@ -33,4 +34,24 @@ func newConfigShowCmd(opts *Options) *cobra.Command {
 			}
 		},
 	}, frontend.ActionConfigShow)
+}
+
+func newConfigReloadCmd(opts *Options) *cobra.Command {
+	return withActionID(&cobra.Command{
+		Use:   "reload",
+		Short: "Reload configuration from file",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := opts.Frontend().Config().Reload(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			switch opts.Output {
+			case "json":
+				return renderJSON(opts.Out, result)
+			default:
+				return renderYAML(opts.Out, result)
+			}
+		},
+	}, frontend.ActionConfigReload)
 }
