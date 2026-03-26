@@ -187,3 +187,128 @@ func (c *Client) RemoveRemote(path, name string) error {
 	}
 	return nil
 }
+
+func (c *Client) CreateBranch(path, branchName, startPoint string) error {
+	c.logger.Debug("creating branch", "path", path, "branch", branchName, "startPoint", startPoint)
+	repo, err := gogit.PlainOpen(path)
+	if err != nil {
+		return fmt.Errorf("open repo %s: %w", path, err)
+	}
+	var h plumbing.Hash
+	if startPoint == "HEAD" {
+		head, err := repo.Head()
+		if err != nil {
+			return fmt.Errorf("resolve HEAD for %s: %w", path, err)
+		}
+		h = head.Hash()
+	} else {
+		resolved, err := repo.ResolveRevision(plumbing.Revision(startPoint))
+		if err != nil {
+			return fmt.Errorf("resolve revision %q for %s: %w", startPoint, path, err)
+		}
+		h = *resolved
+	}
+	ref := plumbing.NewHashReference(plumbing.NewBranchReferenceName(branchName), h)
+	if err := repo.Storer.SetReference(ref); err != nil {
+		return fmt.Errorf("create branch %s in %s: %w", branchName, path, err)
+	}
+	return nil
+}
+
+func (c *Client) CheckoutBranch(path, branchName string) error {
+	c.logger.Debug("checking out branch", "path", path, "branch", branchName)
+	repo, err := gogit.PlainOpen(path)
+	if err != nil {
+		return fmt.Errorf("open repo %s: %w", path, err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("get worktree for %s: %w", path, err)
+	}
+	if err := wt.Checkout(&gogit.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(branchName),
+	}); err != nil {
+		return fmt.Errorf("checkout branch %s in %s: %w", branchName, path, err)
+	}
+	return nil
+}
+
+func (c *Client) CurrentBranch(path string) (string, error) {
+	c.logger.Debug("getting current branch", "path", path)
+	repo, err := gogit.PlainOpen(path)
+	if err != nil {
+		return "", fmt.Errorf("open repo %s: %w", path, err)
+	}
+	head, err := repo.Head()
+	if err != nil {
+		return "", fmt.Errorf("get HEAD for %s: %w", path, err)
+	}
+	if !head.Name().IsBranch() {
+		return "", fmt.Errorf("HEAD is not a branch in %s", path)
+	}
+	return head.Name().Short(), nil
+}
+
+func (c *Client) DeleteLocalBranch(path, branchName string) error {
+	c.logger.Debug("deleting local branch", "path", path, "branch", branchName)
+	repo, err := gogit.PlainOpen(path)
+	if err != nil {
+		return fmt.Errorf("open repo %s: %w", path, err)
+	}
+	if err := repo.Storer.RemoveReference(plumbing.NewBranchReferenceName(branchName)); err != nil {
+		return fmt.Errorf("delete branch %s from %s: %w", branchName, path, err)
+	}
+	return nil
+}
+
+func (c *Client) AddAll(path string) error {
+	c.logger.Debug("adding all changes", "path", path)
+	repo, err := gogit.PlainOpen(path)
+	if err != nil {
+		return fmt.Errorf("open repo %s: %w", path, err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("get worktree for %s: %w", path, err)
+	}
+	if err := wt.AddWithOptions(&gogit.AddOptions{All: true}); err != nil {
+		return fmt.Errorf("add all in %s: %w", path, err)
+	}
+	return nil
+}
+
+func (c *Client) Commit(path, message string) error {
+	c.logger.Debug("committing", "path", path)
+	repo, err := gogit.PlainOpen(path)
+	if err != nil {
+		return fmt.Errorf("open repo %s: %w", path, err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("get worktree for %s: %w", path, err)
+	}
+	if _, err := wt.Commit(message, &gogit.CommitOptions{}); err != nil {
+		return fmt.Errorf("commit in %s: %w", path, err)
+	}
+	return nil
+}
+
+func (c *Client) ResetHard(path, ref string) error {
+	c.logger.Debug("resetting hard", "path", path, "ref", ref)
+	repo, err := gogit.PlainOpen(path)
+	if err != nil {
+		return fmt.Errorf("open repo %s: %w", path, err)
+	}
+	h, err := repo.ResolveRevision(plumbing.Revision(ref))
+	if err != nil {
+		return fmt.Errorf("resolve revision %q for %s: %w", ref, path, err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("get worktree for %s: %w", path, err)
+	}
+	if err := wt.Reset(&gogit.ResetOptions{Commit: *h, Mode: gogit.HardReset}); err != nil {
+		return fmt.Errorf("reset hard to %s in %s: %w", ref, path, err)
+	}
+	return nil
+}

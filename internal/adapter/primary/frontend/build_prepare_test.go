@@ -24,8 +24,15 @@ func (f *fakeGitClient) HasUncommittedChanges(string) (bool, error) { return fal
 func (f *fakeGitClient) Push(string, string, string, string, bool) error {
 	return nil
 }
-func (f *fakeGitClient) AddRemote(string, string, string) error { return nil }
-func (f *fakeGitClient) RemoveRemote(string, string) error      { return nil }
+func (f *fakeGitClient) AddRemote(string, string, string) error    { return nil }
+func (f *fakeGitClient) RemoveRemote(string, string) error         { return nil }
+func (f *fakeGitClient) CreateBranch(string, string, string) error { return nil }
+func (f *fakeGitClient) CheckoutBranch(string, string) error       { return nil }
+func (f *fakeGitClient) CurrentBranch(string) (string, error)      { return "master", nil }
+func (f *fakeGitClient) DeleteLocalBranch(string, string) error    { return nil }
+func (f *fakeGitClient) AddAll(string) error                       { return nil }
+func (f *fakeGitClient) Commit(string, string) error               { return nil }
+func (f *fakeGitClient) ResetHard(string, string) error            { return nil }
 
 type fakeRepoManager struct {
 	currentUser  string

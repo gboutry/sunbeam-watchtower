@@ -163,3 +163,133 @@ func TestPush_NonexistentRemote(t *testing.T) {
 		t.Fatal("expected error for nonexistent remote")
 	}
 }
+
+func TestCreateBranchAndCheckout(t *testing.T) {
+	c := adapter.NewClient(nil)
+	dir := initTestRepo(t)
+
+	if err := c.CreateBranch(dir, "feature", "HEAD"); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+	if err := c.CheckoutBranch(dir, "feature"); err != nil {
+		t.Fatalf("CheckoutBranch: %v", err)
+	}
+	branch, err := c.CurrentBranch(dir)
+	if err != nil {
+		t.Fatalf("CurrentBranch: %v", err)
+	}
+	if branch != "feature" {
+		t.Errorf("CurrentBranch = %q, want feature", branch)
+	}
+}
+
+func TestDeleteLocalBranch(t *testing.T) {
+	c := adapter.NewClient(nil)
+	dir := initTestRepo(t)
+
+	if err := c.CreateBranch(dir, "to-delete", "HEAD"); err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+	if err := c.DeleteLocalBranch(dir, "to-delete"); err != nil {
+		t.Fatalf("DeleteLocalBranch: %v", err)
+	}
+	// Checkout to deleted branch should fail.
+	if err := c.CheckoutBranch(dir, "to-delete"); err == nil {
+		t.Error("expected error checking out deleted branch")
+	}
+}
+
+func TestCurrentBranch(t *testing.T) {
+	c := adapter.NewClient(nil)
+	dir := initTestRepo(t)
+
+	branch, err := c.CurrentBranch(dir)
+	if err != nil {
+		t.Fatalf("CurrentBranch: %v", err)
+	}
+	if branch != "master" {
+		t.Errorf("CurrentBranch = %q, want master", branch)
+	}
+}
+
+func TestAddAllAndCommit(t *testing.T) {
+	c := adapter.NewClient(nil)
+	dir := initTestRepo(t)
+
+	origSHA, err := c.HeadSHA(dir)
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+
+	// Write a new file.
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	if err := c.AddAll(dir); err != nil {
+		t.Fatalf("AddAll: %v", err)
+	}
+	if err := c.Commit(dir, "add new file"); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	// Repo should be clean now.
+	dirty, err := c.HasUncommittedChanges(dir)
+	if err != nil {
+		t.Fatalf("HasUncommittedChanges: %v", err)
+	}
+	if dirty {
+		t.Error("expected clean repo after commit")
+	}
+
+	// SHA should have changed.
+	newSHA, err := c.HeadSHA(dir)
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	if newSHA == origSHA {
+		t.Error("expected SHA to change after commit")
+	}
+}
+
+func TestResetHard(t *testing.T) {
+	c := adapter.NewClient(nil)
+	dir := initTestRepo(t)
+
+	origSHA, err := c.HeadSHA(dir)
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+
+	// Create a second commit.
+	if err := os.WriteFile(filepath.Join(dir, "extra.txt"), []byte("data"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := c.AddAll(dir); err != nil {
+		t.Fatalf("AddAll: %v", err)
+	}
+	if err := c.Commit(dir, "second commit"); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	newSHA, err := c.HeadSHA(dir)
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	if newSHA == origSHA {
+		t.Fatal("expected different SHA after second commit")
+	}
+
+	// Reset to original commit.
+	if err := c.ResetHard(dir, origSHA); err != nil {
+		t.Fatalf("ResetHard: %v", err)
+	}
+
+	resetSHA, err := c.HeadSHA(dir)
+	if err != nil {
+		t.Fatalf("HeadSHA: %v", err)
+	}
+	if resetSHA != origSHA {
+		t.Errorf("expected SHA %s after reset, got %s", origSHA, resetSHA)
+	}
+}
