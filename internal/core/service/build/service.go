@@ -428,14 +428,20 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 		result.BuildRequest = br
 		if err != nil {
 			setErr(fmt.Errorf("request builds for %q: %w", status.Name, err))
+			return result
 		}
+		// LP processes requestBuilds asynchronously — builds may not
+		// appear immediately. Poll until at least one build exists.
+		result.Builds = s.waitForBuildRecords(ctx, pb, recipe)
 
 	case ActionRequestBuilds:
 		br, err := pb.Builder.RequestBuilds(ctx, status.Recipe, buildOpts(opts))
 		result.BuildRequest = br
 		if err != nil {
 			setErr(fmt.Errorf("request builds for %q: %w", status.Name, err))
+			return result
 		}
+		result.Builds = s.waitForBuildRecords(ctx, pb, status.Recipe)
 
 	case ActionRetryFailed:
 		for _, b := range status.Builds {
@@ -459,6 +465,38 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 	}
 
 	return result
+}
+
+// waitForBuildRecords polls ListBuilds until at least one build record
+// appears, or gives up after 2 minutes. LP creates build records
+// asynchronously after requestBuilds returns.
+func (s *Service) waitForBuildRecords(ctx context.Context, pb ProjectBuilder, recipe *dto.Recipe) []dto.Build {
+	wait := 2 * time.Second
+	maxWait := 15 * time.Second
+	deadline := time.Now().Add(2 * time.Minute)
+
+	for {
+		builds, err := pb.Builder.ListBuilds(ctx, recipe)
+		if err == nil && len(builds) > 0 {
+			return builds
+		}
+
+		if time.Now().After(deadline) {
+			s.logger.Warn("timed out waiting for build records", "recipe", recipe.Name)
+			return nil
+		}
+
+		s.logger.Debug("waiting for build records to appear", "recipe", recipe.Name, "retry_in", wait)
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(wait):
+		}
+		wait *= 2
+		if wait > maxWait {
+			wait = maxWait
+		}
+	}
 }
 
 func buildOpts(opts TriggerOpts) dto.RequestBuildsOpts {

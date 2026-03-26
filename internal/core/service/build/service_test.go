@@ -61,6 +61,17 @@ func (m *mockRecipeBuilder) RequestBuilds(_ context.Context, recipe *dto.Recipe,
 	if m.requestErr != nil {
 		return nil, m.requestErr
 	}
+	// Simulate LP creating build records asynchronously: if no builds
+	// exist for this recipe yet, add a pending one so waitForBuildRecords
+	// finds it.
+	if m.builds == nil {
+		m.builds = make(map[string][]dto.Build)
+	}
+	if len(m.builds[recipe.SelfLink]) == 0 {
+		m.builds[recipe.SelfLink] = []dto.Build{
+			{Recipe: recipe.Name, State: dto.BuildPending, SelfLink: recipe.SelfLink + "/+build/1"},
+		}
+	}
 	if br, ok := m.buildReqs[recipe.SelfLink]; ok {
 		return br, nil
 	}
