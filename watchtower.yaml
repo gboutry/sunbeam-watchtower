@@ -47,7 +47,7 @@ projects:
       owner: canonical
       official_codehosting: true
       lp_project: sunbeam-charms
-      prepare_command: "./repository.py prepare"
+      prepare_command: "./repository.py prepare --clean"
     bugs:
       - forge: launchpad
         project: snap-openstack
@@ -180,6 +180,13 @@ projects:
     series:
       - "1.19"
     development_focus: "1.19"
+
+  - name: microovn-operator
+    artifact_type: charm
+    code:
+      forge: github
+      owner: canonical
+      project: microovn-operator
 
 packages:
   upstream:
