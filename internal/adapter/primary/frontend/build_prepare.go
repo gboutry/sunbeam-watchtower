@@ -119,18 +119,21 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	refPath := "refs/heads/" + branchName
 
 	// 5. Check if branch already exists on LP.
-	refLink, err := p.repoManager.GetGitRef(ctx, repoSelfLink, refPath)
-	if err != nil {
+	_, refCheckErr := p.repoManager.GetGitRef(ctx, repoSelfLink, refPath)
+	if refCheckErr != nil {
 		// 6. Branch doesn't exist — prepare and push.
 		if err := p.prepareAndPush(ctx, localPath, gitSSHURL, lpOwner, branchName, sha, pb.PrepareCommand); err != nil {
 			return req, fmt.Errorf("prepare and push: %w", err)
 		}
+	}
 
-		// 7. Wait for git ref on LP.
-		refLink, err = p.repoManager.WaitForGitRef(ctx, repoSelfLink, refPath, 2*time.Minute)
-		if err != nil {
-			return req, fmt.Errorf("wait for git ref: %w", err)
-		}
+	// 7. Always wait for the ref to be usable on LP.
+	// LP is slow to process git pushes — even if GetGitRef returned a
+	// constructed self_link, recipe creation can fail until the ref is
+	// fully indexed. WaitForGitRef polls until LP confirms the ref.
+	refLink, err := p.repoManager.WaitForGitRef(ctx, repoSelfLink, refPath, 2*time.Minute)
+	if err != nil {
+		return req, fmt.Errorf("wait for git ref: %w", err)
 	}
 
 	// 8. Discover artifacts from local clone.

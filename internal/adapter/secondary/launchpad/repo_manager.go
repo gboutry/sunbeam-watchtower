@@ -110,6 +110,11 @@ func (m *RepoManager) GetGitRef(ctx context.Context, repoSelfLink, refPath strin
 	if err != nil {
 		return "", fmt.Errorf("getting git ref %q: %w", refPath, err)
 	}
+	// LP may return a stub ref that is not yet fully indexed.
+	// Only consider the ref usable when it has a commit SHA.
+	if ref.CommitSHA1 == "" {
+		return "", fmt.Errorf("git ref %q exists but has no commit (LP still indexing)", refPath)
+	}
 	// LP's getRefByPath may return a ref without self_link; construct it.
 	if ref.SelfLink != "" {
 		return ref.SelfLink, nil
