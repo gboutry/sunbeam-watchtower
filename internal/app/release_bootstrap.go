@@ -40,7 +40,8 @@ func (a *App) TrackedReleases(ctx context.Context) ([]dto.TrackedPublication, er
 }
 
 func (a *App) discoverTrackedReleases(ctx context.Context) ([]dto.TrackedPublication, []string, error) {
-	if a == nil || a.Config == nil {
+	cfg := a.GetConfig()
+	if a == nil || cfg == nil {
 		return nil, nil, nil
 	}
 	cache, err := a.GitCache()
@@ -50,7 +51,7 @@ func (a *App) discoverTrackedReleases(ctx context.Context) ([]dto.TrackedPublica
 
 	byKey := make(map[string]dto.TrackedPublication)
 	var warnings []string
-	for _, project := range a.Config.Projects {
+	for _, project := range cfg.Projects {
 		artifactType, err := dto.ParseArtifactType(project.ArtifactType)
 		if err != nil || (artifactType != dto.ArtifactSnap && artifactType != dto.ArtifactCharm) {
 			warnings = append(warnings, fmt.Sprintf("%s: skipped (artifact_type must be snap or charm)", project.Name))
@@ -65,7 +66,7 @@ func (a *App) discoverTrackedReleases(ctx context.Context) ([]dto.TrackedPublica
 			return nil, nil, fmt.Errorf("project %s: caching repo: %w", project.Name, err)
 		}
 
-		baseTracks, branches, err := resolveReleaseTracking(a.Config, project)
+		baseTracks, branches, err := resolveReleaseTracking(cfg, project)
 		if err != nil {
 			return nil, nil, fmt.Errorf("project %s: %w", project.Name, err)
 		}

@@ -33,7 +33,7 @@ func (w *TeamServerWorkflow) Sync(ctx context.Context, req dto.TeamSyncRequest) 
 		return nil, err
 	}
 
-	cfg := w.application.Config
+	cfg := w.application.GetConfig()
 	if cfg == nil {
 		return nil, errors.New("no configuration loaded")
 	}

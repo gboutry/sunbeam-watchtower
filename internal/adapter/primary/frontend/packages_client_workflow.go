@@ -287,7 +287,7 @@ func (w *PackagesClientWorkflow) resolveClient() (*ClientTransport, error) {
 }
 
 func (w *PackagesClientWorkflow) buildSources(distros, releases, suites, backports []string) []dto.PackageSource {
-	if w.application == nil || w.application.Config == nil {
+	if w.application == nil || w.application.GetConfig() == nil {
 		return nil
 	}
 	return w.application.BuildPackageSources(distros, releases, suites, backports)

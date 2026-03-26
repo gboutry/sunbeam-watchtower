@@ -36,7 +36,7 @@ func UpstreamRepoPath(cacheDir, repoURL string) string {
 // BuildUpstreamProvider creates an UpstreamProvider from config, or returns nil
 // if upstream is not configured.
 func (a *App) BuildUpstreamProvider() (port.UpstreamProvider, error) {
-	cfg := a.Config
+	cfg := a.GetConfig()
 	if cfg == nil || cfg.Packages.Upstream == nil {
 		return nil, nil
 	}
@@ -59,7 +59,7 @@ func (a *App) BuildUpstreamProvider() (port.UpstreamProvider, error) {
 
 // BuildCommitSources creates commit sources backed by the local git cache.
 func (a *App) BuildCommitSources() (map[string]port.CommitSource, error) {
-	cfg := a.Config
+	cfg := a.GetConfig()
 	if cfg == nil {
 		return nil, fmt.Errorf("no configuration loaded")
 	}
@@ -130,7 +130,7 @@ func (a *App) SyncBugCache(ctx context.Context, projects []string) (int, error) 
 //   - empty/nil or ["none"]: skip all backports (default)
 //   - ["gazpacho", "flamingo"]: include only those backports
 func (a *App) BuildPackageSources(distros, releases, suites, backports []string) []dto.PackageSource {
-	cfg := a.Config.Packages
+	cfg := a.GetConfig().Packages
 	var sources []dto.PackageSource
 
 	// Build backport filter.

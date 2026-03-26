@@ -68,11 +68,12 @@ func loadEmailOverrides(path string) (map[string]string, error) {
 // TeamSyncService returns the lazily initialized team sync service.
 func (a *App) TeamSyncService() (*teamsync.Service, error) {
 	a.teamSyncServiceOnce.Do(func() {
-		if a.Config == nil {
+		cfg := a.GetConfig()
+		if cfg == nil {
 			a.teamSyncServiceErr = fmt.Errorf("no configuration loaded")
 			return
 		}
-		if a.Config.Collaborators == nil {
+		if cfg.Collaborators == nil {
 			a.teamSyncServiceErr = fmt.Errorf("collaborators not configured")
 			return
 		}
@@ -83,7 +84,7 @@ func (a *App) TeamSyncService() (*teamsync.Service, error) {
 			return
 		}
 
-		emailOverrides, err := loadEmailOverrides(a.Config.Collaborators.EmailOverrides)
+		emailOverrides, err := loadEmailOverrides(cfg.Collaborators.EmailOverrides)
 		if err != nil {
 			a.teamSyncServiceErr = err
 			return

@@ -98,5 +98,5 @@ func (w *ReleaseClientWorkflow) config() *config.Config {
 	if w == nil || w.application == nil {
 		return nil
 	}
-	return w.application.Config
+	return w.application.GetConfig()
 }

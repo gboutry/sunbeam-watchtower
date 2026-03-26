@@ -15,10 +15,10 @@ import (
 // BuildRecipeBuilders creates per-project RecipeBuilder instances from config.
 func (a *App) BuildRecipeBuilders() (map[string]build.ProjectBuilder, error) {
 	var lpClient *lp.Client
-	if hasConfiguredBuildProjects(a.Config) {
+	if hasConfiguredBuildProjects(a.GetConfig()) {
 		lpClient = newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
 	}
-	return buildRecipeBuildersFromConfig(a.Config, a.Logger, lpClient)
+	return buildRecipeBuildersFromConfig(a.GetConfig(), a.Logger, lpClient)
 }
 
 // BuildService creates the build service with all required dependencies wired.
@@ -37,11 +37,11 @@ func (a *App) BuildService() (*build.Service, error) {
 // BuildRepoManager creates a RepoManager backed by Launchpad.
 func (a *App) BuildRepoManager() (port.RepoManager, error) {
 	var lpClient *lp.Client
-	if a.Config != nil {
+	if a.GetConfig() != nil {
 		lpClient = newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
 	}
 	return buildRepoManagerFromConfig(
-		a.Config,
+		a.GetConfig(),
 		a.Logger,
 		lpClient,
 	)
