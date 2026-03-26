@@ -290,6 +290,11 @@ func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, br
 	}
 	defer func() { _ = gitClient.RemoveRemote(localPath, remoteName) }()
 
+	// LP requires a main/master branch to exist before it processes other refs.
+	// Push main first so LP initialises the repo, then push the temp branch.
+	if err := gitClient.Push(localPath, remoteName, "refs/heads/"+branchName, "refs/heads/main", true); err != nil {
+		return fmt.Errorf("push main: %w", err)
+	}
 	if err := gitClient.Push(localPath, remoteName, "refs/heads/"+branchName, "refs/heads/"+branchName, true); err != nil {
 		return fmt.Errorf("push branch %s: %w", branchName, err)
 	}
