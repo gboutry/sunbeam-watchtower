@@ -77,6 +77,7 @@ const (
 	ActionCommitLog             ActionID = "commit.log"
 	ActionCommitTrack           ActionID = "commit.track"
 	ActionConfigShow            ActionID = "config.show"
+	ActionConfigReload          ActionID = "config.reload"
 	ActionDashboardRefresh      ActionID = "dashboard.refresh"
 	ActionBuildsRefresh         ActionID = "builds.refresh"
 	ActionReleasesRefresh       ActionID = "releases.refresh"
@@ -162,6 +163,7 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionCommitLog:             descriptor(ActionCommitLog, "commit", "commit", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List commits."),
 	ActionCommitTrack:           descriptor(ActionCommitTrack, "commit", "commit", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Track commits related to a bug."),
 	ActionConfigShow:            descriptor(ActionConfigShow, "system", "system", MutabilityRead, LocalEffectRead, RuntimeEmbeddedOK, ExportPolicyAllowed, "Show current configuration."),
+	ActionConfigReload:          descriptor(ActionConfigReload, "system", "system", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Reload configuration from file."),
 	ActionDashboardRefresh:      descriptor(ActionDashboardRefresh, "system", "system", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Refresh the TUI dashboard."),
 	ActionBuildsRefresh:         descriptor(ActionBuildsRefresh, "build", "build", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Refresh the TUI builds view."),
 	ActionReleasesRefresh:       descriptor(ActionReleasesRefresh, "release", "release", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Refresh the TUI releases view."),
