@@ -732,7 +732,10 @@ func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) (*CleanupResult
 			if opts.Prefix != "" && !strings.HasPrefix(recipe.Name, opts.Prefix) {
 				continue
 			}
-			if targetRef != "" && recipe.Project != "" && recipe.Project != targetRef {
+			// When cleaning up by prefix, skip the project filter —
+			// temp recipes live under the user's personal LP project,
+			// not the configured recipe project.
+			if opts.Prefix == "" && targetRef != "" && recipe.Project != "" && recipe.Project != targetRef {
 				continue
 			}
 
@@ -764,45 +767,46 @@ func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) (*CleanupResult
 }
 
 // cleanupBranches removes temporary branches matching the prefix from LP repos.
+// Branches live in the user's personal LP project (same as the trigger flow),
+// keyed by the watchtower project name — not the code forge project path.
 func (s *Service) cleanupBranches(ctx context.Context, opts CleanupOpts) ([]string, error) {
 	projFilter := make(map[string]bool, len(opts.Projects))
 	for _, p := range opts.Projects {
 		projFilter[p] = true
 	}
 
+	owner := opts.Owner
+	if owner == "" {
+		return nil, nil
+	}
+
+	// Resolve the user's personal LP build project (same as trigger uses).
+	lpProject, err := s.repoManager.GetOrCreateProject(ctx, owner)
+	if err != nil {
+		return nil, fmt.Errorf("resolve LP project for branch cleanup: %w", err)
+	}
+
 	branchPrefix := "refs/heads/" + opts.Prefix
 
+	// Check each watchtower project's repo for matching branches.
 	var deleted []string
-	for name, pb := range s.projects {
+	seen := make(map[string]bool) // track repos we've already cleaned
+	for name := range s.projects {
 		if len(projFilter) > 0 && !projFilter[name] {
 			continue
 		}
 
-		owner := pb.Owner
-		if opts.Owner != "" {
-			owner = opts.Owner
-		}
-		if owner == "" {
-			continue
-		}
-
-		targetRef := pb.RecipeProject()
-		if opts.TargetRef != "" {
-			targetRef = opts.TargetRef
-		}
-
-		// Resolve LP project to get repo self link.
-		_, err := s.repoManager.GetOrCreateProject(ctx, targetRef)
-		if err != nil {
-			s.logger.Warn("could not resolve LP project for branch cleanup", "project", name, "error", err)
-			continue
-		}
-
-		repoSelfLink, _, err := s.repoManager.GetOrCreateRepo(ctx, owner, targetRef, pb.Project)
+		// The repo name is the watchtower project name (e.g. "sunbeam-charms"),
+		// not the code project path (e.g. "openstack/sunbeam-charms").
+		repoSelfLink, _, err := s.repoManager.GetOrCreateRepo(ctx, owner, lpProject, name)
 		if err != nil {
 			s.logger.Warn("could not resolve repo for branch cleanup", "project", name, "error", err)
 			continue
 		}
+		if seen[repoSelfLink] {
+			continue
+		}
+		seen[repoSelfLink] = true
 
 		branches, err := s.repoManager.ListBranches(ctx, repoSelfLink)
 		if err != nil {
