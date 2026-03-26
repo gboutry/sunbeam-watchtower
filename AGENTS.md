@@ -97,6 +97,10 @@ Primary adapters must not import secondary adapters directly, `internal/adapter/
 
 ## Launchpad API
 
+### Omit optional fields instead of sending empty values
+
+Launchpad is built on Python and does not follow the same zero-value semantics as Go. An empty string `""` is not the same as an absent field — LP may interpret `build_path=""` as "use an empty subdirectory" rather than "use the repo root". When in doubt, omit optional fields entirely instead of sending them with empty/zero values. For mandatory fields, validate early in our code and return an error if a required value is zero — unless the zero value is semantically valid for that specific field.
+
 ### Creation endpoints return empty bodies
 
 All LP creation endpoints (`ws.op=new`, `ws.op=new_project`) return **HTTP 201 with an empty body** and a `Location` header. Do **not** use `json.Unmarshal` on the response. Instead, `POST` to create, then `GET` the resource by its known path.
