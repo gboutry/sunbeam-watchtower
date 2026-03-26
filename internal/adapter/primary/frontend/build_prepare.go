@@ -122,7 +122,7 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	_, refCheckErr := p.repoManager.GetGitRef(ctx, repoSelfLink, refPath)
 	if refCheckErr != nil {
 		// 6. Branch doesn't exist — prepare and push.
-		if err := p.prepareAndPush(ctx, localPath, gitSSHURL, lpOwner, branchName, sha, pb.PrepareCommand); err != nil {
+		if err := p.prepareAndPush(ctx, localPath, gitSSHURL, repoSelfLink, lpOwner, branchName, sha, pb.PrepareCommand); err != nil {
 			return req, fmt.Errorf("prepare and push: %w", err)
 		}
 	}
@@ -174,7 +174,7 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 // prepareAndPush creates a temp branch, optionally runs a prepare command, and pushes to LP.
 func (p *LocalBuildPreparer) prepareAndPush(
 	ctx context.Context,
-	localPath, gitSSHURL, lpOwner, branchName, sha, prepareCommand string,
+	localPath, gitSSHURL, repoSelfLink, lpOwner, branchName, sha, prepareCommand string,
 ) error {
 	// Save current branch.
 	origBranch, err := p.gitClient.CurrentBranch(localPath)
@@ -212,8 +212,16 @@ func (p *LocalBuildPreparer) prepareAndPush(
 		}
 	}
 
+	// Ensure LP repo has a main branch — LP requires it before processing
+	// other refs. Only push main if it doesn't already exist to avoid
+	// conflicting with concurrent CI runs.
+	needsMain := true
+	if _, err := p.repoManager.GetGitRef(ctx, repoSelfLink, "refs/heads/main"); err == nil {
+		needsMain = false
+	}
+
 	// Push to Launchpad.
-	if err := pushToLaunchpad(p.gitClient, localPath, gitSSHURL, lpOwner, branchName); err != nil {
+	if err := pushToLaunchpad(p.gitClient, localPath, gitSSHURL, lpOwner, branchName, needsMain); err != nil {
 		return fmt.Errorf("push to LP: %w", err)
 	}
 
@@ -280,7 +288,7 @@ func (p *LocalBuildPreparer) PrepareDownloadByPrefix(
 	return req, nil
 }
 
-func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, branchName string) error {
+func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, branchName string, pushMain bool) error {
 	sshURL := strings.Replace(gitSSHURL, "git+ssh://", "ssh://", 1)
 	if !strings.Contains(sshURL, "@") {
 		sshURL = strings.Replace(sshURL, "ssh://", "ssh://"+lpOwner+"@", 1)
@@ -293,10 +301,13 @@ func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, br
 	}
 	defer func() { _ = gitClient.RemoveRemote(localPath, remoteName) }()
 
-	// LP requires a main/master branch to exist before it processes other refs.
-	// Push main first so LP initialises the repo, then push the temp branch.
-	if err := gitClient.Push(localPath, remoteName, "refs/heads/"+branchName, "refs/heads/main", true); err != nil {
-		return fmt.Errorf("push main: %w", err)
+	// LP requires a main branch to exist before it processes other refs.
+	// Only push main when the repo has no main branch yet, to avoid
+	// conflicting with concurrent CI runs.
+	if pushMain {
+		if err := gitClient.Push(localPath, remoteName, "refs/heads/"+branchName, "refs/heads/main", true); err != nil {
+			return fmt.Errorf("push main: %w", err)
+		}
 	}
 	if err := gitClient.Push(localPath, remoteName, "refs/heads/"+branchName, "refs/heads/"+branchName, true); err != nil {
 		return fmt.Errorf("push branch %s: %w", branchName, err)
