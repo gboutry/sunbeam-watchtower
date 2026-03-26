@@ -24,6 +24,11 @@ type RecipeBuilder interface {
 	GetBuildFileURLs(ctx context.Context, buildSelfLink string) ([]string, error)
 }
 
+// CommandRunner executes shell commands in a directory.
+type CommandRunner interface {
+	Run(ctx context.Context, dir string, command string) error
+}
+
 // RepoManager handles temporary git repo/branch lifecycle on LP.
 type RepoManager interface {
 	GetCurrentUser(ctx context.Context) (string, error)
