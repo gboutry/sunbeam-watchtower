@@ -330,14 +330,31 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 		}
 		bp := buildPath
 		s.logger.Info("creating recipe", "recipe", status.Name, "owner", pb.Owner, "project", pb.RecipeProject(), "buildPath", bp)
-		recipe, err := pb.Builder.CreateRecipe(ctx, dto.CreateRecipeOpts{
+		createOpts := dto.CreateRecipeOpts{
 			Name:        status.Name,
 			Owner:       pb.Owner,
 			Project:     pb.RecipeProject(),
 			GitRepoLink: repoSelfLink,
 			GitRefLink:  gitRefLink,
 			BuildPath:   bp,
-		})
+		}
+		// LP has a propagation delay between its git indexer and recipe
+		// service. Retry on "No such object" errors for the git_ref.
+		var recipe *dto.Recipe
+		var err error
+		for attempt := range 5 {
+			recipe, err = pb.Builder.CreateRecipe(ctx, createOpts)
+			if err == nil || !strings.Contains(err.Error(), "No such object") {
+				break
+			}
+			s.logger.Warn("LP ref not yet propagated, retrying", "recipe", status.Name, "attempt", attempt+1, "error", err)
+			select {
+			case <-ctx.Done():
+				setErr(ctx.Err())
+				return result
+			case <-time.After(30 * time.Second):
+			}
+		}
 		if err != nil {
 			setErr(fmt.Errorf("create recipe %q: %w", status.Name, err))
 			return result
