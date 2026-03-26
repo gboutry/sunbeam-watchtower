@@ -18,6 +18,7 @@ type ProjectBuilder struct {
 	DevFocus            string
 	OfficialCodehosting bool
 	Strategy            ArtifactStrategy
+	PrepareCommand      string // optional shell command to run before committing
 }
 
 // RecipeProject returns the LP project to use for recipe operations.
