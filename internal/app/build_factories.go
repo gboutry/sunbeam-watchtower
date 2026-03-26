@@ -45,12 +45,14 @@ func buildRecipeBuildersFromConfig(cfg *config.Config, logger *slog.Logger, lpCl
 		var lpProject string
 		var officialCodehosting bool
 		var prepareCommand string
+		var channels map[string]string
 		if proj.Build != nil {
 			owner = proj.Build.Owner
 			artifacts = proj.Build.Artifacts
 			lpProject = proj.Build.LPProject
 			officialCodehosting = proj.Build.OfficialCodehosting
 			prepareCommand = proj.Build.PrepareCommand
+			channels = proj.Build.Channels
 		}
 
 		series := proj.Series
@@ -73,6 +75,7 @@ func buildRecipeBuildersFromConfig(cfg *config.Config, logger *slog.Logger, lpCl
 			OfficialCodehosting: officialCodehosting,
 			Strategy:            strategy,
 			PrepareCommand:      prepareCommand,
+			Channels:            channels,
 		}
 	}
 

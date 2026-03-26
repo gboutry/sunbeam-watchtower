@@ -45,6 +45,7 @@ func (b *CharmBuilder) CreateRecipe(ctx context.Context, opts dto.CreateRecipeOp
 		Project:    opts.Project,
 		GitRefLink: opts.GitRefLink,
 		BuildPath:  opts.BuildPath,
+		Channels:   opts.Channels,
 	})
 	if err != nil {
 		return nil, err
