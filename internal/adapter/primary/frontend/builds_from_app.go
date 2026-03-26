@@ -24,5 +24,5 @@ func NewLocalBuildPreparerFromApp(application *app.App) (*LocalBuildPreparer, er
 		return nil, fmt.Errorf("init recipe builders: %w", err)
 	}
 
-	return NewLocalBuildPreparer(application.GitClient(), repoMgr, builders), nil
+	return NewLocalBuildPreparer(application.GitClient(), repoMgr, builders, &ShellCommandRunner{}), nil
 }

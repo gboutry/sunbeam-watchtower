@@ -6,6 +6,7 @@ package frontend
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -76,13 +77,14 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 	defer ts.Close()
 
 	preparer := NewLocalBuildPreparer(
-		&fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567"},
+		&fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"},
 		&fakeRepoManager{
 			currentUser:  "lp-user",
 			project:      "lp-project",
 			repoSelfLink: "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo",
 			gitSSHURL:    "git+ssh://git.launchpad.net/~lp-user/lp-project/+git/demo",
 			refSelfLink:  "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo/+ref/refs/heads/tmp-01234567",
+			refErr:       fmt.Errorf("not found"),
 		},
 		map[string]build.ProjectBuilder{
 			"demo": {
@@ -90,6 +92,7 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 				Strategy: &fakeStrategy{},
 			},
 		},
+		nil,
 	)
 
 	workflow := NewBuildWorkflow(NewClientTransport(client.NewClient(ts.URL)), preparer)
@@ -129,6 +132,7 @@ func TestBuildWorkflowListLocal(t *testing.T) {
 	preparer := NewLocalBuildPreparer(
 		nil,
 		&fakeRepoManager{currentUser: "lp-user", project: "lp-project"},
+		nil,
 		nil,
 	)
 

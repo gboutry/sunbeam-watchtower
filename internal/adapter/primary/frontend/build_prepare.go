@@ -51,6 +51,7 @@ type LocalBuildPreparer struct {
 	gitClient   port.GitClient
 	repoManager port.RepoManager
 	builders    map[string]build.ProjectBuilder
+	cmdRunner   port.CommandRunner
 }
 
 // NewLocalBuildPreparer creates a reusable local build preparer.
@@ -58,11 +59,13 @@ func NewLocalBuildPreparer(
 	gitClient port.GitClient,
 	repoManager port.RepoManager,
 	builders map[string]build.ProjectBuilder,
+	cmdRunner port.CommandRunner,
 ) *LocalBuildPreparer {
 	return &LocalBuildPreparer{
 		gitClient:   gitClient,
 		repoManager: repoManager,
 		builders:    builders,
+		cmdRunner:   cmdRunner,
 	}
 }
 
@@ -80,16 +83,7 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		return req, fmt.Errorf("unknown project %q", req.Project)
 	}
 
-	lpOwner := req.Owner
-	var err error
-	if lpOwner == "" {
-		lpOwner, err = p.repoManager.GetCurrentUser(ctx)
-		if err != nil {
-			return req, fmt.Errorf("get current LP user: %w", err)
-		}
-	}
-	req.Owner = lpOwner
-
+	// 1. Resolve HEAD SHA from local clone.
 	sha, err := p.gitClient.HeadSHA(localPath)
 	if err != nil {
 		return req, fmt.Errorf("resolve HEAD SHA: %w", err)
@@ -99,6 +93,47 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		shortSHA = shortSHA[:8]
 	}
 
+	// 2. Resolve LP owner.
+	lpOwner := req.Owner
+	if lpOwner == "" {
+		lpOwner, err = p.repoManager.GetCurrentUser(ctx)
+		if err != nil {
+			return req, fmt.Errorf("get current LP user: %w", err)
+		}
+	}
+	req.Owner = lpOwner
+
+	// 3. Get or create personal LP project and repo.
+	lpProject, err := p.repoManager.GetOrCreateProject(ctx, lpOwner)
+	if err != nil {
+		return req, fmt.Errorf("get/create LP project: %w", err)
+	}
+
+	repoSelfLink, gitSSHURL, err := p.repoManager.GetOrCreateRepo(ctx, lpOwner, lpProject, req.Project)
+	if err != nil {
+		return req, fmt.Errorf("get/create LP repo: %w", err)
+	}
+
+	// 4. Build branch name.
+	branchName := "tmp-" + req.Prefix + "-" + shortSHA
+	refPath := "refs/heads/" + branchName
+
+	// 5. Check if branch already exists on LP.
+	refLink, err := p.repoManager.GetGitRef(ctx, repoSelfLink, refPath)
+	if err != nil {
+		// 6. Branch doesn't exist — prepare and push.
+		if err := p.prepareAndPush(ctx, localPath, gitSSHURL, lpOwner, branchName, sha, pb.PrepareCommand); err != nil {
+			return req, fmt.Errorf("prepare and push: %w", err)
+		}
+
+		// 7. Wait for git ref on LP.
+		refLink, err = p.repoManager.WaitForGitRef(ctx, repoSelfLink, refPath, 2*time.Minute)
+		if err != nil {
+			return req, fmt.Errorf("wait for git ref: %w", err)
+		}
+	}
+
+	// 8. Discover artifacts from local clone.
 	artifactNames := req.Artifacts
 	if len(artifactNames) == 0 {
 		artifactNames, err = pb.Strategy.DiscoverRecipes(localPath)
@@ -116,30 +151,7 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	}
 	req.Artifacts = tempNames
 
-	lpProject, err := p.repoManager.GetOrCreateProject(ctx, lpOwner)
-	if err != nil {
-		return req, fmt.Errorf("get/create LP project: %w", err)
-	}
-
-	repoSelfLink, gitSSHURL, err := p.repoManager.GetOrCreateRepo(ctx, lpOwner, lpProject, req.Project)
-	if err != nil {
-		return req, fmt.Errorf("get/create LP repo: %w", err)
-	}
-
-	if err := pushToLaunchpad(p.gitClient, localPath, gitSSHURL, lpOwner, shortSHA); err != nil {
-		return req, fmt.Errorf("push to LP: %w", err)
-	}
-
-	tmpBranch := "refs/heads/tmp-" + shortSHA
-	refLink, err := p.repoManager.WaitForGitRef(ctx, repoSelfLink, tmpBranch, 2*time.Minute)
-	if err != nil {
-		return req, fmt.Errorf("wait for git ref: %w", err)
-	}
-
-	gitRefLinks := make(map[string]string, len(tempNames))
-	for _, name := range tempNames {
-		gitRefLinks[name] = refLink
-	}
+	// 9. Build PreparedBuildSource with one entry per artifact.
 	req.Prepared = &dto.PreparedBuildSource{
 		Backend:       dto.PreparedBuildBackendLaunchpad,
 		TargetRef:     lpProject,
@@ -148,12 +160,61 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	}
 	for _, name := range tempNames {
 		req.Prepared.Recipes[name] = dto.PreparedBuildRecipe{
-			SourceRef: gitRefLinks[name],
+			SourceRef: refLink,
 			BuildPath: buildPaths[name],
 		}
 	}
 
 	return req, nil
+}
+
+// prepareAndPush creates a temp branch, optionally runs a prepare command, and pushes to LP.
+func (p *LocalBuildPreparer) prepareAndPush(
+	ctx context.Context,
+	localPath, gitSSHURL, lpOwner, branchName, sha, prepareCommand string,
+) error {
+	// Save current branch.
+	origBranch, err := p.gitClient.CurrentBranch(localPath)
+	if err != nil {
+		return fmt.Errorf("get current branch: %w", err)
+	}
+
+	// Create and checkout temp branch.
+	if err := p.gitClient.CreateBranch(localPath, branchName, sha); err != nil {
+		return fmt.Errorf("create branch %s: %w", branchName, err)
+	}
+	if err := p.gitClient.CheckoutBranch(localPath, branchName); err != nil {
+		return fmt.Errorf("checkout branch %s: %w", branchName, err)
+	}
+
+	// Restore original branch and delete temp branch on exit.
+	defer func() {
+		_ = p.gitClient.CheckoutBranch(localPath, origBranch)
+		_ = p.gitClient.DeleteLocalBranch(localPath, branchName)
+	}()
+
+	// Optionally run prepare command.
+	if prepareCommand != "" {
+		if p.cmdRunner == nil {
+			return fmt.Errorf("prepare command configured but no command runner available")
+		}
+		if err := p.cmdRunner.Run(ctx, localPath, prepareCommand); err != nil {
+			return fmt.Errorf("run prepare command: %w", err)
+		}
+		if err := p.gitClient.AddAll(localPath); err != nil {
+			return fmt.Errorf("stage prepared changes: %w", err)
+		}
+		if err := p.gitClient.Commit(localPath, "watchtower: prepare build"); err != nil {
+			return fmt.Errorf("commit prepared changes: %w", err)
+		}
+	}
+
+	// Push to Launchpad.
+	if err := pushToLaunchpad(p.gitClient, localPath, gitSSHURL, lpOwner, branchName); err != nil {
+		return fmt.Errorf("push to LP: %w", err)
+	}
+
+	return nil
 }
 
 // PrepareListByPrefix resolves Launchpad owner/project state for local-build discovery by prefix.
@@ -216,7 +277,7 @@ func (p *LocalBuildPreparer) PrepareDownloadByPrefix(
 	return req, nil
 }
 
-func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, shortSHA string) error {
+func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, branchName string) error {
 	sshURL := strings.Replace(gitSSHURL, "git+ssh://", "ssh://", 1)
 	if !strings.Contains(sshURL, "@") {
 		sshURL = strings.Replace(sshURL, "ssh://", "ssh://"+lpOwner+"@", 1)
@@ -229,12 +290,8 @@ func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, sh
 	}
 	defer func() { _ = gitClient.RemoveRemote(localPath, remoteName) }()
 
-	tmpBranch := "refs/heads/tmp-" + shortSHA
-	if err := gitClient.Push(localPath, remoteName, "HEAD", "refs/heads/main", true); err != nil {
-		return fmt.Errorf("push main: %w", err)
-	}
-	if err := gitClient.Push(localPath, remoteName, "HEAD", tmpBranch, true); err != nil {
-		return fmt.Errorf("push tmp branch: %w", err)
+	if err := gitClient.Push(localPath, remoteName, "refs/heads/"+branchName, "refs/heads/"+branchName, true); err != nil {
+		return fmt.Errorf("push branch %s: %w", branchName, err)
 	}
 
 	return nil
