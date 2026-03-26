@@ -782,6 +782,124 @@ func TestProjectBuilder_RecipeProject(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Cleanup tests
+// ---------------------------------------------------------------------------
+
+func TestCleanup_PrefixDiscovery(t *testing.T) {
+	// Verify cleanup discovers recipes by prefix via ListRecipesByOwner
+	// (not from pb.Artifacts), and also deletes matching branches.
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{},
+		ownerRecipes: []*dto.Recipe{
+			{Name: "tmp-build-abc12345-keystone", SelfLink: "/recipe/tmp-build-abc12345-keystone", Project: "test-project"},
+			{Name: "tmp-build-abc12345-glance", SelfLink: "/recipe/tmp-build-abc12345-glance", Project: "test-project"},
+			{Name: "official-keystone", SelfLink: "/recipe/official-keystone", Project: "test-project"},
+		},
+	}
+
+	repoMgr := &mockRepoManager{
+		project:      "test-project",
+		repoSelfLink: "https://api.launchpad.net/devel/~team/test-project/+git/rocks",
+		gitSSHURL:    "git+ssh://git.launchpad.net/~team/test-project/+git/rocks",
+		branches: []dto.BranchRef{
+			{Path: "refs/heads/tmp-build-abc12345", SelfLink: "/ref/tmp-build-abc12345"},
+			{Path: "refs/heads/tmp-build-def99999", SelfLink: "/ref/tmp-build-def99999"},
+			{Path: "refs/heads/main", SelfLink: "/ref/main"},
+		},
+	}
+
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {
+				Builder:   builder,
+				Owner:     "team",
+				Project:   "rocks",
+				LPProject: "test-project",
+				Artifacts: []string{"keystone", "glance"},
+				Strategy:  &mockStrategy{},
+			},
+		},
+		repoMgr, testLogger(),
+	)
+
+	result, err := svc.Cleanup(context.Background(), CleanupOpts{
+		Owner:  "team",
+		Prefix: "tmp-build",
+	})
+	if err != nil {
+		t.Fatalf("Cleanup() error: %v", err)
+	}
+
+	// Should discover and delete 2 recipes matching prefix (not the official one).
+	if len(result.DeletedRecipes) != 2 {
+		t.Errorf("expected 2 deleted recipes, got %d: %v", len(result.DeletedRecipes), result.DeletedRecipes)
+	}
+	for _, name := range result.DeletedRecipes {
+		if name != "tmp-build-abc12345-keystone" && name != "tmp-build-abc12345-glance" {
+			t.Errorf("unexpected deleted recipe: %q", name)
+		}
+	}
+
+	// Should delete 2 branches matching prefix (not main).
+	if len(result.DeletedBranches) != 2 {
+		t.Errorf("expected 2 deleted branches, got %d: %v", len(result.DeletedBranches), result.DeletedBranches)
+	}
+	for _, branch := range result.DeletedBranches {
+		if branch != "refs/heads/tmp-build-abc12345" && branch != "refs/heads/tmp-build-def99999" {
+			t.Errorf("unexpected deleted branch: %q", branch)
+		}
+	}
+}
+
+func TestCleanup_DryRun(t *testing.T) {
+	builder := &mockRecipeBuilder{
+		ownerRecipes: []*dto.Recipe{
+			{Name: "tmp-build-abc12345-keystone", SelfLink: "/recipe/tmp-build-abc12345-keystone", Project: "test-project"},
+		},
+	}
+
+	repoMgr := &mockRepoManager{
+		project:      "test-project",
+		repoSelfLink: "https://api.launchpad.net/devel/~team/test-project/+git/rocks",
+		gitSSHURL:    "git+ssh://git.launchpad.net/~team/test-project/+git/rocks",
+		branches: []dto.BranchRef{
+			{Path: "refs/heads/tmp-build-abc12345", SelfLink: "/ref/tmp-build-abc12345"},
+		},
+	}
+
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {
+				Builder:   builder,
+				Owner:     "team",
+				Project:   "rocks",
+				LPProject: "test-project",
+				Artifacts: []string{"keystone"},
+				Strategy:  &mockStrategy{},
+			},
+		},
+		repoMgr, testLogger(),
+	)
+
+	result, err := svc.Cleanup(context.Background(), CleanupOpts{
+		Owner:  "team",
+		Prefix: "tmp-build",
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("Cleanup() error: %v", err)
+	}
+
+	// Dry run should still report names but not actually delete.
+	if len(result.DeletedRecipes) != 1 {
+		t.Errorf("expected 1 deleted recipe in dry run, got %d", len(result.DeletedRecipes))
+	}
+	if len(result.DeletedBranches) != 1 {
+		t.Errorf("expected 1 deleted branch in dry run, got %d", len(result.DeletedBranches))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 

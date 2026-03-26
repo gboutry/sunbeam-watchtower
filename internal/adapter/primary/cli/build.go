@@ -194,7 +194,7 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 		Use:   "cleanup",
 		Short: "Delete temporary build recipes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			deleted, err := opts.Frontend().Builds().Cleanup(cmd.Context(), frontend.BuildCleanupRequest{
+			result, err := opts.Frontend().Builds().Cleanup(cmd.Context(), frontend.BuildCleanupRequest{
 				Project: project,
 				Owner:   owner,
 				Prefix:  prefix,
@@ -204,7 +204,23 @@ func newBuildCleanupCmd(opts *Options) *cobra.Command {
 				return err
 			}
 
-			return renderStringList(opts.Out, opts.Output, newOutputStylerForOptions(opts, opts.Out, opts.Output), deleted)
+			styler := newOutputStylerForOptions(opts, opts.Out, opts.Output)
+			if len(result.DeletedRecipes) > 0 {
+				fmt.Fprintln(opts.Out, "Deleted Recipes:")
+				if err := renderStringList(opts.Out, opts.Output, styler, result.DeletedRecipes); err != nil {
+					return err
+				}
+			}
+			if len(result.DeletedBranches) > 0 {
+				fmt.Fprintln(opts.Out, "Deleted Branches:")
+				if err := renderStringList(opts.Out, opts.Output, styler, result.DeletedBranches); err != nil {
+					return err
+				}
+			}
+			if len(result.DeletedRecipes) == 0 && len(result.DeletedBranches) == 0 {
+				fmt.Fprintln(opts.Out, "No resources to clean up.")
+			}
+			return nil
 		},
 	}, "build.cleanup")
 

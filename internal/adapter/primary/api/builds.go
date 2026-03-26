@@ -91,7 +91,8 @@ type BuildsCleanupInput struct {
 // BuildsCleanupOutput is the response for cleaning up temporary recipes.
 type BuildsCleanupOutput struct {
 	Body struct {
-		Deleted []string `json:"deleted" doc:"Deleted recipe names"`
+		DeletedRecipes  []string `json:"deleted_recipes" doc:"Deleted recipe names"`
+		DeletedBranches []string `json:"deleted_branches" doc:"Deleted branch paths"`
 	}
 }
 
@@ -221,13 +222,14 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			cleanupOpts.Projects = []string{input.Body.Project}
 		}
 
-		deleted, err := facade.Builds().Cleanup(ctx, cleanupOpts)
+		result, err := facade.Builds().Cleanup(ctx, cleanupOpts)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("cleanup failed: %v", err))
 		}
 
 		out := &BuildsCleanupOutput{}
-		out.Body.Deleted = deleted
+		out.Body.DeletedRecipes = result.DeletedRecipes
+		out.Body.DeletedBranches = result.DeletedBranches
 		return out, nil
 	})
 }

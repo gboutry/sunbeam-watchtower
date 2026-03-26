@@ -63,8 +63,8 @@ func (w *BuildServerWorkflow) Download(ctx context.Context, opts build.DownloadO
 	return service.Download(ctx, opts)
 }
 
-// Cleanup removes temporary build recipes.
-func (w *BuildServerWorkflow) Cleanup(ctx context.Context, opts build.CleanupOpts) ([]string, error) {
+// Cleanup removes temporary build recipes and branches.
+func (w *BuildServerWorkflow) Cleanup(ctx context.Context, opts build.CleanupOpts) (*build.CleanupResult, error) {
 	service, err := w.application.BuildService()
 	if err != nil {
 		return nil, err

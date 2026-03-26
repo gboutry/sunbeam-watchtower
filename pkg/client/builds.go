@@ -107,12 +107,13 @@ type BuildsCleanupOptions struct {
 
 // BuildsCleanupResult is the response returned by BuildsCleanup.
 type BuildsCleanupResult struct {
-	Deleted []string `json:"deleted"`
+	DeletedRecipes  []string `json:"deleted_recipes"`
+	DeletedBranches []string `json:"deleted_branches"`
 }
 
-// BuildsCleanup deletes temporary build recipes.
-func (c *Client) BuildsCleanup(ctx context.Context, opts BuildsCleanupOptions) ([]string, error) {
+// BuildsCleanup deletes temporary build recipes and branches.
+func (c *Client) BuildsCleanup(ctx context.Context, opts BuildsCleanupOptions) (*BuildsCleanupResult, error) {
 	var result BuildsCleanupResult
 	err := c.post(ctx, "/api/v1/builds/cleanup", opts, &result)
-	return result.Deleted, err
+	return &result, err
 }

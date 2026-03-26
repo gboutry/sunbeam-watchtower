@@ -164,7 +164,8 @@ func TestBuildWorkflowCleanup(t *testing.T) {
 			t.Fatalf("Decode() error = %v", err)
 		}
 		_ = json.NewEncoder(w).Encode(client.BuildsCleanupResult{
-			Deleted: []string{"tmp-build-keystone", "tmp-build-glance"},
+			DeletedRecipes:  []string{"tmp-build-keystone", "tmp-build-glance"},
+			DeletedBranches: []string{"refs/heads/tmp-build-abc12345"},
 		})
 	}))
 	defer ts.Close()
@@ -182,7 +183,13 @@ func TestBuildWorkflowCleanup(t *testing.T) {
 	if gotBody.Project != "keystone" || gotBody.Owner != "team-a" || gotBody.Prefix != "tmp-build" || !gotBody.DryRun {
 		t.Fatalf("cleanup body = %+v, want keystone/team-a/tmp-build dry-run", gotBody)
 	}
-	if len(got) != 2 || got[0] != "tmp-build-keystone" {
-		t.Fatalf("Cleanup() = %+v, want deleted recipes", got)
+	if got == nil {
+		t.Fatal("Cleanup() returned nil")
+	}
+	if len(got.DeletedRecipes) != 2 || got.DeletedRecipes[0] != "tmp-build-keystone" {
+		t.Fatalf("Cleanup().DeletedRecipes = %+v, want deleted recipes", got.DeletedRecipes)
+	}
+	if len(got.DeletedBranches) != 1 || got.DeletedBranches[0] != "refs/heads/tmp-build-abc12345" {
+		t.Fatalf("Cleanup().DeletedBranches = %+v, want deleted branches", got.DeletedBranches)
 	}
 }

@@ -84,10 +84,17 @@ type ProjectResult struct {
 
 // CleanupOpts holds options for cleaning up temporary recipes.
 type CleanupOpts struct {
-	Projects []string
-	Owner    string
-	Prefix   string
-	DryRun   bool
+	Projects  []string
+	Owner     string
+	Prefix    string
+	DryRun    bool
+	TargetRef string // LP project for branch cleanup resolution
+}
+
+// CleanupResult holds the result of a cleanup operation.
+type CleanupResult struct {
+	DeletedRecipes  []string
+	DeletedBranches []string
 }
 
 // Service orchestrates builds across projects.
@@ -682,16 +689,18 @@ func downloadFile(fileURL, outputDir, artifactName string) error {
 	return nil
 }
 
-// Cleanup removes temporary recipes matching the given prefix.
-func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) ([]string, error) {
+// Cleanup removes temporary recipes matching the given prefix and cleans up
+// temporary branches. It uses ListRecipesByOwner to discover recipes by prefix
+// rather than iterating the configured artifact list.
+func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) (*CleanupResult, error) {
 	projFilter := make(map[string]bool, len(opts.Projects))
 	for _, p := range opts.Projects {
 		projFilter[p] = true
 	}
 
 	owner := opts.Owner
+	result := &CleanupResult{}
 
-	var deleted []string
 	for name, pb := range s.projects {
 		if len(projFilter) > 0 && !projFilter[name] {
 			continue
@@ -702,28 +711,121 @@ func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) ([]string, erro
 			projOwner = owner
 		}
 
-		for _, recipeName := range pb.Artifacts {
-			if opts.Prefix != "" && !strings.HasPrefix(recipeName, opts.Prefix) {
+		if projOwner == "" {
+			s.logger.Warn("skipping cleanup: owner required", "project", name)
+			continue
+		}
+
+		targetRef := pb.RecipeProject()
+		if opts.TargetRef != "" {
+			targetRef = opts.TargetRef
+		}
+
+		// Discover recipes by owner and filter by prefix.
+		allRecipes, err := pb.Builder.ListRecipesByOwner(ctx, projOwner)
+		if err != nil {
+			s.logger.Warn("error listing recipes by owner", "project", name, "error", err)
+			continue
+		}
+
+		for _, recipe := range allRecipes {
+			if opts.Prefix != "" && !strings.HasPrefix(recipe.Name, opts.Prefix) {
 				continue
 			}
-
-			recipe, err := pb.Builder.GetRecipe(ctx, projOwner, pb.RecipeProject(), recipeName)
-			if err != nil {
-				s.logger.Warn("recipe not found for cleanup", "recipe", recipeName, "error", err)
+			if targetRef != "" && recipe.Project != "" && recipe.Project != targetRef {
 				continue
 			}
 
 			if opts.DryRun {
-				s.logger.Info("would delete recipe", "recipe", recipeName)
-				deleted = append(deleted, recipeName)
+				s.logger.Info("would delete recipe", "recipe", recipe.Name)
+				result.DeletedRecipes = append(result.DeletedRecipes, recipe.Name)
 				continue
 			}
 
 			if err := pb.Builder.DeleteRecipe(ctx, recipe.SelfLink); err != nil {
-				s.logger.Warn("failed to delete recipe", "recipe", recipeName, "error", err)
+				s.logger.Warn("failed to delete recipe", "recipe", recipe.Name, "error", err)
 				continue
 			}
-			deleted = append(deleted, recipeName)
+			result.DeletedRecipes = append(result.DeletedRecipes, recipe.Name)
+		}
+	}
+
+	// Clean up temporary branches if repoManager is available and prefix is set.
+	if s.repoManager != nil && opts.Prefix != "" {
+		branchResult, err := s.cleanupBranches(ctx, opts)
+		if err != nil {
+			s.logger.Warn("branch cleanup failed", "error", err)
+		} else {
+			result.DeletedBranches = append(result.DeletedBranches, branchResult...)
+		}
+	}
+
+	return result, nil
+}
+
+// cleanupBranches removes temporary branches matching the prefix from LP repos.
+func (s *Service) cleanupBranches(ctx context.Context, opts CleanupOpts) ([]string, error) {
+	projFilter := make(map[string]bool, len(opts.Projects))
+	for _, p := range opts.Projects {
+		projFilter[p] = true
+	}
+
+	branchPrefix := "refs/heads/" + opts.Prefix
+
+	var deleted []string
+	for name, pb := range s.projects {
+		if len(projFilter) > 0 && !projFilter[name] {
+			continue
+		}
+
+		owner := pb.Owner
+		if opts.Owner != "" {
+			owner = opts.Owner
+		}
+		if owner == "" {
+			continue
+		}
+
+		targetRef := pb.RecipeProject()
+		if opts.TargetRef != "" {
+			targetRef = opts.TargetRef
+		}
+
+		// Resolve LP project to get repo self link.
+		_, err := s.repoManager.GetOrCreateProject(ctx, targetRef)
+		if err != nil {
+			s.logger.Warn("could not resolve LP project for branch cleanup", "project", name, "error", err)
+			continue
+		}
+
+		repoSelfLink, _, err := s.repoManager.GetOrCreateRepo(ctx, owner, targetRef, pb.Project)
+		if err != nil {
+			s.logger.Warn("could not resolve repo for branch cleanup", "project", name, "error", err)
+			continue
+		}
+
+		branches, err := s.repoManager.ListBranches(ctx, repoSelfLink)
+		if err != nil {
+			s.logger.Warn("could not list branches for cleanup", "project", name, "error", err)
+			continue
+		}
+
+		for _, branch := range branches {
+			if !strings.HasPrefix(branch.Path, branchPrefix) {
+				continue
+			}
+
+			if opts.DryRun {
+				s.logger.Info("would delete branch", "branch", branch.Path)
+				deleted = append(deleted, branch.Path)
+				continue
+			}
+
+			if err := s.repoManager.DeleteGitRef(ctx, branch.SelfLink); err != nil {
+				s.logger.Warn("failed to delete branch", "branch", branch.Path, "error", err)
+				continue
+			}
+			deleted = append(deleted, branch.Path)
 		}
 	}
 

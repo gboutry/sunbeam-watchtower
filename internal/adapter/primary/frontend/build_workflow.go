@@ -78,6 +78,12 @@ type BuildCleanupRequest struct {
 	DryRun  bool
 }
 
+// BuildCleanupResponse contains the result of a cleanup operation.
+type BuildCleanupResponse struct {
+	DeletedRecipes  []string
+	DeletedBranches []string
+}
+
 // NewBuildWorkflow creates a reusable frontend build workflow.
 func NewBuildWorkflow(apiClient *ClientTransport, preparer *LocalBuildPreparer) *BuildWorkflow {
 	return &BuildWorkflow{
@@ -260,15 +266,22 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 	return w.client.BuildsDownload(ctx, downloadOpts)
 }
 
-// Cleanup deletes temporary build recipes matching the requested filters.
-func (w *BuildWorkflow) Cleanup(ctx context.Context, req BuildCleanupRequest) ([]string, error) {
+// Cleanup deletes temporary build recipes and branches matching the requested filters.
+func (w *BuildWorkflow) Cleanup(ctx context.Context, req BuildCleanupRequest) (*BuildCleanupResponse, error) {
 	if w.client == nil {
 		return nil, errors.New("build workflow requires an API client")
 	}
-	return w.client.BuildsCleanup(ctx, client.BuildsCleanupOptions{
+	result, err := w.client.BuildsCleanup(ctx, client.BuildsCleanupOptions{
 		Project: req.Project,
 		Owner:   req.Owner,
 		Prefix:  req.Prefix,
 		DryRun:  req.DryRun,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &BuildCleanupResponse{
+		DeletedRecipes:  result.DeletedRecipes,
+		DeletedBranches: result.DeletedBranches,
+	}, nil
 }
