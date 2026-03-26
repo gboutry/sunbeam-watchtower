@@ -61,7 +61,7 @@ func TestBuildTriggerCmd_Flags(t *testing.T) {
 
 	cmd, _, _ := root.Find([]string{"build", "trigger"})
 
-	for _, flag := range []string{"source", "wait", "timeout", "owner", "prefix"} {
+	for _, flag := range []string{"wait", "timeout", "owner", "prefix", "local-path"} {
 		if cmd.Flags().Lookup(flag) == nil {
 			t.Errorf("flag --%s not defined on 'build trigger'", flag)
 		}
@@ -120,10 +120,10 @@ func TestBuildTriggerCmd_FlagDefaults(t *testing.T) {
 	tests := []struct {
 		flag, want string
 	}{
-		{"source", "remote"},
 		{"wait", "false"},
 		{"timeout", "5h0m0s"},
 		{"prefix", "tmp-build"},
+		{"local-path", ""},
 	}
 	for _, tt := range tests {
 		f := cmd.Flags().Lookup(tt.flag)

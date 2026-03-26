@@ -24,7 +24,7 @@ func newBuildCmd(opts *Options) *cobra.Command {
 }
 
 func newBuildTriggerCmd(opts *Options) *cobra.Command {
-	var source, owner, prefix, localPath, artifactsDir string
+	var owner, prefix, localPath, artifactsDir string
 	var wait, download, async bool
 	var timeout time.Duration
 
@@ -43,6 +43,12 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			}
 			if async && wait {
 				return fmt.Errorf("--async cannot be combined with --wait or --download")
+			}
+
+			// Determine source mode: local when --local-path is explicitly set.
+			source := ""
+			if cmd.Flags().Changed("local-path") {
+				source = "local"
 			}
 
 			buildsFrontend := opts.Frontend().Builds()
@@ -88,14 +94,13 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 		},
 	}, frontend.ActionBuildTrigger)
 
-	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait for builds to complete")
 	cmd.Flags().BoolVar(&download, "download", false, "download artifacts after builds succeed (implies --wait)")
 	cmd.Flags().BoolVar(&async, "async", false, "queue the build trigger as a long-running operation")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Hour, "max wait time")
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
-	cmd.Flags().StringVar(&localPath, "local-path", ".", "path to local git repo (local mode)")
+	cmd.Flags().StringVar(&localPath, "local-path", "", "path to local git repo (enables local mode)")
 	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory for downloaded artifacts (default from config)")
 
 	return cmd
@@ -104,7 +109,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 func newBuildListCmd(opts *Options) *cobra.Command {
 	var projects []string
 	var all bool
-	var state, source, sha, prefix, owner string
+	var state, sha, prefix, owner string
 
 	cmd := withActionID(&cobra.Command{
 		Use:   "list [projects...]",
@@ -112,6 +117,12 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Positional args and --project flag are merged.
 			allProjects := append(projects, args...)
+
+			// Determine source mode: local when --prefix or --sha are set.
+			source := ""
+			if cmd.Flags().Changed("prefix") || cmd.Flags().Changed("sha") {
+				source = "local"
+			}
 
 			buildsFrontend := opts.Frontend().Builds()
 			if source == "local" {
@@ -140,7 +151,6 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name")
 	cmd.Flags().BoolVar(&all, "all", false, "show all builds (not just active)")
 	cmd.Flags().StringVar(&state, "state", "", "filter by state")
-	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
 	cmd.Flags().StringVar(&sha, "sha", "", "git commit SHA for local build lookup")
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
@@ -149,7 +159,7 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 }
 
 func newBuildDownloadCmd(opts *Options) *cobra.Command {
-	var artifactsDir, source, sha, prefix, owner string
+	var artifactsDir, sha, prefix, owner string
 
 	cmd := withActionID(&cobra.Command{
 		Use:   "download <project> [artifacts...]",
@@ -158,6 +168,12 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectName := args[0]
 			artifactNames := args[1:]
+
+			// Determine source mode: local when --prefix or --sha are set.
+			source := ""
+			if cmd.Flags().Changed("prefix") || cmd.Flags().Changed("sha") {
+				source = "local"
+			}
 
 			buildsFrontend := opts.Frontend().Builds()
 			if source == "local" {
@@ -178,7 +194,6 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 	}, frontend.ActionBuildDownload)
 
 	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory (default from config)")
-	cmd.Flags().StringVar(&source, "source", "remote", "build source (remote|local)")
 	cmd.Flags().StringVar(&sha, "sha", "", "git commit SHA (narrows prefix in local mode)")
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build-", "temp recipe name prefix (local mode)")
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")
