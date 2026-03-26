@@ -14,11 +14,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
+
+// defaultConcurrency is the max number of parallel LP API operations.
+const defaultConcurrency = 4
 
 // RecipeAction is the action determined for a recipe after assessment.
 type RecipeAction = dto.BuildRecipeAction
@@ -226,19 +230,64 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	}
 
 	result := &TriggerResult{Project: projectName}
+
+	// Assess and execute recipe actions concurrently.
+	type triggerJob struct {
+		index int
+		name  string
+	}
+	type triggerResult struct {
+		index  int
+		result RecipeResult
+	}
+
+	workerCount := min(defaultConcurrency, len(recipes))
+	jobs := make(chan triggerJob)
+	results := make(chan triggerResult, len(recipes))
+
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				status := s.assessRecipe(ctx, pb, job.name)
+				refLink := gitRefLinks[job.name]
+				bp := buildPaths[job.name]
+				s.logger.Debug("dispatching recipe action",
+					"recipe", job.name, "action", status.Action,
+					"repoSelfLink", repoSelfLink, "gitRefLink", refLink, "buildPath", bp)
+				rr := s.executeAction(ctx, pb, status, opts, repoSelfLink, refLink, bp)
+				results <- triggerResult{index: job.index, result: rr}
+			}
+		}()
+	}
+
+	for i, name := range recipes {
+		if ctx.Err() != nil {
+			break
+		}
+		jobs <- triggerJob{index: i, name: name}
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	// Reassemble results in original order.
+	ordered := make([]RecipeResult, len(recipes))
+	for tr := range results {
+		ordered[tr.index] = tr.result
+	}
+
 	var recipePtrs []*dto.Recipe
-
-	for _, name := range recipes {
-		status := s.assessRecipe(ctx, pb, name)
-		refLink := gitRefLinks[name]
-		bp := buildPaths[name]
-		s.logger.Debug("dispatching recipe action",
-			"recipe", name, "action", status.Action,
-			"repoSelfLink", repoSelfLink, "gitRefLink", refLink, "buildPath", bp)
-		rr := s.executeAction(ctx, pb, status, opts, repoSelfLink, refLink, bp)
+	for _, rr := range ordered {
+		if rr.Name == "" {
+			continue // skipped due to context cancellation
+		}
 		result.RecipeResults = append(result.RecipeResults, rr)
-
-		// Collect recipe pointers for wait loop.
 		if rr.Error == nil && rr.Recipe != nil {
 			recipePtrs = append(recipePtrs, rr.Recipe)
 		}
@@ -743,6 +792,8 @@ func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) (*CleanupResult
 			continue
 		}
 
+		// Filter matching recipes.
+		var toDelete []*dto.Recipe
 		for _, recipe := range allRecipes {
 			if opts.Prefix != "" && !strings.HasPrefix(recipe.Name, opts.Prefix) {
 				continue
@@ -753,18 +804,17 @@ func (s *Service) Cleanup(ctx context.Context, opts CleanupOpts) (*CleanupResult
 			if opts.Prefix == "" && targetRef != "" && recipe.Project != "" && recipe.Project != targetRef {
 				continue
 			}
+			toDelete = append(toDelete, recipe)
+		}
 
-			if opts.DryRun {
+		if opts.DryRun {
+			for _, recipe := range toDelete {
 				s.logger.Info("would delete recipe", "recipe", recipe.Name)
 				result.DeletedRecipes = append(result.DeletedRecipes, recipe.Name)
-				continue
 			}
-
-			if err := pb.Builder.DeleteRecipe(ctx, recipe.SelfLink); err != nil {
-				s.logger.Warn("failed to delete recipe", "recipe", recipe.Name, "error", err)
-				continue
-			}
-			result.DeletedRecipes = append(result.DeletedRecipes, recipe.Name)
+		} else {
+			deleted := s.deleteRecipesConcurrent(ctx, pb.Builder, toDelete)
+			result.DeletedRecipes = append(result.DeletedRecipes, deleted...)
 		}
 	}
 
@@ -829,24 +879,128 @@ func (s *Service) cleanupBranches(ctx context.Context, opts CleanupOpts) ([]stri
 			continue
 		}
 
+		// Filter matching branches.
+		var toDelete []dto.BranchRef
 		for _, branch := range branches {
 			if !strings.HasPrefix(branch.Path, branchPrefix) {
 				continue
 			}
+			toDelete = append(toDelete, branch)
+		}
 
-			if opts.DryRun {
+		if opts.DryRun {
+			for _, branch := range toDelete {
 				s.logger.Info("would delete branch", "branch", branch.Path)
 				deleted = append(deleted, branch.Path)
-				continue
 			}
-
-			if err := s.repoManager.DeleteGitRef(ctx, branch.SelfLink); err != nil {
-				s.logger.Warn("failed to delete branch", "branch", branch.Path, "error", err)
-				continue
-			}
-			deleted = append(deleted, branch.Path)
+		} else {
+			deleted = append(deleted, s.deleteBranchesConcurrent(ctx, toDelete)...)
 		}
 	}
 
 	return deleted, nil
+}
+
+// deleteRecipesConcurrent deletes recipes using a bounded worker pool.
+func (s *Service) deleteRecipesConcurrent(ctx context.Context, builder port.RecipeBuilder, recipes []*dto.Recipe) []string {
+	if len(recipes) == 0 {
+		return nil
+	}
+
+	type deleteResult struct {
+		name string
+		ok   bool
+	}
+
+	workerCount := min(defaultConcurrency, len(recipes))
+	jobs := make(chan *dto.Recipe)
+	results := make(chan deleteResult, len(recipes))
+
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for recipe := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				if err := builder.DeleteRecipe(ctx, recipe.SelfLink); err != nil {
+					s.logger.Warn("failed to delete recipe", "recipe", recipe.Name, "error", err)
+					continue
+				}
+				results <- deleteResult{name: recipe.Name, ok: true}
+			}
+		}()
+	}
+
+	for _, recipe := range recipes {
+		if ctx.Err() != nil {
+			break
+		}
+		jobs <- recipe
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	var deleted []string
+	for r := range results {
+		if r.ok {
+			deleted = append(deleted, r.name)
+		}
+	}
+	return deleted
+}
+
+// deleteBranchesConcurrent deletes git ref branches using a bounded worker pool.
+func (s *Service) deleteBranchesConcurrent(ctx context.Context, branches []dto.BranchRef) []string {
+	if len(branches) == 0 {
+		return nil
+	}
+
+	type deleteResult struct {
+		path string
+		ok   bool
+	}
+
+	workerCount := min(defaultConcurrency, len(branches))
+	jobs := make(chan dto.BranchRef)
+	results := make(chan deleteResult, len(branches))
+
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for branch := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				if err := s.repoManager.DeleteGitRef(ctx, branch.SelfLink); err != nil {
+					s.logger.Warn("failed to delete branch", "branch", branch.Path, "error", err)
+					continue
+				}
+				results <- deleteResult{path: branch.Path, ok: true}
+			}
+		}()
+	}
+
+	for _, branch := range branches {
+		if ctx.Err() != nil {
+			break
+		}
+		jobs <- branch
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	var deleted []string
+	for r := range results {
+		if r.ok {
+			deleted = append(deleted, r.path)
+		}
+	}
+	return deleted
 }
