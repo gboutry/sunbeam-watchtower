@@ -6,6 +6,8 @@ package frontend
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -150,7 +152,7 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	for _, name := range artifactNames {
 		tempName := pb.Strategy.TempRecipeName(name, sha, req.Prefix)
 		tempNames = append(tempNames, tempName)
-		buildPaths[tempName] = pb.Strategy.BuildPath(name)
+		buildPaths[tempName] = resolveBuildPath(pb.Strategy, name, localPath)
 	}
 	req.Artifacts = tempNames
 
@@ -314,4 +316,27 @@ func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, br
 	}
 
 	return nil
+}
+
+// resolveBuildPath determines the correct LP build path for an artifact.
+// When a local repo path is available, it checks the filesystem to distinguish
+// monorepo layouts (e.g. charms/<name>/charmcraft.yaml) from single-artifact
+// repos (metadata at root). Falls back to the strategy's default BuildPath.
+func resolveBuildPath(strategy build.ArtifactStrategy, artifactName, localPath string) string {
+	defaultPath := strategy.BuildPath(artifactName)
+	if localPath == "" || defaultPath == "" {
+		return defaultPath
+	}
+	// Check if the default build path actually exists in the local repo.
+	candidate := filepath.Join(localPath, defaultPath, strategy.MetadataFileName())
+	if _, err := os.Stat(candidate); err == nil {
+		return defaultPath
+	}
+	// Default path doesn't exist — check if metadata is at root instead.
+	rootCandidate := filepath.Join(localPath, strategy.MetadataFileName())
+	if _, err := os.Stat(rootCandidate); err == nil {
+		return ""
+	}
+	// Neither exists (e.g. test paths) — keep the default.
+	return defaultPath
 }
