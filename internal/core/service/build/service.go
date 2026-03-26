@@ -141,6 +141,20 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	}
 	pb.Owner = owner
 
+	// Merge project-level channels (defaults) with trigger opts (overrides).
+	if len(pb.Channels) > 0 && len(opts.Channels) == 0 {
+		opts.Channels = pb.Channels
+	} else if len(pb.Channels) > 0 {
+		merged := make(map[string]string, len(pb.Channels)+len(opts.Channels))
+		for k, v := range pb.Channels {
+			merged[k] = v
+		}
+		for k, v := range opts.Channels {
+			merged[k] = v // opts override project defaults
+		}
+		opts.Channels = merged
+	}
+
 	prepared := opts.Prepared.Normalize()
 
 	targetRef := opts.TargetRef
@@ -386,6 +400,7 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 			GitRepoLink: repoSelfLink,
 			GitRefLink:  gitRefLink,
 			BuildPath:   bp,
+			Channels:    opts.Channels,
 		}
 		// LP has a propagation delay between its git indexer and recipe
 		// service. Retry on "No such object" errors for the git_ref.

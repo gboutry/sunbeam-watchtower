@@ -42,6 +42,7 @@ func (c *RockBuilder) CreateRecipe(ctx context.Context, opts dto.CreateRecipeOpt
 		Project:    opts.Project,
 		GitRefLink: opts.GitRefLink,
 		BuildPath:  opts.BuildPath,
+		Channels:   opts.Channels,
 	})
 	if err != nil {
 		return nil, err

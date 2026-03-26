@@ -196,6 +196,7 @@ type CreateRecipeOpts struct {
 	GitRepoLink string
 	GitRefLink  string
 	BuildPath   string
+	Channels    map[string]string // snap channels for build tools (e.g. {"charmcraft": "latest/stable"})
 }
 
 // RequestBuildsOpts holds parameters for requesting builds.

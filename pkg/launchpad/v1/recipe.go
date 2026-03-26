@@ -264,6 +264,7 @@ type CreateRockRecipeOpts struct {
 	GitRefLink  string // self_link of the git ref
 	BuildPath   string // e.g. "rocks/keystone"
 	Description string
+	Channels    map[string]string // snap channels for build tools (set as auto_build_channels)
 }
 
 // CreateRockRecipe creates a new rock recipe on Launchpad.
@@ -280,6 +281,10 @@ func (c *Client) CreateRockRecipe(ctx context.Context, opts CreateRockRecipeOpts
 	if opts.Description != "" {
 		form.Set("description", opts.Description)
 	}
+	if len(opts.Channels) > 0 {
+		ch, _ := json.Marshal(opts.Channels)
+		form.Set("auto_build_channels", string(ch))
+	}
 	if _, err := c.Post(ctx, "/+rock-recipes", form); err != nil {
 		return RockRecipe{}, fmt.Errorf("creating rock recipe: %w", err)
 	}
@@ -294,6 +299,7 @@ type CreateCharmRecipeOpts struct {
 	GitRefLink  string
 	BuildPath   string
 	Description string
+	Channels    map[string]string // snap channels for build tools (set as auto_build_channels)
 }
 
 // CreateCharmRecipe creates a new charm recipe on Launchpad.
@@ -309,6 +315,10 @@ func (c *Client) CreateCharmRecipe(ctx context.Context, opts CreateCharmRecipeOp
 	}
 	if opts.Description != "" {
 		form.Set("description", opts.Description)
+	}
+	if len(opts.Channels) > 0 {
+		ch, _ := json.Marshal(opts.Channels)
+		form.Set("auto_build_channels", string(ch))
 	}
 	if _, err := c.Post(ctx, "/+charm-recipes", form); err != nil {
 		return CharmRecipe{}, fmt.Errorf("creating charm recipe: %w", err)

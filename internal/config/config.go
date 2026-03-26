@@ -61,11 +61,12 @@ type BugGroupConfig struct {
 
 // ProjectBuildConfig holds per-project build settings.
 type ProjectBuildConfig struct {
-	Owner               string   `mapstructure:"owner" yaml:"owner,omitempty"`
-	Artifacts           []string `mapstructure:"artifacts" yaml:"artifacts,omitempty"`
-	PrepareCommand      string   `mapstructure:"prepare_command" yaml:"prepare_command,omitempty"`
-	OfficialCodehosting bool     `mapstructure:"official_codehosting" yaml:"official_codehosting,omitempty"`
-	LPProject           string   `mapstructure:"lp_project" yaml:"lp_project,omitempty"`
+	Owner               string            `mapstructure:"owner" yaml:"owner,omitempty"`
+	Artifacts           []string          `mapstructure:"artifacts" yaml:"artifacts,omitempty"`
+	PrepareCommand      string            `mapstructure:"prepare_command" yaml:"prepare_command,omitempty"`
+	OfficialCodehosting bool              `mapstructure:"official_codehosting" yaml:"official_codehosting,omitempty"`
+	LPProject           string            `mapstructure:"lp_project" yaml:"lp_project,omitempty"`
+	Channels            map[string]string `mapstructure:"channels" yaml:"channels,omitempty"`
 }
 
 // ProjectReleaseBranchConfig declares one explicitly managed release branch.

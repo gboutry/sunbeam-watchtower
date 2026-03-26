@@ -18,7 +18,8 @@ type ProjectBuilder struct {
 	DevFocus            string
 	OfficialCodehosting bool
 	Strategy            ArtifactStrategy
-	PrepareCommand      string // optional shell command to run before committing
+	PrepareCommand      string            // optional shell command to run before committing
+	Channels            map[string]string // snap channels for build tools (e.g. {"charmcraft": "latest/stable"})
 }
 
 // RecipeProject returns the LP project to use for recipe operations.
