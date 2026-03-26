@@ -92,6 +92,7 @@ The following are implemented and should be treated as the current baseline:
 - `RepoManager` port extended with `ListBranches` and `DeleteGitRef` for branch lifecycle management via LP API
 - `CommandRunner` port and `ShellCommandRunner` implementation handle prepare-command execution on the frontend side
 - `CleanupResult` type propagated through build service, API, HTTP client, and frontend workflow layers, reporting both deleted recipes and deleted branches
+- config hot-reload: `App.Config` is private behind `GetConfig()` (read-locked) and `ReloadConfig(path)` (write-lock swap); the persistent server watches `watchtower.yaml` via fsnotify `ConfigWatcher`, handles SIGHUP for manual reload, and exposes `POST /api/v1/config/reload`; CLI `config reload` command calls the endpoint; per-request services pick up changes immediately; `sync.Once` services (Telemetry, TeamSyncService) require server restart
 
 ## Current Gaps
 

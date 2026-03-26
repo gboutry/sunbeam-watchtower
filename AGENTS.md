@@ -27,6 +27,23 @@ Place the `Assisted-By` trailer at the end of the commit message, separated by a
 
 ## Non-obvious behaviours encountered during development
 
+## Config reload boundary
+
+The server supports live config reload (fsnotify file watching, SIGHUP, `POST /api/v1/config/reload`). Not all services pick up changes immediately:
+
+**Reloads immediately** (per-request factories that call `GetConfig()` on each invocation):
+- Build recipe builders and build service
+- Package sources, commit sources, upstream provider
+- Review projects, forge clients, bug trackers
+- Release tracking, excuses sources
+- Config API endpoint
+
+**Does NOT reload (requires server restart):**
+- Telemetry/OTel collectors (`sync.Once` in `telemetry_bootstrap.go`)
+- TeamSyncService (`sync.Once` in `teamsync_bootstrap.go`)
+
+New `sync.Once` services that read config at init time must be listed here. If a service should support live reload, it must use `GetConfig()` on each request instead of caching at init time.
+
 ## Runtime model
 
 ### Stateful features are persistent-server-first
