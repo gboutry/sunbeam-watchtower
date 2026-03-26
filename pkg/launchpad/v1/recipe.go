@@ -285,12 +285,14 @@ type CreateRockRecipeOpts struct {
 // LP returns 201 with an empty body, so we POST then GET the new resource.
 func (c *Client) CreateRockRecipe(ctx context.Context, opts CreateRockRecipeOpts) (RockRecipe, error) {
 	form := url.Values{
-		"ws.op":      {"new"},
-		"name":       {opts.Name},
-		"owner":      {c.resolveURL("/~" + opts.Owner)},
-		"project":    {c.resolveURL("/" + opts.Project)},
-		"git_ref":    {opts.GitRefLink},
-		"build_path": {opts.BuildPath},
+		"ws.op":   {"new"},
+		"name":    {opts.Name},
+		"owner":   {c.resolveURL("/~" + opts.Owner)},
+		"project": {c.resolveURL("/" + opts.Project)},
+		"git_ref": {opts.GitRefLink},
+	}
+	if opts.BuildPath != "" {
+		form.Set("build_path", opts.BuildPath)
 	}
 	if opts.Description != "" {
 		form.Set("description", opts.Description)
@@ -320,12 +322,14 @@ type CreateCharmRecipeOpts struct {
 // LP returns 201 with an empty body, so we POST then GET the new resource.
 func (c *Client) CreateCharmRecipe(ctx context.Context, opts CreateCharmRecipeOpts) (CharmRecipe, error) {
 	form := url.Values{
-		"ws.op":      {"new"},
-		"name":       {opts.Name},
-		"owner":      {c.resolveURL("/~" + opts.Owner)},
-		"project":    {c.resolveURL("/" + opts.Project)},
-		"git_ref":    {opts.GitRefLink},
-		"build_path": {opts.BuildPath},
+		"ws.op":   {"new"},
+		"name":    {opts.Name},
+		"owner":   {c.resolveURL("/~" + opts.Owner)},
+		"project": {c.resolveURL("/" + opts.Project)},
+		"git_ref": {opts.GitRefLink},
+	}
+	if opts.BuildPath != "" {
+		form.Set("build_path", opts.BuildPath)
 	}
 	if opts.Description != "" {
 		form.Set("description", opts.Description)
