@@ -36,9 +36,16 @@ func (c *Client) GetRockRecipeByLink(ctx context.Context, selfLink string) (Rock
 // RequestRockRecipeBuilds requests builds for a rock recipe.
 // LP returns an empty body for requestBuilds — the build request
 // status is retrieved later via ListBuilds.
-func (c *Client) RequestRockRecipeBuilds(ctx context.Context, recipeSelfLink string, channels map[string]string, architectures []string) (BuildRequest, error) {
+// archiveLink and pocket control the build environment (e.g. "/ubuntu/+archive/primary", "Updates").
+func (c *Client) RequestRockRecipeBuilds(ctx context.Context, recipeSelfLink, archiveLink, pocket string, channels map[string]string, architectures []string) (BuildRequest, error) {
 	form := url.Values{
 		"ws.op": {"requestBuilds"},
+	}
+	if archiveLink != "" {
+		form.Set("archive", c.resolveURL(archiveLink))
+	}
+	if pocket != "" {
+		form.Set("pocket", pocket)
 	}
 	if len(channels) > 0 {
 		ch, _ := json.Marshal(channels)
@@ -114,9 +121,16 @@ func (c *Client) GetCharmRecipeByLink(ctx context.Context, selfLink string) (Cha
 // RequestCharmRecipeBuilds requests builds for a charm recipe.
 // LP returns an empty body for requestBuilds — the build request
 // status is retrieved later via ListBuilds.
-func (c *Client) RequestCharmRecipeBuilds(ctx context.Context, recipeSelfLink string, channels map[string]string, architectures []string) (BuildRequest, error) {
+// archiveLink and pocket control the build environment (e.g. "/ubuntu/+archive/primary", "Updates").
+func (c *Client) RequestCharmRecipeBuilds(ctx context.Context, recipeSelfLink, archiveLink, pocket string, channels map[string]string, architectures []string) (BuildRequest, error) {
 	form := url.Values{
 		"ws.op": {"requestBuilds"},
+	}
+	if archiveLink != "" {
+		form.Set("archive", c.resolveURL(archiveLink))
+	}
+	if pocket != "" {
+		form.Set("pocket", pocket)
 	}
 	if len(channels) > 0 {
 		ch, _ := json.Marshal(channels)

@@ -67,7 +67,15 @@ func (c *RockBuilder) ListRecipesByOwner(ctx context.Context, owner string) ([]*
 }
 
 func (c *RockBuilder) RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error) {
-	br, err := c.client.RequestRockRecipeBuilds(ctx, recipe.SelfLink, opts.Channels, opts.Architectures)
+	archiveLink := opts.ArchiveLink
+	if archiveLink == "" {
+		archiveLink = "/ubuntu/+archive/primary"
+	}
+	pocket := opts.Pocket
+	if pocket == "" {
+		pocket = "Updates"
+	}
+	br, err := c.client.RequestRockRecipeBuilds(ctx, recipe.SelfLink, archiveLink, pocket, opts.Channels, opts.Architectures)
 	if err != nil {
 		return nil, err
 	}
