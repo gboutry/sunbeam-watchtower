@@ -13,12 +13,13 @@ import (
 
 // BuildProjectSyncConfigs resolves project sync configuration from the loaded config.
 func (a *App) BuildProjectSyncConfigs() (map[string]projectsvc.ProjectSyncConfig, error) {
-	if a.Config == nil {
+	cfg := a.GetConfig()
+	if cfg == nil {
 		return nil, fmt.Errorf("no configuration loaded")
 	}
 
 	projectConfigs := make(map[string]projectsvc.ProjectSyncConfig)
-	for _, proj := range a.Config.Projects {
+	for _, proj := range cfg.Projects {
 		for _, b := range proj.Bugs {
 			if b.Forge != "launchpad" {
 				continue
@@ -27,8 +28,8 @@ func (a *App) BuildProjectSyncConfigs() (map[string]projectsvc.ProjectSyncConfig
 				continue
 			}
 			psc := projectsvc.ProjectSyncConfig{
-				Series:           a.Config.Launchpad.Series,
-				DevelopmentFocus: a.Config.Launchpad.DevelopmentFocus,
+				Series:           cfg.Launchpad.Series,
+				DevelopmentFocus: cfg.Launchpad.DevelopmentFocus,
 			}
 			if len(proj.Series) > 0 {
 				psc.Series = proj.Series

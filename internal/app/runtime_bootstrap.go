@@ -90,7 +90,7 @@ func (a *App) CharmhubCredentialStore() port.CharmhubCredentialStore {
 // AuthService creates the shared auth service.
 func (a *App) AuthService() (*authsvc.Service, error) {
 	var githubMutableErr error
-	if a.Config != nil && a.Config.GitHub.UseKeyring {
+	if a.GetConfig() != nil && a.GetConfig().GitHub.UseKeyring {
 		githubMutableErr = authsvc.ErrGitHubKeyringNotImplemented
 	}
 	return authsvc.NewServiceWithStores(
@@ -114,8 +114,9 @@ func (a *App) GitHubClientID() string {
 	if v := os.Getenv("WATCHTOWER_GITHUB_CLIENT_ID"); v != "" {
 		return v
 	}
-	if a.Config == nil {
+	cfg := a.GetConfig()
+	if cfg == nil {
 		return ""
 	}
-	return a.Config.GitHub.ClientID
+	return cfg.GitHub.ClientID
 }

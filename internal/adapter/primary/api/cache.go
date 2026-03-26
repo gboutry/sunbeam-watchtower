@@ -173,7 +173,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open git cache: %v", err))
 		}
 
-		cfg := application.Config
+		cfg := application.GetConfig()
 		if cfg == nil {
 			return nil, huma.Error500InternalServerError("no configuration loaded")
 		}
@@ -237,7 +237,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		Summary:     "Sync upstream repos (releases, requirements)",
 		Tags:        []string{"cache"},
 	}, func(ctx context.Context, _ *struct{}) (*CacheSyncUpstreamOutput, error) {
-		cfg := application.Config
+		cfg := application.GetConfig()
 		if cfg == nil {
 			return nil, huma.Error500InternalServerError("no configuration loaded")
 		}
@@ -396,7 +396,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing git cache: %v", err))
 				}
 			} else {
-				cfg := application.Config
+				cfg := application.GetConfig()
 				if cfg == nil {
 					return nil, huma.Error500InternalServerError("no configuration loaded")
 				}
@@ -448,7 +448,7 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing bug cache: %v", err))
 				}
 			} else {
-				cfg := application.Config
+				cfg := application.GetConfig()
 				if cfg == nil {
 					return nil, huma.Error500InternalServerError("no configuration loaded")
 				}
@@ -509,12 +509,12 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 					return nil, huma.Error500InternalServerError(fmt.Sprintf("clearing review cache: %v", err))
 				}
 			} else {
-				if application.Config == nil {
+				if application.GetConfig() == nil {
 					return nil, huma.Error500InternalServerError("no configuration loaded")
 				}
 				selected := appStringSet(input.Projects)
 				found := false
-				for _, proj := range application.Config.Projects {
+				for _, proj := range application.GetConfig().Projects {
 					if !selected[proj.Name] {
 						continue
 					}

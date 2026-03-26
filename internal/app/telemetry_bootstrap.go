@@ -28,10 +28,10 @@ func (a *App) Telemetry(ctx context.Context) (*oteladapter.Telemetry, error) {
 		if a.runtimeMode != RuntimeModePersistent {
 			return
 		}
-		if !otelConfigured(a.Config) {
+		if !otelConfigured(a.GetConfig()) {
 			return
 		}
-		a.telemetry, a.telemetryErr = oteladapter.New(ctx, a.Config.OTel, a.Logger, newTelemetrySnapshotSource(a))
+		a.telemetry, a.telemetryErr = oteladapter.New(ctx, a.GetConfig().OTel, a.Logger, newTelemetrySnapshotSource(a))
 		if a.telemetryErr == nil && a.telemetry != nil {
 			a.Logger = a.telemetry.Logger(a.Logger)
 		}
@@ -125,8 +125,9 @@ func (s *telemetrySnapshotSource) OperationSnapshot(ctx context.Context) (*otela
 
 func (s *telemetrySnapshotSource) ProjectSnapshot(ctx context.Context) (*oteladapter.ProjectSnapshot, error) {
 	_ = ctx
-	projects := make([]oteladapter.ProjectMetric, 0, len(s.app.Config.Projects))
-	for _, project := range s.app.Config.Projects {
+	cfg := s.app.GetConfig()
+	projects := make([]oteladapter.ProjectMetric, 0, len(cfg.Projects))
+	for _, project := range cfg.Projects {
 		cached := false
 		cloneURL, err := project.Code.CloneURL()
 		if err == nil {

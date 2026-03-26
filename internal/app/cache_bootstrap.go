@@ -109,10 +109,10 @@ func (a *App) ExcusesCache() (*excusescache.Cache, error) {
 // ExcusesSources returns the configured excuses trackers, with built-in Ubuntu/Debian
 // defaults synthesized for legacy configs during migration.
 func (a *App) ExcusesSources() []dto.ExcusesSource {
-	if a == nil || a.Config == nil {
+	if a == nil || a.GetConfig() == nil {
 		return dto.KnownExcusesSources()
 	}
-	return configuredExcusesSources(a.Config)
+	return configuredExcusesSources(a.GetConfig())
 }
 
 // DefaultExcusesTracker returns the preferred default tracker for list/show commands.

@@ -74,8 +74,8 @@ func (w *BuildServerWorkflow) Cleanup(ctx context.Context, opts build.CleanupOpt
 
 // DefaultArtifactsDir returns the configured build artifact output directory.
 func (w *BuildServerWorkflow) DefaultArtifactsDir() (string, error) {
-	if w.application == nil || w.application.Config == nil {
+	if w.application == nil || w.application.GetConfig() == nil {
 		return "", errors.New("no configuration loaded")
 	}
-	return w.application.Config.Build.ArtifactsDir, nil
+	return w.application.GetConfig().Build.ArtifactsDir, nil
 }

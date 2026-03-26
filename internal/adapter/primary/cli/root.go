@@ -138,6 +138,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 			if commandNeedsApp(cmd) {
 				opts.App = app.NewAppWithOptions(opts.config, opts.Logger, app.Options{
 					RuntimeMode: app.RuntimeModePersistent,
+					ConfigPath:  opts.ConfigPath,
 				})
 			}
 			return nil

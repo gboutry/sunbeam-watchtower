@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -38,12 +39,16 @@ const (
 // Options configures runtime-specific application behavior.
 type Options struct {
 	RuntimeMode RuntimeMode
+	ConfigPath  string
 }
 
 // App holds shared application state and provides lazy-initialized factories
 // for services and adapters. Both the CLI and HTTP API use this layer.
 type App struct {
-	Config      *config.Config
+	config     *config.Config
+	configMu   sync.RWMutex
+	configPath string
+
 	Logger      *slog.Logger
 	runtimeMode RuntimeMode
 
@@ -118,7 +123,54 @@ func NewAppWithOptions(cfg *config.Config, logger *slog.Logger, opts Options) *A
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &App{Config: cfg, Logger: logger, runtimeMode: mode}
+	return &App{config: cfg, configPath: opts.ConfigPath, Logger: logger, runtimeMode: mode}
+}
+
+// GetConfig returns the current configuration, safe for concurrent use.
+func (a *App) GetConfig() *config.Config {
+	a.configMu.RLock()
+	defer a.configMu.RUnlock()
+	return a.config
+}
+
+// ReloadConfig loads, validates, and atomically swaps the active configuration.
+func (a *App) ReloadConfig(path string) error {
+	cfg, err := config.Load(path)
+	if err != nil {
+		return fmt.Errorf("loading config from %s: %w", path, err)
+	}
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("validating config from %s: %w", path, err)
+	}
+
+	a.configMu.Lock()
+	old := a.config
+	a.config = cfg
+	a.configMu.Unlock()
+
+	a.Logger.Info("configuration reloaded",
+		"path", path,
+		"projects_before", len(projectNames(old)),
+		"projects_after", len(projectNames(cfg)),
+	)
+	return nil
+}
+
+// ConfigPath returns the filesystem path used to load the configuration.
+func (a *App) ConfigPath() string {
+	return a.configPath
+}
+
+// projectNames returns project names from a config, or nil if cfg is nil.
+func projectNames(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+	names := make([]string, len(cfg.Projects))
+	for i, p := range cfg.Projects {
+		names[i] = p.Name
+	}
+	return names
 }
 
 // Close releases resources held by the App (e.g. distro cache).

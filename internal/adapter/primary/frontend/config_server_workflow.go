@@ -24,10 +24,18 @@ func NewConfigServerWorkflow(application *app.App) *ConfigServerWorkflow {
 
 // Show returns the loaded configuration as a public DTO.
 func (w *ConfigServerWorkflow) Show(context.Context) (*dto.Config, error) {
-	if w.application == nil || w.application.Config == nil {
+	if w.application == nil || w.application.GetConfig() == nil {
 		return nil, errors.New("no configuration loaded")
 	}
-	return ConfigToDTO(w.application.Config), nil
+	return ConfigToDTO(w.application.GetConfig()), nil
+}
+
+// Reload reloads the configuration from the file it was originally loaded from.
+func (w *ConfigServerWorkflow) Reload(context.Context) error {
+	if w.application == nil {
+		return errors.New("no application available")
+	}
+	return w.application.ReloadConfig(w.application.ConfigPath())
 }
 
 // ConfigToDTO converts an internal config to a public DTO. Exported so the

@@ -72,14 +72,14 @@ func registerPackagesExcusesAPI(api huma.API, application *app.App) {
 
 		var packages, blockedByPackages []string
 		if input.Set != "" {
-			pkgs, ok := application.Config.Packages.Sets[input.Set]
+			pkgs, ok := application.GetConfig().Packages.Sets[input.Set]
 			if !ok {
 				return nil, huma.Error404NotFound(fmt.Sprintf("unknown package set %q", input.Set))
 			}
 			packages = pkgs
 		}
 		if input.BlockedBySet != "" {
-			pkgs, ok := application.Config.Packages.Sets[input.BlockedBySet]
+			pkgs, ok := application.GetConfig().Packages.Sets[input.BlockedBySet]
 			if !ok {
 				return nil, huma.Error404NotFound(fmt.Sprintf("unknown package set %q", input.BlockedBySet))
 			}

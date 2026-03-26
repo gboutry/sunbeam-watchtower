@@ -87,7 +87,7 @@ func (w *BugServerWorkflow) Sync(ctx context.Context, req BugSyncRequest) (*BugS
 	}
 
 	lpProjectMap := make(map[string][]string)
-	for _, proj := range w.application.Config.Projects {
+	for _, proj := range w.application.GetConfig().Projects {
 		for _, bugConfig := range proj.Bugs {
 			if bugConfig.Forge == "launchpad" {
 				lpProjectMap[proj.Name] = append(lpProjectMap[proj.Name], bugConfig.Project)

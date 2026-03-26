@@ -140,7 +140,7 @@ func TestNewApp(t *testing.T) {
 	cfg := &config.Config{}
 	logger := slog.Default()
 	a := NewApp(cfg, logger)
-	if a.Config != cfg {
+	if a.GetConfig() != cfg {
 		t.Error("NewApp did not set Config")
 	}
 	if a.Logger != logger {

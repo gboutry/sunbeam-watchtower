@@ -145,7 +145,7 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 		Tags:        []string{"packages"},
 	}, func(ctx context.Context, input *PackagesDiffInput) (*PackagesDiffOutput, error) {
 		setName := input.Set
-		packages, ok := application.Config.Packages.Sets[setName]
+		packages, ok := application.GetConfig().Packages.Sets[setName]
 		if !ok {
 			return nil, huma.Error404NotFound(fmt.Sprintf("unknown package set %q", setName))
 		}

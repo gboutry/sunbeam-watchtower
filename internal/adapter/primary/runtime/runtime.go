@@ -475,7 +475,7 @@ func NewSession(ctx context.Context, opts Options) (*Session, error) {
 		return nil, err
 	}
 
-	application := app.NewAppWithOptions(cfg, logger, app.Options{RuntimeMode: app.RuntimeModeEphemeral})
+	application := app.NewAppWithOptions(cfg, logger, app.Options{RuntimeMode: app.RuntimeModeEphemeral, ConfigPath: opts.ConfigPath})
 	manager, err := NewLocalServerManager(Options{
 		ConfigPath:     opts.ConfigPath,
 		ServerAddr:     opts.ServerAddr,

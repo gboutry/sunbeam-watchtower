@@ -124,7 +124,7 @@ func ConvertToMRMetadata(mrs []forge.MergeRequest, forgeName string) []dto.MRMet
 
 // BuildForgeClients creates forge clients from config, caching one per forge type/host.
 func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
-	cfg := a.Config
+	cfg := a.GetConfig()
 	if cfg == nil {
 		return nil, fmt.Errorf("no configuration loaded")
 	}
@@ -246,7 +246,7 @@ func (a *App) SyncReviewCache(ctx context.Context, projects []string, since *tim
 
 // BuildBugTrackers creates bug tracker clients from config, deduplicating by (forge, project).
 func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][]bug.ProjectBinding, error) {
-	cfg := a.Config
+	cfg := a.GetConfig()
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("no configuration loaded")
 	}
