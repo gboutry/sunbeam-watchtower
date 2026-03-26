@@ -220,6 +220,7 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 			}
 			for _, name := range recipes {
 				gitRefLinks[name] = refLink
+				buildPaths[name] = pb.Strategy.BuildPath(name)
 			}
 		}
 	}
@@ -328,9 +329,6 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 			return result
 		}
 		bp := buildPath
-		if bp == "" {
-			bp = pb.Strategy.BuildPath(status.Name)
-		}
 		s.logger.Info("creating recipe", "recipe", status.Name, "owner", pb.Owner, "project", pb.RecipeProject(), "buildPath", bp)
 		recipe, err := pb.Builder.CreateRecipe(ctx, dto.CreateRecipeOpts{
 			Name:        status.Name,
