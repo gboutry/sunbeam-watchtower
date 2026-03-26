@@ -2,7 +2,30 @@
 
 Every feature implementation must be followed by a sync to the PLAN.md file at root.
 
-Non-obvious behaviours encountered during development.
+## Conventions
+
+- Specs go in `docs/agents/specs/`
+- Implementation plans go in `docs/agents/plans/`
+- No date/timestamp prefixes in filenames
+
+## Git Commit Attribution
+
+When creating commits, use the `Assisted-by` trailer instead of `Co-Authored-By`. Format:
+```
+Assisted-by: <harness> (<model>)
+```
+Example:
+```
+Assisted-by: Claude Code (claude-opus-4-6)
+```
+
+Do NOT use `Co-Authored-By`, that trailer is meant for human co-authors, not tools.
+
+Do NOT add `Signed-off-by` trailers. Only the human reviewer signs off on commits. This is enforced in CI.
+
+Place the `Assisted-By` trailer at the end of the commit message, separated by a blank line from the body.
+
+## Non-obvious behaviours encountered during development
 
 ## Runtime model
 
