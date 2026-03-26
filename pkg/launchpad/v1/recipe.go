@@ -34,6 +34,8 @@ func (c *Client) GetRockRecipeByLink(ctx context.Context, selfLink string) (Rock
 }
 
 // RequestRockRecipeBuilds requests builds for a rock recipe.
+// LP returns an empty body for requestBuilds — the build request
+// status is retrieved later via ListBuilds.
 func (c *Client) RequestRockRecipeBuilds(ctx context.Context, recipeSelfLink string, channels map[string]string, architectures []string) (BuildRequest, error) {
 	form := url.Values{
 		"ws.op": {"requestBuilds"},
@@ -45,11 +47,10 @@ func (c *Client) RequestRockRecipeBuilds(ctx context.Context, recipeSelfLink str
 	if len(architectures) > 0 {
 		form.Set("architectures", strings.Join(architectures, ","))
 	}
-	var br BuildRequest
-	if err := c.PostJSON(ctx, recipeSelfLink, form, &br); err != nil {
+	if _, err := c.Post(ctx, recipeSelfLink, form); err != nil {
 		return BuildRequest{}, fmt.Errorf("requesting rock builds: %w", err)
 	}
-	return br, nil
+	return BuildRequest{SelfLink: recipeSelfLink}, nil
 }
 
 // GetRockRecipeBuilds returns all builds for a rock recipe.
@@ -111,6 +112,8 @@ func (c *Client) GetCharmRecipeByLink(ctx context.Context, selfLink string) (Cha
 }
 
 // RequestCharmRecipeBuilds requests builds for a charm recipe.
+// LP returns an empty body for requestBuilds — the build request
+// status is retrieved later via ListBuilds.
 func (c *Client) RequestCharmRecipeBuilds(ctx context.Context, recipeSelfLink string, channels map[string]string, architectures []string) (BuildRequest, error) {
 	form := url.Values{
 		"ws.op": {"requestBuilds"},
@@ -122,11 +125,10 @@ func (c *Client) RequestCharmRecipeBuilds(ctx context.Context, recipeSelfLink st
 	if len(architectures) > 0 {
 		form.Set("architectures", strings.Join(architectures, ","))
 	}
-	var br BuildRequest
-	if err := c.PostJSON(ctx, recipeSelfLink, form, &br); err != nil {
+	if _, err := c.Post(ctx, recipeSelfLink, form); err != nil {
 		return BuildRequest{}, fmt.Errorf("requesting charm builds: %w", err)
 	}
-	return br, nil
+	return BuildRequest{SelfLink: recipeSelfLink}, nil
 }
 
 // GetCharmRecipeBuilds returns all builds for a charm recipe.
@@ -194,6 +196,8 @@ func (c *Client) GetSnapByLink(ctx context.Context, selfLink string) (Snap, erro
 }
 
 // RequestSnapBuilds requests builds for a snap package.
+// LP returns an empty body for requestBuilds — the build request
+// status is retrieved later via ListBuilds.
 func (c *Client) RequestSnapBuilds(ctx context.Context, snapSelfLink, archiveLink, pocket string, channels map[string]string) (BuildRequest, error) {
 	form := url.Values{
 		"ws.op":   {"requestBuilds"},
@@ -204,11 +208,10 @@ func (c *Client) RequestSnapBuilds(ctx context.Context, snapSelfLink, archiveLin
 		ch, _ := json.Marshal(channels)
 		form.Set("channels", string(ch))
 	}
-	var br BuildRequest
-	if err := c.PostJSON(ctx, snapSelfLink, form, &br); err != nil {
+	if _, err := c.Post(ctx, snapSelfLink, form); err != nil {
 		return BuildRequest{}, fmt.Errorf("requesting snap builds: %w", err)
 	}
-	return br, nil
+	return BuildRequest{SelfLink: snapSelfLink}, nil
 }
 
 // GetSnapBuilds returns all builds for a snap.

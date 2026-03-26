@@ -89,7 +89,7 @@ func TestSnapBuilderWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestBuilds() error = %v", err)
 	}
-	if buildRequest.Status != "Currently building" {
+	if buildRequest == nil || buildRequest.SelfLink == "" {
 		t.Fatalf("unexpected build request: %+v", buildRequest)
 	}
 
@@ -181,7 +181,7 @@ func TestCharmBuilderWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestBuilds() error = %v", err)
 	}
-	if buildRequest.Status != "Queued" {
+	if buildRequest == nil || buildRequest.SelfLink == "" {
 		t.Fatalf("unexpected build request: %+v", buildRequest)
 	}
 
@@ -270,7 +270,7 @@ func TestRockBuilderWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestBuilds() error = %v", err)
 	}
-	if buildRequest.Status != "Processing" {
+	if buildRequest == nil || buildRequest.SelfLink == "" {
 		t.Fatalf("unexpected build request: %+v", buildRequest)
 	}
 
