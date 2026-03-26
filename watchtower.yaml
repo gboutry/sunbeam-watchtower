@@ -187,6 +187,9 @@ projects:
       forge: github
       owner: canonical
       project: microovn-operator
+    build:
+      channels:
+        charmcraft: 3.x/stable
 
 packages:
   upstream:
