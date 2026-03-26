@@ -104,6 +104,8 @@ type mockRepoManager struct {
 	repoErr       error
 	refErr        error
 	defaultErr    error
+	branches      []dto.BranchRef
+	deleteErr     error
 }
 
 func (m *mockRepoManager) GetCurrentUser(_ context.Context) (string, error) {
@@ -154,6 +156,14 @@ func (m *mockRepoManager) WaitForGitRef(_ context.Context, _, _ string, _ time.D
 		return "", m.refErr
 	}
 	return m.refSelfLink, nil
+}
+
+func (m *mockRepoManager) ListBranches(_ context.Context, _ string) ([]dto.BranchRef, error) {
+	return m.branches, nil
+}
+
+func (m *mockRepoManager) DeleteGitRef(_ context.Context, _ string) error {
+	return m.deleteErr
 }
 
 // mockStrategy implements ArtifactStrategy for testing.

@@ -294,3 +294,55 @@ func TestRepoManagerGetOrCreateRepo_CreateError(t *testing.T) {
 		t.Fatal("GetOrCreateRepo() error = nil, want create error")
 	}
 }
+
+func TestRepoManagerListBranches(t *testing.T) {
+	withLaunchpadTransport(t, repoRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet || !strings.HasSuffix(req.URL.Path, "/branches") {
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+		}
+		return launchpadResponse(http.StatusOK, `{
+			"total_size": 2,
+			"start": 0,
+			"entries": [
+				{"path":"refs/heads/main","self_link":"https://api.launchpad.net/devel/~owner/project/+git/repo/+ref/refs/heads/main"},
+				{"path":"refs/heads/feature","self_link":""}
+			]
+		}`), nil
+	}))
+
+	branches, err := newRepoManagerForTest().ListBranches(context.Background(), "https://api.launchpad.net/devel/~owner/project/+git/repo")
+	if err != nil {
+		t.Fatalf("ListBranches() error = %v", err)
+	}
+	if len(branches) != 2 {
+		t.Fatalf("expected 2 branches, got %d", len(branches))
+	}
+	if branches[0].Path != "refs/heads/main" || branches[0].SelfLink != "https://api.launchpad.net/devel/~owner/project/+git/repo/+ref/refs/heads/main" {
+		t.Fatalf("branches[0] = %+v", branches[0])
+	}
+	// Second branch has no self_link, should be constructed.
+	wantLink := "https://api.launchpad.net/devel/~owner/project/+git/repo/+ref/refs/heads/feature"
+	if branches[1].SelfLink != wantLink {
+		t.Fatalf("branches[1].SelfLink = %q, want %q", branches[1].SelfLink, wantLink)
+	}
+}
+
+func TestRepoManagerDeleteGitRef(t *testing.T) {
+	var deletedPath string
+	withLaunchpadTransport(t, repoRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("unexpected method: %s", req.Method)
+		}
+		deletedPath = req.URL.Path
+		return launchpadResponse(http.StatusOK, ""), nil
+	}))
+
+	refLink := "https://api.launchpad.net/devel/~owner/project/+git/repo/+ref/refs/heads/tmp-branch"
+	err := newRepoManagerForTest().DeleteGitRef(context.Background(), refLink)
+	if err != nil {
+		t.Fatalf("DeleteGitRef() error = %v", err)
+	}
+	if deletedPath != "/devel/~owner/project/+git/repo/+ref/refs/heads/tmp-branch" {
+		t.Fatalf("deleted path = %q", deletedPath)
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
 
@@ -114,6 +115,30 @@ func (m *RepoManager) GetGitRef(ctx context.Context, repoSelfLink, refPath strin
 		return ref.SelfLink, nil
 	}
 	return repoSelfLink + "/+ref/" + refPath, nil
+}
+
+func (m *RepoManager) ListBranches(ctx context.Context, repoSelfLink string) ([]dto.BranchRef, error) {
+	refs, err := m.client.GetGitBranches(ctx, repoSelfLink)
+	if err != nil {
+		return nil, fmt.Errorf("listing branches for repo: %w", err)
+	}
+	branches := make([]dto.BranchRef, len(refs))
+	for i, ref := range refs {
+		selfLink := ref.SelfLink
+		if selfLink == "" {
+			selfLink = repoSelfLink + "/+ref/" + ref.Path
+		}
+		branches[i] = dto.BranchRef{
+			Path:     ref.Path,
+			SelfLink: selfLink,
+		}
+	}
+	return branches, nil
+}
+
+func (m *RepoManager) DeleteGitRef(ctx context.Context, refSelfLink string) error {
+	m.logger.Info("deleting git ref", "ref", refSelfLink)
+	return m.client.DeleteGitRef(ctx, refSelfLink)
 }
 
 func (m *RepoManager) WaitForGitRef(ctx context.Context, repoSelfLink, refPath string, timeout time.Duration) (string, error) {

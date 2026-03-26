@@ -32,4 +32,6 @@ type RepoManager interface {
 	GetOrCreateRepo(ctx context.Context, owner, project, repoName string) (repoSelfLink, gitSSHURL string, err error)
 	GetGitRef(ctx context.Context, repoSelfLink, refPath string) (refSelfLink string, err error)
 	WaitForGitRef(ctx context.Context, repoSelfLink, refPath string, timeout time.Duration) (refSelfLink string, err error)
+	ListBranches(ctx context.Context, repoSelfLink string) ([]dto.BranchRef, error)
+	DeleteGitRef(ctx context.Context, refSelfLink string) error
 }

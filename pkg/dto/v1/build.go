@@ -182,6 +182,12 @@ func (p *PreparedBuildSource) Normalize() *PreparedBuildSource {
 	return &normalized
 }
 
+// BranchRef is a minimal representation of a git branch reference.
+type BranchRef struct {
+	Path     string `json:"path" yaml:"path"`
+	SelfLink string `json:"self_link" yaml:"self_link"`
+}
+
 // CreateRecipeOpts holds parameters for creating a new recipe.
 type CreateRecipeOpts struct {
 	Name        string

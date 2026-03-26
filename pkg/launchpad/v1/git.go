@@ -151,6 +151,11 @@ func (c *Client) GetDefaultRepositoryForProject(ctx context.Context, projectName
 	return c.GetDefaultRepository(ctx, c.resolveURL("/"+projectName))
 }
 
+// DeleteGitRef deletes a git ref by its self_link.
+func (c *Client) DeleteGitRef(ctx context.Context, refSelfLink string) error {
+	return c.Delete(ctx, refSelfLink)
+}
+
 // SetMergeProposalStatus changes the status of a merge proposal.
 func (c *Client) SetMergeProposalStatus(ctx context.Context, mpSelfLink, status string) error {
 	form := url.Values{

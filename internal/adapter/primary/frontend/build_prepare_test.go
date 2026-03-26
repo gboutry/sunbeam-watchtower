@@ -59,6 +59,14 @@ func (f *fakeRepoManager) WaitForGitRef(context.Context, string, string, time.Du
 	return f.refSelfLink, nil
 }
 
+func (f *fakeRepoManager) ListBranches(context.Context, string) ([]dto.BranchRef, error) {
+	return nil, nil
+}
+
+func (f *fakeRepoManager) DeleteGitRef(context.Context, string) error {
+	return nil
+}
+
 type fakeStrategy struct{}
 
 func (f *fakeStrategy) ArtifactType() dto.ArtifactType                          { return dto.ArtifactRock }
