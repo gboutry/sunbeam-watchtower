@@ -15,3 +15,16 @@ func (c *Client) ConfigShow(ctx context.Context) (*dto.Config, error) {
 	err := c.get(ctx, "/api/v1/config", nil, &result)
 	return &result, err
 }
+
+// ConfigReloadResult is the response from the config reload endpoint.
+type ConfigReloadResult struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+}
+
+// ConfigReload requests the server to reload its configuration from file.
+func (c *Client) ConfigReload(ctx context.Context) (*ConfigReloadResult, error) {
+	var result ConfigReloadResult
+	err := c.post(ctx, "/api/v1/config/reload", nil, &result)
+	return &result, err
+}
