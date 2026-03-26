@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -39,6 +40,8 @@ func newServeCmd(opts *Options) *cobra.Command {
 				return fmt.Errorf("starting server: %w", err)
 			}
 
+			application := opts.Application()
+
 			addr := serverOpts.ListenAddr
 			if addr == "" {
 				addr = "127.0.0.1:8472"
@@ -47,12 +50,49 @@ func newServeCmd(opts *Options) *cobra.Command {
 				opts.Logger.Info("OpenAPI spec available", "url", "http://"+addr+"/openapi.json")
 			}
 
+			// Start config file watcher if a config path is known.
+			configPath := application.ConfigPath()
+			if configPath == "" {
+				configPath = opts.ConfigPath
+			}
+			var cw *runtimeadapter.ConfigWatcher
+			if configPath != "" {
+				var err error
+				cw, err = runtimeadapter.NewConfigWatcher(configPath, application.ReloadConfig, opts.Logger)
+				if err != nil {
+					opts.Logger.Warn("failed to start config file watcher", "error", err)
+				}
+			}
+
+			// Register SIGHUP handler for manual config reload.
+			sighup := make(chan os.Signal, 1)
+			signal.Notify(sighup, syscall.SIGHUP)
+			go func() {
+				for range sighup {
+					opts.Logger.Info("received SIGHUP, reloading configuration")
+					if reloadPath := application.ConfigPath(); reloadPath != "" {
+						if err := application.ReloadConfig(reloadPath); err != nil {
+							opts.Logger.Error("SIGHUP config reload failed", "error", err)
+						}
+					} else {
+						opts.Logger.Warn("SIGHUP received but no config path is set")
+					}
+				}
+			}()
+
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
 			<-ctx.Done()
 
 			opts.Logger.Info("shutting down gracefully")
+
+			signal.Stop(sighup)
+			close(sighup)
+			if cw != nil {
+				cw.Stop()
+			}
+
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
