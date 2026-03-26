@@ -43,6 +43,11 @@ projects:
       forge: gerrit
       host: https://review.opendev.org
       project: openstack/sunbeam-charms
+    build:
+      owner: canonical
+      official_codehosting: true
+      lp_project: sunbeam-charms
+      prepare_command: "./repository.py prepare"
     bugs:
       - forge: launchpad
         project: snap-openstack
@@ -61,6 +66,10 @@ projects:
       forge: github
       owner: canonical
       project: snap-openstack
+    build:
+      owner: canonical
+      official_codehosting: true
+      lp_project: snap-openstack
     bugs:
       - forge: launchpad
         project: snap-openstack
@@ -397,3 +406,103 @@ packages:
       - python-sushy
       - python-taskflow
       - python-tooz
+    mega-sync:
+      - mistral-extra
+      - python-adjutantclient
+      - python-aodhclient
+      - python-barbicanclien
+      - python-blazarclien
+      - python-castellan
+      - python-ceilometermiddleware
+      - python-cinderclient
+      - python-cloudkittyclient
+      - python-cyborgclient
+      - python-designateclient
+      - python-diskimage-builder
+      - python-freezerclient
+      - python-glance-store
+      - python-glanceclient
+      - python-heatclient
+      - python-ironicclient
+      - python-keystoneauth1
+      - python-keystoneclient
+      - python-keystonemiddleware
+      - python-magnumclient
+      - python-manilaclient
+      - python-masakariclient
+      - python-mistral-lib
+      - python-mistralclient
+      - python-neutron-lib
+      - python-neutronclient
+      - python-novaclient
+      - python-observabilityclient
+      - python-octavia-lib
+      - python-octaviaclient
+      - python-openstackclient
+      - python-openstacksdk
+      - python-os-api-ref
+      - python-os-brick
+      - python-os-ken
+      - python-os-service-types
+      - python-os-traits
+      - python-osc-lib
+      - python-osc-placement
+      - python-oslo.cache
+      - python-oslo.concurrency
+      - python-oslo.config
+      - python-oslo.i18n
+      - python-oslo.limit
+      - python-oslo.log
+      - python-oslo.messaging
+      - python-oslo.metrics
+      - python-oslo.middleware
+      - python-oslo.policy
+      - python-oslo.privsep
+      - python-oslo.rootwrap
+      - python-oslo.serialization
+      - python-oslo.service
+      - python-oslo.upgradecheck
+      - python-oslo.utils
+      - python-oslo.vmware
+      - python-oslotest
+      - python-osprofiler
+      - python-ovsdbapp
+      - python-pbr
+      - python-sushy
+      - python-swiftclient
+      - python-tackerclient
+      - python-tooz
+      - python-tosca-parser
+      - python-troveclient
+      - python-vitrageclient
+      - python-watcherclient
+      - python-zaqarclient
+      - python-zunclient
+      - alembic
+      - cmd2
+      - dnspython
+      - platformdirs
+      - pyroute2
+      - python-cachetools
+      - python-cotyledon
+      - python-dogpile.cache
+      - python-etcd3gw
+      - python-eventlet
+      - python-gabbi
+      - python-gnocchiclient
+      - python-greenlet
+      - python-ldap
+      - python-requests-kerberos
+      - python-requests-oauthlib
+      - python-sqlalchemy-utils
+      - python-stestr
+      - python-threadpoolctl
+      - python-uhashring
+      - python-wrapt
+      - python-xattr
+      - python-xmltodict
+      - responses
+      - sphinxcontrib-httpdomain
+      - websocket-client
+      - stevedore
+      - python-oslo.context
