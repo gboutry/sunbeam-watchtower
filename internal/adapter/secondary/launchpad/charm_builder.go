@@ -70,15 +70,10 @@ func (b *CharmBuilder) ListRecipesByOwner(ctx context.Context, owner string) ([]
 }
 
 func (b *CharmBuilder) RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error) {
-	archiveLink := opts.ArchiveLink
-	if archiveLink == "" {
-		archiveLink = "/ubuntu/+archive/primary"
-	}
-	pocket := opts.Pocket
-	if pocket == "" {
-		pocket = "Updates"
-	}
-	br, err := b.client.RequestCharmRecipeBuilds(ctx, recipe.SelfLink, archiveLink, pocket, opts.Channels, opts.Architectures)
+	// Charm recipes do not take archive/pocket — LP determines the build
+	// environment from the charmcraft.yaml bases/platforms declaration.
+	// Only channels (for snap tool versions) is passed.
+	br, err := b.client.RequestCharmRecipeBuilds(ctx, recipe.SelfLink, "", "", opts.Channels, opts.Architectures)
 	if err != nil {
 		return nil, err
 	}
