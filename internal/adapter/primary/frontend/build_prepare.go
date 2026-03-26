@@ -133,7 +133,7 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	// LP is slow to process git pushes — even if GetGitRef returned a
 	// constructed self_link, recipe creation can fail until the ref is
 	// fully indexed. WaitForGitRef polls until LP confirms the ref.
-	refLink, err := p.repoManager.WaitForGitRef(ctx, repoSelfLink, refPath, 2*time.Minute)
+	refLink, err := p.repoManager.WaitForGitRef(ctx, repoSelfLink, refPath, 10*time.Minute)
 	if err != nil {
 		return req, fmt.Errorf("wait for git ref: %w", err)
 	}
