@@ -48,6 +48,8 @@ projects:
       official_codehosting: true
       lp_project: sunbeam-charms
       prepare_command: "./repository.py prepare --clean"
+      channels:
+        charmcraft: latest/stable
     bugs:
       - forge: launchpad
         project: snap-openstack
@@ -187,9 +189,6 @@ projects:
       forge: github
       owner: canonical
       project: microovn-operator
-    build:
-      channels:
-        charmcraft: 3.x/stable
 
 packages:
   upstream:
