@@ -398,6 +398,7 @@ type browserOpenedMsg struct {
 
 type tickDashboardMsg time.Time
 type tickOperationsMsg time.Time
+type tickBuildsMsg time.Time
 type tickLogsMsg time.Time
 type clearToastMsg struct{}
 
@@ -433,8 +434,9 @@ type rootModel struct {
 	logsModal logsModalModel
 	server    serverModalModel
 
-	tickOpsActive  bool
-	tickLogsActive bool
+	tickOpsActive    bool
+	tickBuildsActive bool
+	tickLogsActive   bool
 
 	buildFilterForm   formModalModel
 	releaseFilterForm formModalModel
@@ -545,6 +547,10 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.builds.index = len(m.builds.rows) - 1
 			}
 			m.lastRefresh = time.Now()
+			if hasNonTerminalBuilds(m.builds.rows) && !m.tickBuildsActive {
+				m.tickBuildsActive = true
+				return m, tickBuildsCmd()
+			}
 		}
 	case releasesLoadedMsg:
 		m.releases.loaded = msg.err == nil
@@ -871,6 +877,12 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)), tickOperationsCmd())
 		}
 		m.tickOpsActive = false
+		return m, nil
+	case tickBuildsMsg:
+		if m.activeView == viewBuilds && hasNonTerminalBuilds(m.builds.rows) {
+			return m, tea.Batch(loadBuildsCmd(m.session, m.builds.filters), tickBuildsCmd())
+		}
+		m.tickBuildsActive = false
 		return m, nil
 	case tickLogsMsg:
 		if m.overlay == overlayLogs {
@@ -2893,8 +2905,21 @@ func tickOperationsCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickOperationsMsg(t) })
 }
 
+func tickBuildsCmd() tea.Cmd {
+	return tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickBuildsMsg(t) })
+}
+
 func tickLogsCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickLogsMsg(t) })
+}
+
+func hasNonTerminalBuilds(rows []dto.Build) bool {
+	for _, b := range rows {
+		if !b.State.IsTerminal() {
+			return true
+		}
+	}
+	return false
 }
 
 func clearToastLater() tea.Cmd {
