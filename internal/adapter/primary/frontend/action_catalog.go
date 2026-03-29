@@ -58,6 +58,8 @@ const (
 	ActionBuildTrigger          ActionID = "build.trigger"
 	ActionBuildList             ActionID = "build.list"
 	ActionBuildDownload         ActionID = "build.download"
+	ActionBuildRetry            ActionID = "build.retry"
+	ActionBuildCancel           ActionID = "build.cancel"
 	ActionBuildCleanupDryRun    ActionID = "build.cleanup.dry_run"
 	ActionBuildCleanupApply     ActionID = "build.cleanup.apply"
 	ActionBugShow               ActionID = "bug.show"
@@ -144,6 +146,8 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionBuildTrigger:          descriptor(ActionBuildTrigger, "build", "build", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Trigger builds for a project."),
 	ActionBuildList:             descriptor(ActionBuildList, "build", "build", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List builds."),
 	ActionBuildDownload:         descriptor(ActionBuildDownload, "build", "build", MutabilityRead, LocalEffectWrite, RuntimeEmbeddedOK, ExportPolicyAllowed, "Download build artifacts to the local machine."),
+	ActionBuildRetry:            descriptor(ActionBuildRetry, "build", "build", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Retry a failed build."),
+	ActionBuildCancel:           descriptor(ActionBuildCancel, "build", "build", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Cancel an active build."),
 	ActionBuildCleanupDryRun:    descriptor(ActionBuildCleanupDryRun, "build", "build", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Preview temporary build recipe cleanup."),
 	ActionBuildCleanupApply:     descriptor(ActionBuildCleanupApply, "build", "build", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Delete temporary build recipes."),
 	ActionBugShow:               descriptor(ActionBugShow, "bug", "bug", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Show one bug and its tasks."),
