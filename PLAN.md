@@ -93,6 +93,7 @@ The following are implemented and should be treated as the current baseline:
 - `CommandRunner` port and `ShellCommandRunner` implementation handle prepare-command execution on the frontend side
 - `CleanupResult` type propagated through build service, API, HTTP client, and frontend workflow layers, reporting both deleted recipes and deleted branches
 - config hot-reload: `App.Config` is private behind `GetConfig()` (read-locked) and `ReloadConfig(path)` (write-lock swap); the persistent server watches `watchtower.yaml` via fsnotify `ConfigWatcher`, handles SIGHUP for manual reload, and exposes `POST /api/v1/config/reload`; CLI `config reload` command calls the endpoint; per-request services pick up changes immediately; `sync.Once` services (Telemetry, TeamSyncService) require server restart
+- TUI Builds tab now supports retry (`R`) and cancel (`X`) keybindings on selected builds, a cleanup form (`C`) with dry-run/apply, and auto-refresh polling (30s tick) while non-terminal builds are visible; retry/cancel are backed by `POST /api/v1/builds/retry` and `/cancel` endpoints with `build.retry` and `build.cancel` action IDs
 
 ## Current Gaps
 
@@ -100,7 +101,6 @@ These are the main known gaps that still matter:
 
 - team collaborator sync store adapters need correct API endpoints: Charmhub should use `/v1/charm/{name}/collaborators` (documented) and `/v1/charm/{name}/collaborators/invites` for invitations; Snap Store per-snap collaborator management may require the Brand Stores API (`/api/v2/stores/{store_id}/users`) or investigation of undocumented endpoints
 - Launchpad, GitHub, Snap Store, and Charmhub auth are implemented with interactive flows, but the same authenticated-flow model is not yet extended to other forges such as Gerrit
-- the TUI now covers the main read-only workflows and cache/project/bug mutation entrypoints, but it still does not expose direct build retry/cancel flows
 - the `Packages` and `Commits` TUI tabs now have read-only submodes, but deeper workflow actions remain CLI/API-first
 - some forge/package bootstrap paths in `internal/app` still contain logic that should continue moving into narrower builders/factories
 - some tests still have environment-sensitive assumptions and need further hardening
