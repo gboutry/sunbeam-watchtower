@@ -173,6 +173,21 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 		return nil, fmt.Errorf("no artifacts specified for project %q", projectName)
 	}
 
+	// Filter out skipped artifacts.
+	if len(pb.SkipArtifacts) > 0 {
+		skip := make(map[string]bool, len(pb.SkipArtifacts))
+		for _, s := range pb.SkipArtifacts {
+			skip[s] = true
+		}
+		filtered := recipes[:0]
+		for _, name := range recipes {
+			if !skip[name] {
+				filtered = append(filtered, name)
+			}
+		}
+		recipes = filtered
+	}
+
 	// Resolve LP repo and ref information.
 	repoSelfLink := ""
 	var gitRefLinks map[string]string

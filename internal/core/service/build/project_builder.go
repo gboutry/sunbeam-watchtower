@@ -14,6 +14,7 @@ type ProjectBuilder struct {
 	Project             string // code project name (e.g. github repo name)
 	LPProject           string // LP project for recipes (may differ from code project)
 	Artifacts           []string
+	SkipArtifacts       []string
 	Series              []string
 	DevFocus            string
 	OfficialCodehosting bool

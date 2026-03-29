@@ -63,6 +63,7 @@ type BugGroupConfig struct {
 type ProjectBuildConfig struct {
 	Owner               string            `mapstructure:"owner" yaml:"owner,omitempty"`
 	Artifacts           []string          `mapstructure:"artifacts" yaml:"artifacts,omitempty"`
+	SkipArtifacts       []string          `mapstructure:"skip_artifacts" yaml:"skip_artifacts,omitempty"`
 	PrepareCommand      string            `mapstructure:"prepare_command" yaml:"prepare_command,omitempty"`
 	OfficialCodehosting bool              `mapstructure:"official_codehosting" yaml:"official_codehosting,omitempty"`
 	LPProject           string            `mapstructure:"lp_project" yaml:"lp_project,omitempty"`

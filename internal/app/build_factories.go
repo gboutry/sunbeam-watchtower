@@ -42,6 +42,7 @@ func buildRecipeBuildersFromConfig(cfg *config.Config, logger *slog.Logger, lpCl
 
 		var owner string
 		var artifacts []string
+		var skipArtifacts []string
 		var lpProject string
 		var officialCodehosting bool
 		var prepareCommand string
@@ -49,6 +50,7 @@ func buildRecipeBuildersFromConfig(cfg *config.Config, logger *slog.Logger, lpCl
 		if proj.Build != nil {
 			owner = proj.Build.Owner
 			artifacts = proj.Build.Artifacts
+			skipArtifacts = proj.Build.SkipArtifacts
 			lpProject = proj.Build.LPProject
 			officialCodehosting = proj.Build.OfficialCodehosting
 			prepareCommand = proj.Build.PrepareCommand
@@ -70,6 +72,7 @@ func buildRecipeBuildersFromConfig(cfg *config.Config, logger *slog.Logger, lpCl
 			Project:             proj.Code.Project,
 			LPProject:           lpProject,
 			Artifacts:           artifacts,
+			SkipArtifacts:       skipArtifacts,
 			Series:              series,
 			DevFocus:            devFocus,
 			OfficialCodehosting: officialCodehosting,
