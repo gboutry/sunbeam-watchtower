@@ -1,0 +1,48 @@
+name: sunbeam-watchtower
+base: core24
+version: git
+summary: Unified tracking and management tool for Canonical OpenStack (Sunbeam)
+description: |
+  Watchtower brings package, bug, build, review, release, and cache state
+  behind one application surface so operators do not need to coordinate
+  across multiple external systems manually.
+
+grade: stable
+confinement: strict
+
+platforms:
+  amd64:
+
+parts:
+  watchtower:
+    plugin: go
+    source: .
+    build-snaps:
+      - go/1.25/stable
+    override-build: |
+      go build -o $CRAFT_PART_INSTALL/bin/watchtower ./cmd/watchtower
+      go build -o $CRAFT_PART_INSTALL/bin/watchtower-tui ./cmd/watchtower-tui
+
+apps:
+  sunbeam-watchtower:
+    command: bin/watchtower
+    plugs:
+      - network
+      - network-bind
+      - home
+      - ssh-keys
+  tui:
+    command: bin/watchtower-tui
+    plugs:
+      - network
+      - network-bind
+      - home
+      - ssh-keys
+  serve:
+    command: bin/watchtower serve
+    daemon: simple
+    plugs:
+      - network
+      - network-bind
+      - home
+      - ssh-keys
