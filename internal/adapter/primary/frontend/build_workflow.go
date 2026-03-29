@@ -173,11 +173,16 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 		if len(downloadArtifacts) == 0 {
 			downloadArtifacts = requestedArtifacts
 		}
-		if err := w.client.BuildsDownload(ctx, client.BuildsDownloadOptions{
+		downloadOpts := client.BuildsDownloadOptions{
 			Project:      req.Project,
 			Artifacts:    downloadArtifacts,
 			ArtifactsDir: req.ArtifactsDir,
-		}); err != nil {
+			Owner:        preparedTrigger.Owner,
+		}
+		if preparedTrigger.Prepared != nil {
+			downloadOpts.TargetRef = preparedTrigger.Prepared.TargetRef
+		}
+		if err := w.client.BuildsDownload(ctx, downloadOpts); err != nil {
 			response.Errors = append(response.Errors, fmt.Errorf("download: %w", err))
 		}
 	}
