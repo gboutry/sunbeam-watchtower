@@ -83,6 +83,7 @@ const (
 	overlayTeamSync
 	overlayCacheSync
 	overlayCacheClear
+	overlayBuildCleanup
 )
 
 type deferredActionKind int
@@ -386,6 +387,13 @@ type buildTriggeredMsg struct {
 type buildRetryMsg struct{ err error }
 type buildCancelMsg struct{ err error }
 
+type buildCleanupMsg struct {
+	deletedRecipes  []string
+	deletedBranches []string
+	dryRun          bool
+	err             error
+}
+
 type operationCancelledMsg struct {
 	job *dto.OperationJob
 	err error
@@ -444,6 +452,7 @@ type rootModel struct {
 	buildFilterForm   formModalModel
 	releaseFilterForm formModalModel
 	buildTriggerForm  formModalModel
+	buildCleanupForm  formModalModel
 	packageFilterForm formModalModel
 	bugFilterForm     formModalModel
 	reviewFilterForm  formModalModel
@@ -852,6 +861,18 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.setToast("Build cancel requested", "success")
 		return m, tea.Batch(clearToastLater(), loadBuildsCmd(m.session, m.builds.filters))
+	case buildCleanupMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		verb := "Deleted"
+		if msg.dryRun {
+			verb = "Would delete"
+		}
+		summary := fmt.Sprintf("%s %d recipes, %d branches", verb, len(msg.deletedRecipes), len(msg.deletedBranches))
+		m.setToast(summary, "success")
+		return m, tea.Batch(clearToastLater(), loadBuildsCmd(m.session, m.builds.filters))
 	case operationCancelledMsg:
 		if msg.err != nil {
 			m.setToast(msg.err.Error(), "error")
@@ -1229,6 +1250,13 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, cancelBuildCmd(m.session, *b)
 			}
 		}
+	case "C":
+		if m.activeView == viewBuilds {
+			m.buildCleanupForm = newBuildCleanupForm(m.session)
+			m.overlay = overlayBuildCleanup
+			m.overlayScroll = 0
+			return m, nil
+		}
 	}
 	return m, nil
 }
@@ -1511,6 +1539,9 @@ func (m rootModel) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayCacheClear:
 		m.pendingG = false
 		return m.updateCacheClearForm(msg)
+	case overlayBuildCleanup:
+		m.pendingG = false
+		return m.updateBuildCleanupForm(msg)
 	}
 	return m, nil
 }
@@ -2152,6 +2183,8 @@ func (m rootModel) renderOverlay(base string) string {
 		content = renderFormModal(m.theme, m.cacheSyncForm, m.width, m.height)
 	case overlayCacheClear:
 		content = renderFormModal(m.theme, m.cacheClearForm, m.width, m.height)
+	case overlayBuildCleanup:
+		content = renderFormModal(m.theme, m.buildCleanupForm, m.width, m.height)
 	}
 	if isCenteredFormOverlay(m.overlay) {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
@@ -2164,7 +2197,7 @@ func (m rootModel) renderOverlay(base string) string {
 
 func isCenteredFormOverlay(kind overlayKind) bool {
 	switch kind {
-	case overlayBuildFilters, overlayReleaseFilters, overlayBuildTrigger, overlayPackageFilters, overlayBugFilters, overlayReviewFilters, overlayCommitFilters, overlayProjectFilters, overlayProjectSync, overlayBugSync, overlayTeamSync, overlayCacheSync, overlayCacheClear:
+	case overlayBuildFilters, overlayReleaseFilters, overlayBuildTrigger, overlayBuildCleanup, overlayPackageFilters, overlayBugFilters, overlayReviewFilters, overlayCommitFilters, overlayProjectFilters, overlayProjectSync, overlayBugSync, overlayTeamSync, overlayCacheSync, overlayCacheClear:
 		return true
 	default:
 		return false
@@ -2522,6 +2555,19 @@ func (m rootModel) updateBuildTriggerForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return nil
 		}
 		return triggerBuildCmd(m.session, req)
+	}, func() {
+		m.overlay = overlayNone
+	})
+	return m, cmd
+}
+
+func (m rootModel) updateBuildCleanupForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd := updateFormModal(msg, &m.buildCleanupForm, func(values []string) tea.Cmd {
+		prefix := strings.TrimSpace(values[0])
+		owner := strings.TrimSpace(values[1])
+		dryRun := strings.TrimSpace(values[2]) != "false"
+		m.overlay = overlayNone
+		return cleanupBuildCmd(m.session, prefix, owner, dryRun)
 	}, func() {
 		m.overlay = overlayNone
 	})
@@ -2921,6 +2967,28 @@ func cancelBuildCmd(session *runtimeadapter.Session, build dto.Build) tea.Cmd {
 	})
 }
 
+func cleanupBuildCmd(session *runtimeadapter.Session, prefix, owner string, dryRun bool) tea.Cmd {
+	actionID := frontend.ActionBuildCleanupDryRun
+	if !dryRun {
+		actionID = frontend.ActionBuildCleanupApply
+	}
+	return guardSessionAction(session, actionID, func() tea.Msg {
+		result, err := session.Frontend.Builds().Cleanup(context.Background(), frontend.BuildCleanupRequest{
+			Prefix: prefix,
+			Owner:  owner,
+			DryRun: dryRun,
+		})
+		if err != nil {
+			return buildCleanupMsg{err: err}
+		}
+		return buildCleanupMsg{
+			deletedRecipes:  result.DeletedRecipes,
+			deletedBranches: result.DeletedBranches,
+			dryRun:          dryRun,
+		}
+	})
+}
+
 func cancelOperationCmd(session *runtimeadapter.Session, id string) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionOperationCancel, func() tea.Msg {
 		job, err := session.Frontend.Operations().Cancel(context.Background(), id)
@@ -3001,6 +3069,14 @@ func newBuildTriggerForm(session *runtimeadapter.Session) formModalModel {
 		{placeholder: "artifacts (comma separated)", value: "", resetValue: ""},
 		{placeholder: "source", value: "remote", resetValue: "remote", suggestions: []string{"remote", "local"}, kind: fieldKindEnum},
 		{placeholder: "local path", value: ".", resetValue: "."},
+	})
+}
+
+func newBuildCleanupForm(session *runtimeadapter.Session) formModalModel {
+	return newFormModal("Cleanup Builds", []fieldDef{
+		{placeholder: "prefix", value: "tmp-build", resetValue: "tmp-build"},
+		{placeholder: "owner", value: "", resetValue: ""},
+		{placeholder: "dry run", value: "true", resetValue: "true", suggestions: []string{"true", "false"}, kind: fieldKindEnum},
 	})
 }
 
