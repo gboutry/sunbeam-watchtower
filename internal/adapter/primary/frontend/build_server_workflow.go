@@ -6,6 +6,7 @@ package frontend
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/build"
@@ -70,6 +71,34 @@ func (w *BuildServerWorkflow) Cleanup(ctx context.Context, opts build.CleanupOpt
 		return nil, err
 	}
 	return service.Cleanup(ctx, opts)
+}
+
+// Retry retries a failed build by finding the matching builder for the artifact type.
+func (w *BuildServerWorkflow) Retry(ctx context.Context, buildSelfLink, artifactType string) error {
+	builders, err := w.application.BuildRecipeBuilders()
+	if err != nil {
+		return err
+	}
+	for _, pb := range builders {
+		if pb.Builder.ArtifactType().String() == artifactType {
+			return pb.Builder.RetryBuild(ctx, buildSelfLink)
+		}
+	}
+	return fmt.Errorf("no builder for artifact type %q", artifactType)
+}
+
+// Cancel cancels an active build by finding the matching builder for the artifact type.
+func (w *BuildServerWorkflow) Cancel(ctx context.Context, buildSelfLink, artifactType string) error {
+	builders, err := w.application.BuildRecipeBuilders()
+	if err != nil {
+		return err
+	}
+	for _, pb := range builders {
+		if pb.Builder.ArtifactType().String() == artifactType {
+			return pb.Builder.CancelBuild(ctx, buildSelfLink)
+		}
+	}
+	return fmt.Errorf("no builder for artifact type %q", artifactType)
 }
 
 // DefaultArtifactsDir returns the configured build artifact output directory.

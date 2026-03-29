@@ -232,6 +232,66 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		out.Body.DeletedBranches = result.DeletedBranches
 		return out, nil
 	})
+	// --- Retry a build ---
+
+	huma.Register(api, huma.Operation{
+		OperationID: "retry-build",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/builds/retry",
+		Summary:     "Retry a failed build",
+		Description: "Retry a failed build by its self-link and artifact type.",
+		Tags:        []string{"builds"},
+	}, func(ctx context.Context, input *BuildsRetryInput) (*BuildsActionOutput, error) {
+		if err := facade.Builds().Retry(ctx, input.Body.BuildSelfLink, input.Body.ArtifactType); err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("retry failed: %v", err))
+		}
+		out := &BuildsActionOutput{}
+		out.Body.Status = "ok"
+		return out, nil
+	})
+
+	// --- Cancel a build ---
+
+	huma.Register(api, huma.Operation{
+		OperationID: "cancel-build",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/builds/cancel",
+		Summary:     "Cancel an active build",
+		Description: "Cancel an active build by its self-link and artifact type.",
+		Tags:        []string{"builds"},
+	}, func(ctx context.Context, input *BuildsCancelInput) (*BuildsActionOutput, error) {
+		if err := facade.Builds().Cancel(ctx, input.Body.BuildSelfLink, input.Body.ArtifactType); err != nil {
+			return nil, huma.Error500InternalServerError(fmt.Sprintf("cancel failed: %v", err))
+		}
+		out := &BuildsActionOutput{}
+		out.Body.Status = "ok"
+		return out, nil
+	})
+}
+
+// --- Retry/Cancel input/output types ---
+
+// BuildsRetryInput holds the request body for retrying a build.
+type BuildsRetryInput struct {
+	Body struct {
+		BuildSelfLink string `json:"build_self_link" doc:"Self-link of the build to retry" required:"true"`
+		ArtifactType  string `json:"artifact_type" doc:"Artifact type: rock, charm, or snap" required:"true"`
+	}
+}
+
+// BuildsCancelInput holds the request body for cancelling a build.
+type BuildsCancelInput struct {
+	Body struct {
+		BuildSelfLink string `json:"build_self_link" doc:"Self-link of the build to cancel" required:"true"`
+		ArtifactType  string `json:"artifact_type" doc:"Artifact type: rock, charm, or snap" required:"true"`
+	}
+}
+
+// BuildsActionOutput is the response for build retry/cancel operations.
+type BuildsActionOutput struct {
+	Body struct {
+		Status string `json:"status" doc:"Operation result"`
+	}
 }
 
 func buildTriggerOptionsFromInput(input *BuildsTriggerInput) (build.TriggerOpts, error) {
