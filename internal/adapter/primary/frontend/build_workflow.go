@@ -266,6 +266,28 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 	return w.client.BuildsDownload(ctx, downloadOpts)
 }
 
+// Retry retries a failed build via the API.
+func (w *BuildWorkflow) Retry(ctx context.Context, buildSelfLink, artifactType string) error {
+	if w.client == nil {
+		return errors.New("build workflow requires an API client")
+	}
+	return w.client.BuildsRetry(ctx, client.BuildsRetryOptions{
+		BuildSelfLink: buildSelfLink,
+		ArtifactType:  artifactType,
+	})
+}
+
+// Cancel cancels an active build via the API.
+func (w *BuildWorkflow) Cancel(ctx context.Context, buildSelfLink, artifactType string) error {
+	if w.client == nil {
+		return errors.New("build workflow requires an API client")
+	}
+	return w.client.BuildsCancel(ctx, client.BuildsCancelOptions{
+		BuildSelfLink: buildSelfLink,
+		ArtifactType:  artifactType,
+	})
+}
+
 // Cleanup deletes temporary build recipes and branches matching the requested filters.
 func (w *BuildWorkflow) Cleanup(ctx context.Context, req BuildCleanupRequest) (*BuildCleanupResponse, error) {
 	if w.client == nil {
