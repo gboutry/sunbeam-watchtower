@@ -117,3 +117,25 @@ func (c *Client) BuildsCleanup(ctx context.Context, opts BuildsCleanupOptions) (
 	err := c.post(ctx, "/api/v1/builds/cleanup", opts, &result)
 	return &result, err
 }
+
+// BuildsRetryOptions holds the request body for retrying a build.
+type BuildsRetryOptions struct {
+	BuildSelfLink string `json:"build_self_link"`
+	ArtifactType  string `json:"artifact_type"`
+}
+
+// BuildsRetry retries a failed build.
+func (c *Client) BuildsRetry(ctx context.Context, opts BuildsRetryOptions) error {
+	return c.post(ctx, "/api/v1/builds/retry", opts, nil)
+}
+
+// BuildsCancelOptions holds the request body for cancelling a build.
+type BuildsCancelOptions struct {
+	BuildSelfLink string `json:"build_self_link"`
+	ArtifactType  string `json:"artifact_type"`
+}
+
+// BuildsCancel cancels an active build.
+func (c *Client) BuildsCancel(ctx context.Context, opts BuildsCancelOptions) error {
+	return c.post(ctx, "/api/v1/builds/cancel", opts, nil)
+}
