@@ -147,6 +147,21 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		}
 	}
 
+	// Filter out skipped artifacts.
+	if len(pb.SkipArtifacts) > 0 {
+		skip := make(map[string]bool, len(pb.SkipArtifacts))
+		for _, s := range pb.SkipArtifacts {
+			skip[s] = true
+		}
+		filtered := artifactNames[:0]
+		for _, name := range artifactNames {
+			if !skip[name] {
+				filtered = append(filtered, name)
+			}
+		}
+		artifactNames = filtered
+	}
+
 	tempNames := make([]string, 0, len(artifactNames))
 	buildPaths := make(map[string]string, len(artifactNames))
 	for _, name := range artifactNames {
