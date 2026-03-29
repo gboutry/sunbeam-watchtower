@@ -50,6 +50,8 @@ projects:
       prepare_command: "./repository.py prepare --clean"
       channels:
         charmcraft: latest/stable
+      skip_artifacts:
+        - sunbeam-libs
     bugs:
       - forge: launchpad
         project: snap-openstack
