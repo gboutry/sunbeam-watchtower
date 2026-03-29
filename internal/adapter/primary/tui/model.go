@@ -383,6 +383,9 @@ type buildTriggeredMsg struct {
 	err error
 }
 
+type buildRetryMsg struct{ err error }
+type buildCancelMsg struct{ err error }
+
 type operationCancelledMsg struct {
 	job *dto.OperationJob
 	err error
@@ -835,6 +838,20 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ops.index = 0
 		}
 		return m, tea.Batch(clearToastLater(), loadOperationsCmd(m.session, selectedOperationID(m.ops.rows, m.ops.index)))
+	case buildRetryMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.setToast("Build retry requested", "success")
+		return m, tea.Batch(clearToastLater(), loadBuildsCmd(m.session, m.builds.filters))
+	case buildCancelMsg:
+		if msg.err != nil {
+			m.setToast(msg.err.Error(), "error")
+			return m, clearToastLater()
+		}
+		m.setToast("Build cancel requested", "success")
+		return m, tea.Batch(clearToastLater(), loadBuildsCmd(m.session, m.builds.filters))
 	case operationCancelledMsg:
 		if msg.err != nil {
 			m.setToast(msg.err.Error(), "error")
@@ -1199,6 +1216,18 @@ func (m rootModel) updateGlobal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.overlay = overlayBuildTrigger
 			m.overlayScroll = 0
 			return m, nil
+		}
+	case "R":
+		if m.activeView == viewBuilds {
+			if b := selectedBuild(m.builds.rows, m.builds.index); b != nil && b.CanRetry {
+				return m, retryBuildCmd(m.session, *b)
+			}
+		}
+	case "X":
+		if m.activeView == viewBuilds {
+			if b := selectedBuild(m.builds.rows, m.builds.index); b != nil && b.CanCancel {
+				return m, cancelBuildCmd(m.session, *b)
+			}
 		}
 	}
 	return m, nil
@@ -2878,6 +2907,20 @@ func triggerBuildCmd(session *runtimeadapter.Session, req frontend.BuildTriggerR
 	})
 }
 
+func retryBuildCmd(session *runtimeadapter.Session, build dto.Build) tea.Cmd {
+	return guardSessionAction(session, frontend.ActionBuildRetry, func() tea.Msg {
+		err := session.Frontend.Builds().Retry(context.Background(), build.SelfLink, build.ArtifactType.String())
+		return buildRetryMsg{err: err}
+	})
+}
+
+func cancelBuildCmd(session *runtimeadapter.Session, build dto.Build) tea.Cmd {
+	return guardSessionAction(session, frontend.ActionBuildCancel, func() tea.Msg {
+		err := session.Frontend.Builds().Cancel(context.Background(), build.SelfLink, build.ArtifactType.String())
+		return buildCancelMsg{err: err}
+	})
+}
+
 func cancelOperationCmd(session *runtimeadapter.Session, id string) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionOperationCancel, func() tea.Msg {
 		job, err := session.Frontend.Operations().Cancel(context.Background(), id)
@@ -3657,6 +3700,14 @@ func renderBuildDetail(t theme, build *dto.Build, width int) string {
 	if build == nil {
 		return t.subtle.Render("No build selected.")
 	}
+	hints := []string{"[t] trigger"}
+	if build.CanRetry {
+		hints = append(hints, "[R] retry")
+	}
+	if build.CanCancel {
+		hints = append(hints, "[X] cancel")
+	}
+	hints = append(hints, "[C] cleanup")
 	return fitBlock(strings.Join([]string{
 		"Project: " + build.Project,
 		"Recipe: " + build.Recipe,
@@ -3671,7 +3722,7 @@ func renderBuildDetail(t theme, build *dto.Build, width int) string {
 		fmt.Sprintf("Can retry: %t", build.CanRetry),
 		fmt.Sprintf("Can cancel: %t", build.CanCancel),
 		"",
-		"[t] trigger async build",
+		strings.Join(hints, "  "),
 	}, "\n"), width)
 }
 
