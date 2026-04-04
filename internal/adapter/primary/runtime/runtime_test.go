@@ -235,6 +235,34 @@ func TestNewSession_PreferExistingDaemonFallsBackToEmbedded(t *testing.T) {
 	}
 }
 
+func TestNewSession_ServerAddressFromConfig(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := "server_address: \"http://config-server:8472\"\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := NewSession(context.Background(), Options{
+		ConfigPath:   cfgPath,
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: TargetPolicyPreferExistingDaemon,
+	})
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	defer session.Close()
+
+	if session.Target().Kind != TargetKindRemote {
+		t.Fatalf("Target().Kind = %q, want %q", session.Target().Kind, TargetKindRemote)
+	}
+	if session.Target().Address != "http://config-server:8472" {
+		t.Fatalf("Target().Address = %q, want %q", session.Target().Address, "http://config-server:8472")
+	}
+}
+
 func TestNewSession_RequirePersistentStartsDaemon(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 
