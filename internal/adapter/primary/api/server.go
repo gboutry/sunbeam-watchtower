@@ -53,6 +53,8 @@ type ServerOptions struct {
 	UnixSocket string
 	// Middleware wraps the root HTTP handler before the server starts serving.
 	Middleware func(http.Handler) http.Handler
+	// AuthToken, if non-empty, enables bearer auth middleware on TCP connections.
+	AuthToken string
 }
 
 // Server is the HTTP server for Sunbeam Watchtower.
@@ -82,6 +84,9 @@ func NewServer(logger *slog.Logger, opts ServerOptions) *Server {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
+	if opts.AuthToken != "" && opts.UnixSocket == "" {
+		router.Use(BearerAuthMiddleware(opts.AuthToken))
+	}
 	if opts.Middleware != nil {
 		router.Use(opts.Middleware)
 	}
