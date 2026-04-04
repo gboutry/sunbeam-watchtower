@@ -95,6 +95,7 @@ The following are implemented and should be treated as the current baseline:
 - config hot-reload: `App.Config` is private behind `GetConfig()` (read-locked) and `ReloadConfig(path)` (write-lock swap); the persistent server watches `watchtower.yaml` via fsnotify `ConfigWatcher`, handles SIGHUP for manual reload, and exposes `POST /api/v1/config/reload`; CLI `config reload` command calls the endpoint; per-request services pick up changes immediately; `sync.Once` services (Telemetry, TeamSyncService) require server restart
 - minimal client config: `Session.Config` is now a `*ConfigResolver` that lazily resolves configuration from a local file, remote server, or both; `NewSession` performs tolerant config loading (missing config file is not an error), resolves `server_address`/`server_token` from config when flags/env are absent, and skips `App` creation entirely for remote and daemon targets; `NewClientWithToken` injects bearer auth into every request; the server enforces token auth via middleware on TCP listeners; embedded mode still requires a local config file; CLI and TUI `session.Config` call sites use `session.Config.LocalConfig()` for backward compatibility
 - TUI Builds tab now supports retry (`R`) and cancel (`X`) keybindings on selected builds, a cleanup form (`C`) with dry-run/apply, and auto-refresh polling (30s tick) while non-terminal builds are visible; retry/cancel are backed by `POST /api/v1/builds/retry` and `/cancel` endpoints with `build.retry` and `build.cancel` action IDs
+- `internal/app` bootstrap cleanup: `BuildPackageSources` filter logic extracted into a stateless pure function (`buildPackageSources`) with characterization tests locking down the 3-state backport contract (nil/empty/named); release helper functions (YAML parsers, track resolution, dedup, skip-artifact logic) moved from `release_bootstrap.go` to `release_helpers.go`; forge client builders, bug tracker assembly, telemetry snapshot methods, and team-sync wiring intentionally kept in `internal/app` as legitimate composition-root concerns per adversarial architecture review
 
 ## Current Gaps
 
@@ -103,14 +104,14 @@ These are the main known gaps that still matter:
 - team collaborator sync store adapters need correct API endpoints: Charmhub should use `/v1/charm/{name}/collaborators` (documented) and `/v1/charm/{name}/collaborators/invites` for invitations; Snap Store per-snap collaborator management may require the Brand Stores API (`/api/v2/stores/{store_id}/users`) or investigation of undocumented endpoints
 - Launchpad, GitHub, Snap Store, and Charmhub auth are implemented with interactive flows, but the same authenticated-flow model is not yet extended to other forges such as Gerrit
 - the `Packages` and `Commits` TUI tabs now have read-only submodes, but deeper workflow actions remain CLI/API-first
-- some forge/package bootstrap paths in `internal/app` still contain logic that should continue moving into narrower builders/factories
+- `internal/app` telemetry snapshot methods (312 lines) remain large but are intentionally kept as composition-root glue per adversarial review — they mix cache-backed and opt-in live collectors and return adapter-facing DTOs
 - some tests still have environment-sensitive assumptions and need further hardening
 
 ## Active Roadmap
 
 ### Near term
 
-- continue shrinking the remaining forge/package bootstrap paths in `internal/app` so it stays a composition root instead of absorbing feature logic
+- if telemetry snapshot methods grow further, extract pure reducer helpers over already-fetched DTO slices (keep orchestration in `internal/app`)
 
 ### Frontend/runtime
 
