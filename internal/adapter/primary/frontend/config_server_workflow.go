@@ -109,8 +109,8 @@ func ConfigToDTO(cfg *config.Config) *dto.Config {
 			Logs:   signalConfigToDTO(cfg.OTel.Logs),
 		},
 		ServerAddress: cfg.ServerAddress,
-		ServerToken:   cfg.ServerToken,
-		AuthToken:     cfg.AuthToken,
+		// ServerToken and AuthToken are intentionally omitted — secrets must
+		// not be exposed via the config API endpoint.
 	}
 
 	out.Gerrit.Hosts = make([]dto.GerritHost, len(cfg.Gerrit.Hosts))

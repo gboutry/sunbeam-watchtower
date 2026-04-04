@@ -453,6 +453,7 @@ type Session struct {
 	Frontend *frontend.ClientFacade
 
 	accessMode  AccessMode
+	token       string
 	target      TargetInfo
 	manager     *LocalServerManager
 	embeddedSrv *api.Server
@@ -497,6 +498,7 @@ func NewSession(ctx context.Context, opts Options) (*Session, error) {
 	session := &Session{
 		Logger:     logger,
 		accessMode: opts.AccessMode,
+		token:      token,
 		opts:       opts,
 	}
 
@@ -667,7 +669,7 @@ func (s *Session) UpgradeToPersistent(ctx context.Context) error {
 		}
 		s.embeddedSrv = nil
 	}
-	s.useDaemonTarget(status, "")
+	s.useDaemonTarget(status, s.token)
 	return nil
 }
 

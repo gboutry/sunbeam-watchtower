@@ -11,7 +11,7 @@ import (
 
 func boolPtr(b bool) *bool { return &b }
 
-func TestConfigToDTO_IncludesClientFields(t *testing.T) {
+func TestConfigToDTO_IncludesServerAddressButRedactsSecrets(t *testing.T) {
 	cfg := &config.Config{
 		ServerAddress: "http://remote:8472",
 		ServerToken:   "token",
@@ -19,13 +19,13 @@ func TestConfigToDTO_IncludesClientFields(t *testing.T) {
 	}
 	d := ConfigToDTO(cfg)
 	if d.ServerAddress != "http://remote:8472" {
-		t.Fatalf("ServerAddress = %q", d.ServerAddress)
+		t.Fatalf("ServerAddress = %q, want %q", d.ServerAddress, "http://remote:8472")
 	}
-	if d.ServerToken != "token" {
-		t.Fatalf("ServerToken = %q", d.ServerToken)
+	if d.ServerToken != "" {
+		t.Fatalf("ServerToken should be redacted, got %q", d.ServerToken)
 	}
-	if d.AuthToken != "auth" {
-		t.Fatalf("AuthToken = %q", d.AuthToken)
+	if d.AuthToken != "" {
+		t.Fatalf("AuthToken should be redacted, got %q", d.AuthToken)
 	}
 }
 
