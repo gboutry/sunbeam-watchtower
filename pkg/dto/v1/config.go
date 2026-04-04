@@ -320,6 +320,9 @@ type Config struct {
 	Build     BuildConfig               `json:"build" yaml:"build"`
 	Releases  ReleasesConfig            `json:"releases,omitempty" yaml:"releases,omitempty"`
 	Packages  PackagesConfig            `json:"packages,omitempty" yaml:"packages,omitempty"`
-	TUI       TUIConfig                 `json:"tui,omitempty" yaml:"tui,omitempty"`
-	OTel      OTelConfig                `json:"otel,omitempty" yaml:"otel,omitempty"`
+	TUI           TUIConfig                 `json:"tui,omitempty" yaml:"tui,omitempty"`
+	OTel          OTelConfig                `json:"otel,omitempty" yaml:"otel,omitempty"`
+	ServerAddress string                    `json:"server_address,omitempty" yaml:"server_address,omitempty"`
+	ServerToken   string                    `json:"server_token,omitempty" yaml:"server_token,omitempty"`
+	AuthToken     string                    `json:"auth_token,omitempty" yaml:"auth_token,omitempty"`
 }
