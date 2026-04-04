@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -32,6 +33,33 @@ func newServeCmd(opts *Options) *cobra.Command {
 				serverOpts.ListenAddr = strings.TrimPrefix(listen, "tcp://")
 			default:
 				serverOpts.ListenAddr = listen
+			}
+
+			// Resolve auth token for TCP listeners.
+			if serverOpts.UnixSocket == "" {
+				authToken := opts.Application().GetConfig().AuthToken
+				if authToken == "" {
+					generated, err := api.GenerateToken()
+					if err != nil {
+						return fmt.Errorf("generating auth token: %w", err)
+					}
+					authToken = generated
+
+					// Write to well-known path for local clients.
+					tokenDir, err := os.UserHomeDir()
+					if err == nil {
+						tokenPath := filepath.Join(tokenDir, ".config", "sunbeam-watchtower", "server.token")
+						if err := os.MkdirAll(filepath.Dir(tokenPath), 0o755); err == nil {
+							if err := os.WriteFile(tokenPath, []byte(authToken), 0o600); err != nil {
+								opts.Logger.Warn("failed to write server token file", "error", err)
+							} else {
+								opts.Logger.Info("auth token written", "path", tokenPath)
+							}
+						}
+					}
+				}
+				serverOpts.AuthToken = authToken
+				opts.Logger.Info("TCP authentication enabled")
 			}
 
 			srv := runtimeadapter.NewConfiguredServer(opts.Logger, opts.Application(), serverOpts)
