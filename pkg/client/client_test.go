@@ -286,3 +286,42 @@ func TestDo_NilResult(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 }
+
+func TestNewClientWithToken_InjectsAuthorizationHeader(t *testing.T) {
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	c := NewClientWithToken(ts.URL, "test-token-123")
+	err := c.get(context.Background(), "/ok", nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	want := "Bearer test-token-123"
+	if gotAuth != want {
+		t.Errorf("Authorization header = %q, want %q", gotAuth, want)
+	}
+}
+
+func TestNewClient_NoAuthorizationHeader(t *testing.T) {
+	var gotAuth string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL)
+	err := c.get(context.Background(), "/ok", nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if gotAuth != "" {
+		t.Errorf("Authorization header = %q, want empty", gotAuth)
+	}
+}
