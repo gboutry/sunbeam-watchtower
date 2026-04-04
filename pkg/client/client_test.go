@@ -6,6 +6,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -304,6 +305,29 @@ func TestNewClientWithToken_InjectsAuthorizationHeader(t *testing.T) {
 	want := "Bearer test-token-123"
 	if gotAuth != want {
 		t.Errorf("Authorization header = %q, want %q", gotAuth, want)
+	}
+}
+
+func TestClient_401ProducesAuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"authentication required"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	err := c.get(context.Background(), "/api/v1/config", nil, &struct{}{})
+	if err == nil {
+		t.Fatal("expected error for 401")
+	}
+
+	var authErr *AuthRequiredError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("expected *AuthRequiredError, got %T: %v", err, err)
+	}
+	if authErr.ServerAddr != srv.URL {
+		t.Fatalf("ServerAddr = %q, want %q", authErr.ServerAddr, srv.URL)
 	}
 }
 

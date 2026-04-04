@@ -59,6 +59,15 @@ func NewClientWithToken(addr, token string) *Client {
 	return c
 }
 
+// AuthRequiredError is returned when the server responds with 401.
+type AuthRequiredError struct {
+	ServerAddr string
+}
+
+func (e *AuthRequiredError) Error() string {
+	return fmt.Sprintf("server at %s requires authentication — set WATCHTOWER_TOKEN or add server_token to your config", e.ServerAddr)
+}
+
 // apiError is the Huma error format returned by the server.
 type apiError struct {
 	Title  string `json:"title"`
@@ -137,6 +146,10 @@ func (c *Client) do(req *http.Request, result interface{}) error {
 		return fmt.Errorf("executing request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return &AuthRequiredError{ServerAddr: c.baseURL}
+	}
 
 	if resp.StatusCode >= 400 {
 		var ae apiError
