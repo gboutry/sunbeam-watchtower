@@ -57,17 +57,31 @@ type ServerOptions struct {
 
 // Server is the HTTP server for Sunbeam Watchtower.
 type Server struct {
-	router   chi.Router
-	api      huma.API
-	logger   *slog.Logger
-	listener net.Listener
-	httpSrv  *http.Server
-	opts     ServerOptions
+	router        chi.Router
+	api           huma.API
+	logger        *slog.Logger
+	listener      net.Listener
+	httpSrv       *http.Server
+	opts          ServerOptions
+	transportKind TransportKind
 }
 
 // NewServer creates a new Server with a chi router and huma API.
 func NewServer(logger *slog.Logger, opts ServerOptions) *Server {
+	transportKind := TransportTCP
+	if opts.UnixSocket != "" {
+		transportKind = TransportUnix
+	}
+
 	router := chi.NewMux()
+	// Inject transport kind as the first middleware so all downstream
+	// handlers and middlewares can read the connection's origin.
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), TransportKindKey, transportKind)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 	if opts.Middleware != nil {
 		router.Use(opts.Middleware)
 	}
@@ -76,10 +90,11 @@ func NewServer(logger *slog.Logger, opts ServerOptions) *Server {
 	api := humachi.New(router, cfg)
 
 	s := &Server{
-		router: router,
-		api:    api,
-		logger: logger,
-		opts:   opts,
+		router:        router,
+		api:           api,
+		logger:        logger,
+		opts:          opts,
+		transportKind: transportKind,
 	}
 	s.registerHealth()
 	return s

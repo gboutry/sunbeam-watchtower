@@ -256,6 +256,74 @@ func TestUnixSocket(t *testing.T) {
 	}
 }
 
+func TestServer_TCPSetsTransportContext(t *testing.T) {
+	var gotTransport TransportKind
+	capturingMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotTransport, _ = r.Context().Value(TransportKindKey).(TransportKind)
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	srv := NewServer(discardLogger(), ServerOptions{
+		ListenAddr: "127.0.0.1:0",
+		Middleware: capturingMiddleware,
+	})
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Shutdown(context.Background())
+
+	resp, err := http.Get("http://" + srv.Addr() + "/api/v1/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if gotTransport != TransportTCP {
+		t.Fatalf("expected TransportTCP, got %q", gotTransport)
+	}
+}
+
+func TestServer_UnixSetsTransportContext(t *testing.T) {
+	var gotTransport TransportKind
+	capturingMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotTransport, _ = r.Context().Value(TransportKindKey).(TransportKind)
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "transport_test.sock")
+
+	srv := NewServer(discardLogger(), ServerOptions{
+		UnixSocket: sock,
+		Middleware: capturingMiddleware,
+	})
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Shutdown(context.Background())
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", sock)
+			},
+		},
+	}
+	resp, err := client.Get("http://unix/api/v1/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if gotTransport != TransportUnix {
+		t.Fatalf("expected TransportUnix, got %q", gotTransport)
+	}
+}
+
 func TestParseAPIMergeState(t *testing.T) {
 	tests := []struct {
 		input   string
