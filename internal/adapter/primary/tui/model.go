@@ -1590,8 +1590,8 @@ func loadTUIBootstrapCmd(session *runtimeadapter.Session) tea.Cmd {
 		}
 		// Prefer the locally-loaded config so TUI presets work regardless of
 		// which config file the server was started with.
-		if session.Config != nil {
-			return tuiBootstrapLoadedMsg{config: frontend.ConfigToDTO(session.Config)}
+		if session.Config != nil && session.Config.LocalConfig() != nil {
+			return tuiBootstrapLoadedMsg{config: frontend.ConfigToDTO(session.Config.LocalConfig())}
 		}
 		if session.Frontend == nil {
 			return tuiBootstrapLoadedMsg{err: errors.New("runtime session does not expose config workflow")}
@@ -3061,8 +3061,8 @@ func newReleaseFilterForm(session *runtimeadapter.Session, releases releasesMode
 
 func newBuildTriggerForm(session *runtimeadapter.Session) formModalModel {
 	project := ""
-	if len(session.Config.Projects) > 0 {
-		project = session.Config.Projects[0].Name
+	if cfg := session.Config.LocalConfig(); cfg != nil && len(cfg.Projects) > 0 {
+		project = cfg.Projects[0].Name
 	}
 	return newFormModal("Trigger Build", []fieldDef{
 		{placeholder: "project", value: project, resetValue: project},
@@ -3168,14 +3168,16 @@ func newCacheClearForm(session *runtimeadapter.Session, target cacheActionTarget
 func releaseFilterSuggestions(session *runtimeadapter.Session, releases releasesModel) releaseFilterOptions {
 	projects := []string{}
 	targetProfiles := []string{}
-	if session != nil {
-		projects = make([]string, 0, len(session.Config.Projects))
-		for _, project := range session.Config.Projects {
-			projects = append(projects, project.Name)
-		}
-		targetProfiles = make([]string, 0, len(session.Config.Releases.TargetProfiles))
-		for name := range session.Config.Releases.TargetProfiles {
-			targetProfiles = append(targetProfiles, name)
+	if session != nil && session.Config != nil {
+		if cfg := session.Config.LocalConfig(); cfg != nil {
+			projects = make([]string, 0, len(cfg.Projects))
+			for _, project := range cfg.Projects {
+				projects = append(projects, project.Name)
+			}
+			targetProfiles = make([]string, 0, len(cfg.Releases.TargetProfiles))
+			for name := range cfg.Releases.TargetProfiles {
+				targetProfiles = append(targetProfiles, name)
+			}
 		}
 	}
 	artifactTypes := make([]string, 0, 3+len(releases.rows)+1)
@@ -4223,33 +4225,45 @@ func (m *rootModel) ensureCursorVisible() {
 }
 
 func projectSuggestions(session *runtimeadapter.Session) []string {
-	if session == nil {
+	if session == nil || session.Config == nil {
 		return nil
 	}
-	projects := make([]string, 0, len(session.Config.Projects))
-	for _, project := range session.Config.Projects {
+	cfg := session.Config.LocalConfig()
+	if cfg == nil {
+		return nil
+	}
+	projects := make([]string, 0, len(cfg.Projects))
+	for _, project := range cfg.Projects {
 		projects = append(projects, project.Name)
 	}
 	return uniqueSortedStrings(projects...)
 }
 
 func distroSuggestions(session *runtimeadapter.Session) []string {
-	if session == nil {
+	if session == nil || session.Config == nil {
 		return nil
 	}
-	distros := make([]string, 0, len(session.Config.Packages.Distros))
-	for name := range session.Config.Packages.Distros {
+	cfg := session.Config.LocalConfig()
+	if cfg == nil {
+		return nil
+	}
+	distros := make([]string, 0, len(cfg.Packages.Distros))
+	for name := range cfg.Packages.Distros {
 		distros = append(distros, name)
 	}
 	return uniqueSortedStrings(distros...)
 }
 
 func releaseSuggestions(session *runtimeadapter.Session) []string {
-	if session == nil {
+	if session == nil || session.Config == nil {
+		return nil
+	}
+	cfg := session.Config.LocalConfig()
+	if cfg == nil {
 		return nil
 	}
 	releases := make([]string, 0)
-	for _, distro := range session.Config.Packages.Distros {
+	for _, distro := range cfg.Packages.Distros {
 		for release := range distro.Releases {
 			releases = append(releases, release)
 		}
@@ -4258,11 +4272,15 @@ func releaseSuggestions(session *runtimeadapter.Session) []string {
 }
 
 func backportSuggestions(session *runtimeadapter.Session) []string {
-	if session == nil {
+	if session == nil || session.Config == nil {
+		return nil
+	}
+	cfg := session.Config.LocalConfig()
+	if cfg == nil {
 		return nil
 	}
 	backports := make([]string, 0)
-	for _, distro := range session.Config.Packages.Distros {
+	for _, distro := range cfg.Packages.Distros {
 		for _, release := range distro.Releases {
 			for backport := range release.Backports {
 				backports = append(backports, backport)

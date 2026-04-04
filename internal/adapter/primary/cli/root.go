@@ -122,7 +122,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 					return err
 				}
 				opts.Session = session
-				opts.config = session.Config
+				opts.config = session.Config.LocalConfig()
 				opts.ServerAddr = session.Target().Address
 				return nil
 			}

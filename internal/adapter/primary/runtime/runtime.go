@@ -446,7 +446,7 @@ type TargetInfo struct {
 
 // Session owns the local app plus current API target for a frontend.
 type Session struct {
-	Config   *config.Config
+	Config   *ConfigResolver
 	Logger   *slog.Logger
 	App      *app.App
 	Client   *client.Client
@@ -457,6 +457,16 @@ type Session struct {
 	manager     *LocalServerManager
 	embeddedSrv *api.Server
 	opts        Options
+}
+
+// GetConfig returns the effective configuration for this session.
+// It resolves lazily: if a remote client is available, the server config
+// is fetched; otherwise the local config (if any) is returned.
+func (s *Session) GetConfig(ctx context.Context) (*config.Config, error) {
+	if s == nil || s.Config == nil {
+		return nil, errors.New("no session or config resolver available")
+	}
+	return s.Config.Resolve(ctx)
 }
 
 // NewSession creates one frontend session.
@@ -470,12 +480,45 @@ func NewSession(ctx context.Context, opts Options) (*Session, error) {
 		logger = NewLogger(opts.Verbose, opts.LogWriter)
 	}
 
-	cfg, err := config.Load(opts.ConfigPath)
-	if err != nil {
-		return nil, err
+	// Tolerant config load — nil is okay for remote/daemon targets.
+	cfg, _ := config.Load(opts.ConfigPath)
+
+	// Resolve server address from config if not provided via flag/env.
+	if opts.ServerAddr == "" && cfg != nil && cfg.ServerAddress != "" {
+		opts.ServerAddr = cfg.ServerAddress
 	}
 
-	application := app.NewAppWithOptions(cfg, logger, app.Options{RuntimeMode: app.RuntimeModeEphemeral, ConfigPath: opts.ConfigPath})
+	// Resolve token from WATCHTOWER_TOKEN env or config.
+	token := os.Getenv("WATCHTOWER_TOKEN")
+	if token == "" && cfg != nil {
+		token = cfg.ServerToken
+	}
+
+	session := &Session{
+		Logger:     logger,
+		accessMode: opts.AccessMode,
+		opts:       opts,
+	}
+
+	// Fast path: explicit remote target — skip App and LocalServerManager.
+	if opts.ServerAddr != "" {
+		if token != "" {
+			session.Client = client.NewClientWithToken(opts.ServerAddr, token)
+		} else {
+			session.Client = client.NewClient(opts.ServerAddr)
+		}
+		session.Config = NewConfigResolver(cfg, session.Client)
+		session.target = TargetInfo{
+			Kind:        TargetKindRemote,
+			Address:     opts.ServerAddr,
+			Remote:      true,
+			Description: "remote server",
+		}
+		session.Frontend = frontend.NewClientFacade(frontend.NewClientTransport(session.Client), nil)
+		return session, nil
+	}
+
+	// Local path: need manager to discover/start daemon.
 	manager, err := NewLocalServerManager(Options{
 		ConfigPath:     opts.ConfigPath,
 		ServerAddr:     opts.ServerAddr,
@@ -487,55 +530,65 @@ func NewSession(ctx context.Context, opts Options) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	session := &Session{
-		Config:     cfg,
-		Logger:     logger,
-		App:        application,
-		accessMode: opts.AccessMode,
-		manager:    manager,
-		opts:       opts,
-	}
-
-	if opts.ServerAddr != "" {
-		session.useRemoteTarget(opts.ServerAddr)
-		return session, nil
-	}
+	session.manager = manager
 
 	status, err := manager.Status(ctx)
 	if err != nil {
-		_ = application.Close()
 		return nil, err
 	}
 
 	switch opts.TargetPolicy {
 	case TargetPolicyPreferEmbedded:
+		// Embedded mode needs a full local config and App.
+		if cfg == nil {
+			return nil, errors.New("embedded mode requires a configuration file")
+		}
+		application := app.NewAppWithOptions(cfg, logger, app.Options{RuntimeMode: app.RuntimeModeEphemeral, ConfigPath: opts.ConfigPath})
+		session.App = application
+		session.Config = NewConfigResolver(cfg, nil)
 		if err := session.startEmbeddedTarget(); err != nil {
 			_ = application.Close()
 			return nil, err
 		}
+
 	case TargetPolicyPreferExistingDaemon:
 		if status.Running {
-			session.useDaemonTarget(status)
+			session.useDaemonTarget(status, token)
+			session.Config = NewConfigResolver(cfg, session.Client)
 			return session, nil
 		}
+		// Fall back to embedded.
+		if cfg == nil {
+			return nil, errors.New("no running daemon found and embedded mode requires a configuration file")
+		}
+		application := app.NewAppWithOptions(cfg, logger, app.Options{RuntimeMode: app.RuntimeModeEphemeral, ConfigPath: opts.ConfigPath})
+		session.App = application
+		session.Config = NewConfigResolver(cfg, nil)
 		if err := session.startEmbeddedTarget(); err != nil {
 			_ = application.Close()
 			return nil, err
 		}
+
 	case TargetPolicyRequirePersistent:
 		if status.Running {
-			session.useDaemonTarget(status)
+			session.useDaemonTarget(status, token)
+			session.Config = NewConfigResolver(cfg, session.Client)
 			return session, nil
 		}
+		if cfg == nil {
+			return nil, errors.New("cannot auto-start daemon without full configuration — provide a complete config file or connect to an existing server (--server)")
+		}
+		application := app.NewAppWithOptions(cfg, logger, app.Options{RuntimeMode: app.RuntimeModeEphemeral, ConfigPath: opts.ConfigPath})
+		session.App = application
 		status, _, err = manager.EnsureRunning(ctx)
 		if err != nil {
 			_ = application.Close()
 			return nil, err
 		}
-		session.useDaemonTarget(status)
+		session.useDaemonTarget(status, token)
+		session.Config = NewConfigResolver(cfg, session.Client)
+
 	default:
-		_ = application.Close()
 		return nil, fmt.Errorf("runtime session requires a target policy")
 	}
 
@@ -614,7 +667,7 @@ func (s *Session) UpgradeToPersistent(ctx context.Context) error {
 		}
 		s.embeddedSrv = nil
 	}
-	s.useDaemonTarget(status)
+	s.useDaemonTarget(status, "")
 	return nil
 }
 
@@ -650,19 +703,12 @@ func (s *Session) startEmbeddedTarget() error {
 	return nil
 }
 
-func (s *Session) useRemoteTarget(addr string) {
-	s.Client = client.NewClient(addr)
-	s.target = TargetInfo{
-		Kind:        TargetKindRemote,
-		Address:     addr,
-		Remote:      true,
-		Description: "remote server",
+func (s *Session) useDaemonTarget(status LocalServerStatus, token string) {
+	if token != "" {
+		s.Client = client.NewClientWithToken(status.Address, token)
+	} else {
+		s.Client = client.NewClient(status.Address)
 	}
-	s.Frontend = frontend.NewClientFacade(frontend.NewClientTransport(s.Client), s.App)
-}
-
-func (s *Session) useDaemonTarget(status LocalServerStatus) {
-	s.Client = client.NewClient(status.Address)
 	s.target = TargetInfo{
 		Kind:        TargetKindDaemon,
 		Address:     status.Address,

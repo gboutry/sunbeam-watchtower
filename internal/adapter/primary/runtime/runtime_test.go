@@ -77,6 +77,55 @@ func TestNewSession_DefaultsToRemoteWhenServerAddrProvided(t *testing.T) {
 	}
 }
 
+func TestNewSession_RemoteTargetSkipsAppCreation(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	session, err := NewSession(context.Background(), Options{
+		ServerAddr:   "http://127.0.0.1:9999",
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: TargetPolicyPreferExistingDaemon,
+	})
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	defer session.Close()
+
+	if session.App != nil {
+		t.Fatal("expected App to be nil for remote target")
+	}
+	if session.Frontend == nil {
+		t.Fatal("expected Frontend to be non-nil")
+	}
+	if session.Target().Kind != TargetKindRemote {
+		t.Fatalf("Target().Kind = %q, want %q", session.Target().Kind, TargetKindRemote)
+	}
+	if session.Config == nil {
+		t.Fatal("expected Config resolver to be non-nil")
+	}
+}
+
+func TestNewSession_RemoteTargetUsesTokenFromEnv(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv("WATCHTOWER_TOKEN", "test-token-123")
+
+	session, err := NewSession(context.Background(), Options{
+		ServerAddr:   "http://127.0.0.1:9999",
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: TargetPolicyPreferExistingDaemon,
+	})
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	defer session.Close()
+
+	if session.Client == nil {
+		t.Fatal("expected Client to be non-nil")
+	}
+	if session.Target().Kind != TargetKindRemote {
+		t.Fatalf("Target().Kind = %q, want %q", session.Target().Kind, TargetKindRemote)
+	}
+}
+
 func TestNewSession_PreferEmbeddedFallsBackToEmbedded(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 
