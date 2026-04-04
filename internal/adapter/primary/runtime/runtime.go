@@ -244,7 +244,7 @@ func (m *LocalServerManager) EnsureRunning(ctx context.Context) (LocalServerStat
 		return status, false, nil
 	}
 
-	if err := os.MkdirAll(m.paths.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(m.paths.Dir, 0o700); err != nil {
 		return LocalServerStatus{}, false, fmt.Errorf("create runtime dir: %w", err)
 	}
 	if err := m.cleanupStaleFiles(status); err != nil {
@@ -505,7 +505,11 @@ func NewSession(ctx context.Context, opts Options) (*Session, error) {
 	// Fast path: explicit remote target — skip App and LocalServerManager.
 	if opts.ServerAddr != "" {
 		if token != "" {
-			session.Client = client.NewClientWithToken(opts.ServerAddr, token)
+			c, err := client.NewClientWithToken(opts.ServerAddr, token)
+			if err != nil {
+				return nil, err
+			}
+			session.Client = c
 		} else {
 			session.Client = client.NewClient(opts.ServerAddr)
 		}
@@ -707,7 +711,9 @@ func (s *Session) startEmbeddedTarget() error {
 
 func (s *Session) useDaemonTarget(status LocalServerStatus, token string) {
 	if token != "" {
-		s.Client = client.NewClientWithToken(status.Address, token)
+		// Daemon addresses are unix:// or localhost — transport check always passes.
+		c, _ := client.NewClientWithToken(status.Address, token)
+		s.Client = c
 	} else {
 		s.Client = client.NewClient(status.Address)
 	}

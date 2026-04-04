@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -297,8 +298,11 @@ func TestNewClientWithToken_InjectsAuthorizationHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	c := NewClientWithToken(ts.URL, "test-token-123")
-	err := c.get(context.Background(), "/ok", nil, nil)
+	c, err := NewClientWithToken(ts.URL, "test-token-123")
+	if err != nil {
+		t.Fatalf("NewClientWithToken() error = %v", err)
+	}
+	err = c.get(context.Background(), "/ok", nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -347,5 +351,55 @@ func TestNewClient_NoAuthorizationHeader(t *testing.T) {
 	}
 	if gotAuth != "" {
 		t.Errorf("Authorization header = %q, want empty", gotAuth)
+	}
+}
+
+func TestNewClientWithToken_RejectsCleartextRemote(t *testing.T) {
+	_, err := NewClientWithToken("http://remote-host:8472", "secret")
+	if err == nil {
+		t.Fatal("expected error for cleartext HTTP to remote host")
+	}
+	if !strings.Contains(err.Error(), "refusing to send bearer token over cleartext") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewClientWithToken_AllowsLocalhostHTTP(t *testing.T) {
+	c, err := NewClientWithToken("http://127.0.0.1:8472", "secret")
+	if err != nil {
+		t.Fatalf("expected no error for localhost, got %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected non-nil client")
+	}
+}
+
+func TestNewClientWithToken_AllowsHTTPS(t *testing.T) {
+	c, err := NewClientWithToken("https://remote-host:8472", "secret")
+	if err != nil {
+		t.Fatalf("expected no error for HTTPS, got %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected non-nil client")
+	}
+}
+
+func TestNewClientWithToken_AllowsUnixSocket(t *testing.T) {
+	c, err := NewClientWithToken("unix:///tmp/test.sock", "secret")
+	if err != nil {
+		t.Fatalf("expected no error for unix socket, got %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected non-nil client")
+	}
+}
+
+func TestNewClientWithToken_InsecureOverride(t *testing.T) {
+	c, err := NewClientWithToken("http://remote-host:8472", "secret", true)
+	if err != nil {
+		t.Fatalf("expected no error with insecure=true, got %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected non-nil client")
 	}
 }

@@ -51,12 +51,52 @@ func NewClient(addr string) *Client {
 	}
 }
 
-// NewClientWithToken creates a new Client for the given address with a bearer token
-// that will be injected into every request as an Authorization header.
-func NewClientWithToken(addr, token string) *Client {
+// NewClientWithToken creates a new Client for the given address with a bearer
+// token that will be injected into every request as an Authorization header.
+//
+// For security, tokens are only sent over encrypted transports (https://) or
+// trusted local transports (unix://, localhost, 127.0.0.1, [::1]). Attempting
+// to send a token over cleartext HTTP to a remote host returns an error.
+// Pass insecure=true to override this check (e.g. for development/testing).
+func NewClientWithToken(addr, token string, insecure ...bool) (*Client, error) {
+	if len(insecure) == 0 || !insecure[0] {
+		if err := validateTokenTransport(addr); err != nil {
+			return nil, err
+		}
+	}
 	c := NewClient(addr)
 	c.token = token
-	return c
+	return c, nil
+}
+
+// validateTokenTransport returns an error if the address uses cleartext HTTP
+// to a non-local host. Tokens must not be sent over unencrypted connections
+// to remote hosts.
+func validateTokenTransport(addr string) error {
+	if strings.HasPrefix(addr, "unix://") || strings.HasPrefix(addr, "https://") {
+		return nil
+	}
+	if strings.HasPrefix(addr, "http://") {
+		host := strings.TrimPrefix(addr, "http://")
+		// Strip port and path.
+		if idx := strings.Index(host, "/"); idx >= 0 {
+			host = host[:idx]
+		}
+		if idx := strings.LastIndex(host, ":"); idx >= 0 {
+			host = host[:idx]
+		}
+		// Strip brackets from IPv6.
+		host = strings.Trim(host, "[]")
+		switch host {
+		case "localhost", "127.0.0.1", "::1":
+			return nil
+		}
+		return fmt.Errorf(
+			"refusing to send bearer token over cleartext HTTP to %s — use https:// or pass --insecure",
+			addr,
+		)
+	}
+	return nil
 }
 
 // AuthRequiredError is returned when the server responds with 401.

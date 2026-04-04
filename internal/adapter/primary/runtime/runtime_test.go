@@ -174,7 +174,7 @@ func TestNewSession_PreferExistingDaemonReusesDaemon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewLocalServerManager() error = %v", err)
 	}
-	if err := os.MkdirAll(manager.Paths().Dir, 0o755); err != nil {
+	if err := os.MkdirAll(manager.Paths().Dir, 0o700); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
