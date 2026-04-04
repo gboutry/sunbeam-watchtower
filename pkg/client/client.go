@@ -20,6 +20,7 @@ import (
 type Client struct {
 	baseURL string
 	http    *http.Client
+	token   string
 }
 
 type healthResponse struct {
@@ -48,6 +49,14 @@ func NewClient(addr string) *Client {
 		baseURL: strings.TrimRight(addr, "/"),
 		http:    &http.Client{},
 	}
+}
+
+// NewClientWithToken creates a new Client for the given address with a bearer token
+// that will be injected into every request as an Authorization header.
+func NewClientWithToken(addr, token string) *Client {
+	c := NewClient(addr)
+	c.token = token
+	return c
 }
 
 // apiError is the Huma error format returned by the server.
@@ -120,6 +129,9 @@ func (c *Client) delete(ctx context.Context, path string, query url.Values, resu
 
 // do executes the request, checks for errors, and optionally decodes the response.
 func (c *Client) do(req *http.Request, result interface{}) error {
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
