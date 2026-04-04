@@ -1114,3 +1114,32 @@ func TestValidate_CollaboratorsNil(t *testing.T) {
 		t.Errorf("Validate() should pass with nil collaborators: %v", err)
 	}
 }
+
+func TestLoad_ClientConfigFields(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+
+	yaml := `
+server_address: "https://watchtower.example.com:8080"
+server_token: "s3cr3t-server-token"
+auth_token: "b3ar3r-auth-token"
+`
+	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.ServerAddress != "https://watchtower.example.com:8080" {
+		t.Errorf("ServerAddress = %q, want %q", cfg.ServerAddress, "https://watchtower.example.com:8080")
+	}
+	if cfg.ServerToken != "s3cr3t-server-token" {
+		t.Errorf("ServerToken = %q, want %q", cfg.ServerToken, "s3cr3t-server-token")
+	}
+	if cfg.AuthToken != "b3ar3r-auth-token" {
+		t.Errorf("AuthToken = %q, want %q", cfg.AuthToken, "b3ar3r-auth-token")
+	}
+}

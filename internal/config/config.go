@@ -419,6 +419,9 @@ type Config struct {
 	TUI           TUIConfig                 `mapstructure:"tui" yaml:"tui,omitempty"`
 	OTel          OTelConfig                `mapstructure:"otel" yaml:"otel,omitempty"`
 	Collaborators *CollaboratorsConfig      `mapstructure:"collaborators" yaml:"collaborators,omitempty"`
+	ServerAddress string                    `mapstructure:"server_address" yaml:"server_address,omitempty"`
+	ServerToken   string                    `mapstructure:"server_token" yaml:"server_token,omitempty"`
+	AuthToken     string                    `mapstructure:"auth_token" yaml:"auth_token,omitempty"`
 }
 
 // Load reads configuration from the given path. If configPath is empty,
