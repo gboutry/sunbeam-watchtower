@@ -42,7 +42,9 @@ const healthPath = "/api/v1/health"
 func BearerAuthMiddleware(token string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Unix socket connections are trusted.
+			// Unix socket connections are trusted. If the transport kind is
+			// absent from context (e.g. middleware misconfiguration), the zero
+			// value falls through to the token check — deny-by-default.
 			if kind, _ := r.Context().Value(TransportKindKey).(TransportKind); kind == TransportUnix {
 				next.ServeHTTP(w, r)
 				return
