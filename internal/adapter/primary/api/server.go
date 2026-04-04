@@ -140,6 +140,13 @@ func (s *Server) Start() error {
 		if err != nil {
 			return fmt.Errorf("listen unix %s: %w", s.opts.UnixSocket, err)
 		}
+		// Restrict socket to owner only — the auth middleware trusts Unix
+		// socket connections without credentials, so the socket file itself
+		// is the trust boundary.
+		if err = os.Chmod(s.opts.UnixSocket, 0o600); err != nil {
+			ln.Close()
+			return fmt.Errorf("chmod unix socket %s: %w", s.opts.UnixSocket, err)
+		}
 		s.logger.Info("listening on unix socket", "path", s.opts.UnixSocket)
 	} else {
 		addr := s.opts.ListenAddr
