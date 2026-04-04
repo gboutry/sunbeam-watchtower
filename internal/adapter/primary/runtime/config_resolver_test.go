@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
@@ -125,5 +126,18 @@ func TestConfigResolver_LocalConfig_NilWhenNotSet(t *testing.T) {
 	got := resolver.LocalConfig()
 	if got != nil {
 		t.Fatalf("LocalConfig() returned %v, want nil", got)
+	}
+}
+
+func TestConfigResolver_RemoteServerUnreachable(t *testing.T) {
+	c := client.NewClient("http://127.0.0.1:1") // unreachable port
+	resolver := NewConfigResolver(nil, c)
+
+	_, err := resolver.Resolve(context.Background())
+	if err == nil {
+		t.Fatal("expected error for unreachable server")
+	}
+	if !strings.Contains(err.Error(), "could not fetch configuration from server") {
+		t.Fatalf("error should mention fetch failure, got: %v", err)
 	}
 }
