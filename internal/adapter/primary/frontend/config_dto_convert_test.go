@@ -11,6 +11,24 @@ import (
 
 func boolPtr(b bool) *bool { return &b }
 
+func TestConfigToDTO_IncludesClientFields(t *testing.T) {
+	cfg := &config.Config{
+		ServerAddress: "http://remote:8472",
+		ServerToken:   "token",
+		AuthToken:     "auth",
+	}
+	d := ConfigToDTO(cfg)
+	if d.ServerAddress != "http://remote:8472" {
+		t.Fatalf("ServerAddress = %q", d.ServerAddress)
+	}
+	if d.ServerToken != "token" {
+		t.Fatalf("ServerToken = %q", d.ServerToken)
+	}
+	if d.AuthToken != "auth" {
+		t.Fatalf("AuthToken = %q", d.AuthToken)
+	}
+}
+
 func TestDTOToConfigNil(t *testing.T) {
 	if DTOToConfig(nil) != nil {
 		t.Fatal("DTOToConfig(nil) should return nil")

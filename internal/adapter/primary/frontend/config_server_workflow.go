@@ -108,6 +108,9 @@ func ConfigToDTO(cfg *config.Config) *dto.Config {
 			Traces: signalConfigToDTO(cfg.OTel.Traces),
 			Logs:   signalConfigToDTO(cfg.OTel.Logs),
 		},
+		ServerAddress: cfg.ServerAddress,
+		ServerToken:   cfg.ServerToken,
+		AuthToken:     cfg.AuthToken,
 	}
 
 	out.Gerrit.Hosts = make([]dto.GerritHost, len(cfg.Gerrit.Hosts))
