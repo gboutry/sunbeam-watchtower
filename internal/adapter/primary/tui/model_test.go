@@ -387,7 +387,7 @@ func TestRenderReleaseDetailUsesLatestReleaseTime(t *testing.T) {
 func TestReleaseFilterFormAutocompleteUsesReleaseData(t *testing.T) {
 	session := newEmbeddedTestSession(t)
 	defer session.Close()
-	session.Config.Releases.TargetProfiles = map[string]config.ReleaseTargetProfileConfig{
+	session.Config.LocalConfig().Releases.TargetProfiles = map[string]config.ReleaseTargetProfileConfig{
 		"noble-and-newer": {
 			Include: []config.ReleaseTargetMatcherConfig{{BaseNames: []string{"ubuntu"}, MinBaseChannel: "24.04"}},
 		},

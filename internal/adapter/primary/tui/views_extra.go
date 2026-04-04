@@ -296,9 +296,11 @@ func loadPackagesCmd(session *runtimeadapter.Session, filters packagesFilters) t
 		case packageModeDiff:
 			setName := strings.TrimSpace(filters.set)
 			if setName == "" {
-				if session != nil && session.Config != nil && len(session.Config.Packages.Sets) == 1 {
-					for name := range session.Config.Packages.Sets {
-						setName = name
+				if session != nil && session.Config != nil {
+					if cfg := session.Config.LocalConfig(); cfg != nil && len(cfg.Packages.Sets) == 1 {
+						for name := range cfg.Packages.Sets {
+							setName = name
+						}
 					}
 				}
 			}
@@ -1511,17 +1513,19 @@ func packageFilterSuggestions(session *runtimeadapter.Session, model packagesMod
 		backports: []string{"none"},
 	}
 	if session != nil && session.Config != nil {
-		for name := range session.Config.Packages.Sets {
-			opts.sets = append(opts.sets, name)
-		}
-		for distroName, distroCfg := range session.Config.Packages.Distros {
-			opts.distros = append(opts.distros, distroName)
-			opts.components = append(opts.components, distroCfg.Components...)
-			for releaseName, releaseCfg := range distroCfg.Releases {
-				opts.releases = append(opts.releases, releaseName)
-				opts.suites = append(opts.suites, releaseCfg.Suites...)
-				for backport := range releaseCfg.Backports {
-					opts.backports = append(opts.backports, backport)
+		if cfg := session.Config.LocalConfig(); cfg != nil {
+			for name := range cfg.Packages.Sets {
+				opts.sets = append(opts.sets, name)
+			}
+			for distroName, distroCfg := range cfg.Packages.Distros {
+				opts.distros = append(opts.distros, distroName)
+				opts.components = append(opts.components, distroCfg.Components...)
+				for releaseName, releaseCfg := range distroCfg.Releases {
+					opts.releases = append(opts.releases, releaseName)
+					opts.suites = append(opts.suites, releaseCfg.Suites...)
+					for backport := range releaseCfg.Backports {
+						opts.backports = append(opts.backports, backport)
+					}
 				}
 			}
 		}
@@ -1559,8 +1563,10 @@ func bugFilterSuggestions(session *runtimeadapter.Session, model bugsModel) bugF
 		importances: []string{"Critical", "High", "Medium", "Low", "Wishlist", "Undecided"},
 	}
 	if session != nil && session.Config != nil {
-		for _, project := range session.Config.Projects {
-			opts.projects = append(opts.projects, project.Name)
+		if cfg := session.Config.LocalConfig(); cfg != nil {
+			for _, project := range cfg.Projects {
+				opts.projects = append(opts.projects, project.Name)
+			}
 		}
 	}
 	for _, row := range model.rows {
@@ -1581,8 +1587,10 @@ func bugFilterSuggestions(session *runtimeadapter.Session, model bugsModel) bugF
 func reviewFilterSuggestions(session *runtimeadapter.Session, model reviewsModel) reviewFilterOptions {
 	opts := reviewFilterOptions{forges: []string{"github", "launchpad", "gerrit"}, states: []string{"open", "merged", "closed", "wip", "abandoned"}}
 	if session != nil && session.Config != nil {
-		for _, project := range session.Config.Projects {
-			opts.projects = append(opts.projects, project.Name)
+		if cfg := session.Config.LocalConfig(); cfg != nil {
+			for _, project := range cfg.Projects {
+				opts.projects = append(opts.projects, project.Name)
+			}
 		}
 	}
 	for _, row := range model.rows {
@@ -1601,8 +1609,10 @@ func reviewFilterSuggestions(session *runtimeadapter.Session, model reviewsModel
 func commitFilterSuggestions(session *runtimeadapter.Session, model commitsModel) commitFilterOptions {
 	opts := commitFilterOptions{forges: []string{"github", "launchpad", "gerrit"}}
 	if session != nil && session.Config != nil {
-		for _, project := range session.Config.Projects {
-			opts.projects = append(opts.projects, project.Name)
+		if cfg := session.Config.LocalConfig(); cfg != nil {
+			for _, project := range cfg.Projects {
+				opts.projects = append(opts.projects, project.Name)
+			}
 		}
 	}
 	for _, row := range model.rows {
