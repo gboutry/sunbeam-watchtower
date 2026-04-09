@@ -168,15 +168,19 @@ func sshAuth(sshUser string) (transport.AuthMethod, error) {
 		return auth, nil
 	}
 
-	home, homeErr := os.UserHomeDir()
-	if homeErr != nil {
-		return nil, fmt.Errorf("SSH agent unavailable (%w) and cannot determine home directory: %w", err, homeErr)
+	sshDir := os.Getenv("WATCHTOWER_SSH_KEY_DIR")
+	if sshDir == "" {
+		home, homeErr := os.UserHomeDir()
+		if homeErr != nil {
+			return nil, fmt.Errorf("SSH agent unavailable (%w) and cannot determine home directory: %w", err, homeErr)
+		}
+		sshDir = filepath.Join(home, ".ssh")
 	}
 
 	// Try common key types in preference order.
 	keyNames := []string{"id_ed25519", "id_ecdsa", "id_rsa"}
 	for _, name := range keyNames {
-		keyPath := filepath.Join(home, ".ssh", name)
+		keyPath := filepath.Join(sshDir, name)
 		if _, statErr := os.Stat(keyPath); statErr != nil {
 			continue
 		}
@@ -187,7 +191,7 @@ func sshAuth(sshUser string) (transport.AuthMethod, error) {
 		return keys, nil
 	}
 
-	return nil, fmt.Errorf("SSH agent unavailable (%w) and no usable key found in %s", err, filepath.Join(home, ".ssh"))
+	return nil, fmt.Errorf("SSH agent unavailable (%w) and no usable key found in %s", err, sshDir)
 }
 
 func (c *Client) AddRemote(path, name, url string) error {
