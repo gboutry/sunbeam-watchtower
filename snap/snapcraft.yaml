@@ -28,6 +28,7 @@ environment:
   XDG_CACHE_HOME: $SNAP_USER_COMMON/.cache
   XDG_RUNTIME_DIR: $SNAP_USER_COMMON/run
   WATCHTOWER_SSH_KEY_DIR: $SNAP_REAL_HOME/.ssh
+  SSH_KNOWN_HOSTS: $SNAP_REAL_HOME/.ssh/known_hosts
 
 apps:
   sunbeam-watchtower:
