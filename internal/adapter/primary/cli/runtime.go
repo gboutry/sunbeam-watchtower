@@ -73,8 +73,6 @@ func commandNeedsPersistentServer(cmd *cobra.Command) bool {
 	}
 
 	switch parent {
-	case "auth":
-		return true
 	case "operation":
 		return true
 	case "build":

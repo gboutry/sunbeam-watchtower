@@ -16,14 +16,14 @@ import (
 )
 
 func TestCommandNeedsPersistentServer(t *testing.T) {
-	t.Run("auth commands require persistent server", func(t *testing.T) {
+	t.Run("auth commands do not require persistent server", func(t *testing.T) {
 		auth := &cobra.Command{Use: "auth"}
 		cmd := &cobra.Command{Use: "status"}
 		cmd.SetArgs(nil)
 		auth.AddCommand(cmd)
 
-		if !commandNeedsPersistentServer(cmd) {
-			t.Fatal("auth status should require persistent server")
+		if commandNeedsPersistentServer(cmd) {
+			t.Fatal("auth status should not require persistent server")
 		}
 	})
 
@@ -88,8 +88,8 @@ func TestTargetPolicyForCommand(t *testing.T) {
 	reviewList := &cobra.Command{Use: "list"}
 	review.AddCommand(reviewList)
 
-	if got := targetPolicyForCommand(authStatus); got != runtimeadapter.TargetPolicyRequirePersistent {
-		t.Fatalf("auth policy = %v, want %v", got, runtimeadapter.TargetPolicyRequirePersistent)
+	if got := targetPolicyForCommand(authStatus); got != runtimeadapter.TargetPolicyPreferExistingDaemon {
+		t.Fatalf("auth policy = %v, want %v", got, runtimeadapter.TargetPolicyPreferExistingDaemon)
 	}
 	if got := targetPolicyForCommand(reviewList); got != runtimeadapter.TargetPolicyPreferExistingDaemon {
 		t.Fatalf("review policy = %v, want %v", got, runtimeadapter.TargetPolicyPreferExistingDaemon)
