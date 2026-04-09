@@ -78,7 +78,7 @@ func (a *App) TeamSyncService() (*teamsync.Service, error) {
 			return
 		}
 
-		lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
+		lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 2*time.Minute))
 		if lpClient == nil {
 			a.teamSyncServiceErr = ErrLaunchpadAuthRequired
 			return
