@@ -225,6 +225,7 @@ func TestBuildCleanupCmd_NoArgs_Accepted(t *testing.T) {
 // ---------- missing config ----------
 
 func TestBuildTriggerCmd_NoConfig(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	var out, errOut bytes.Buffer
 	opts := &Options{Out: &out, ErrOut: &errOut}
 	cmd := NewRootCmd(opts)
@@ -237,6 +238,7 @@ func TestBuildTriggerCmd_NoConfig(t *testing.T) {
 }
 
 func TestBuildListCmd_NoConfig(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	var out, errOut bytes.Buffer
 	opts := &Options{Out: &out, ErrOut: &errOut}
 	cmd := NewRootCmd(opts)
@@ -249,6 +251,7 @@ func TestBuildListCmd_NoConfig(t *testing.T) {
 }
 
 func TestBuildDownloadCmd_NoConfig(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	var out, errOut bytes.Buffer
 	opts := &Options{Out: &out, ErrOut: &errOut}
 	cmd := NewRootCmd(opts)
@@ -261,6 +264,7 @@ func TestBuildDownloadCmd_NoConfig(t *testing.T) {
 }
 
 func TestBuildCleanupCmd_NoConfig(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	var out, errOut bytes.Buffer
 	opts := &Options{Out: &out, ErrOut: &errOut}
 	cmd := NewRootCmd(opts)
