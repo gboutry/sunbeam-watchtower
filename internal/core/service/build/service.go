@@ -47,10 +47,11 @@ type RecipeStatus struct {
 
 // TriggerOpts holds options for triggering builds.
 type TriggerOpts struct {
-	Wait    bool
-	Timeout time.Duration
-	Owner   string // override project owner
-	Prefix  string // temp recipe name prefix
+	Wait       bool
+	Timeout    time.Duration
+	Owner      string // override project owner
+	Prefix     string // temp recipe name prefix
+	RetryCount int    // max attempts per build during Wait; <=1 means no retry
 
 	TargetRef string // override backend target reference for recipe operations
 	Prepared  *dto.PreparedBuildSource
@@ -106,7 +107,18 @@ type Service struct {
 	projects    map[string]ProjectBuilder // keyed by watchtower project name
 	repoManager port.RepoManager
 	logger      *slog.Logger
+
+	// Timing controls for waitForBuilds. Zero values fall back to production
+	// defaults via waitPollInterval / waitPostRetryDelay. Tests may override
+	// these to short durations to avoid slow runs.
+	pollInterval   time.Duration
+	postRetryDelay time.Duration
 }
+
+const (
+	defaultWaitPollInterval   = 60 * time.Second
+	defaultWaitPostRetryDelay = 2 * time.Second
+)
 
 // NewService creates a build service with the given project-to-builder mappings.
 func NewService(projects map[string]ProjectBuilder, repoManager port.RepoManager, logger *slog.Logger) *Service {
@@ -120,6 +132,23 @@ func NewService(projects map[string]ProjectBuilder, repoManager port.RepoManager
 	}
 }
 
+// waitPollInterval returns the polling interval for waitForBuilds.
+func (s *Service) waitPollInterval() time.Duration {
+	if s.pollInterval > 0 {
+		return s.pollInterval
+	}
+	return defaultWaitPollInterval
+}
+
+// waitPostRetryDelay returns the short settle delay issued after retries, so
+// LP has a chance to transition build state before we re-poll.
+func (s *Service) waitPostRetryDelay() time.Duration {
+	if s.postRetryDelay > 0 {
+		return s.postRetryDelay
+	}
+	return defaultWaitPostRetryDelay
+}
+
 // Trigger orchestrates the build pipeline for a project. It is re-entrant:
 // calling it multiple times for the same recipes picks up where it left off.
 //
@@ -130,6 +159,14 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	pb, ok := s.projects[projectName]
 	if !ok {
 		return nil, fmt.Errorf("unknown project %q", projectName)
+	}
+
+	// Defense-in-depth: retry > 1 only has meaning when the service waits for
+	// builds. API and CLI layers already reject this combo; log and proceed
+	// as if RetryCount were unset so the legacy path is exercised.
+	if opts.RetryCount > 1 && !opts.Wait {
+		s.logger.Debug("ignoring RetryCount>1 because Wait=false", "retry_count", opts.RetryCount)
+		opts.RetryCount = 1
 	}
 
 	owner := opts.Owner
@@ -327,7 +364,7 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 		if timeout == 0 {
 			timeout = 30 * time.Minute
 		}
-		builds, err := s.waitForBuilds(ctx, pb, recipePtrs, timeout)
+		builds, err := s.waitForBuilds(ctx, pb, recipePtrs, timeout, opts.RetryCount)
 		if err != nil {
 			s.logger.Warn("wait for builds completed with error", "error", err)
 		}
@@ -459,6 +496,15 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 		result.Builds = s.waitForBuildRecords(ctx, pb, status.Recipe)
 
 	case ActionRetryFailed:
+		// When the caller requested a retry budget (RetryCount > 1), defer
+		// all retry decisions to waitForBuilds so there is a single retry
+		// owner. Otherwise preserve the legacy one-shot retry behavior for
+		// callers that don't set RetryCount.
+		if opts.RetryCount > 1 {
+			result.Action = ActionMonitor
+			result.Builds = status.Builds
+			break
+		}
 		for _, b := range status.Builds {
 			if b.State.IsFailure() && b.CanRetry {
 				if err := pb.Builder.RetryBuild(ctx, b.SelfLink); err != nil {
@@ -523,14 +569,27 @@ func buildOpts(opts TriggerOpts) dto.RequestBuildsOpts {
 	}
 }
 
-func (s *Service) waitForBuilds(ctx context.Context, pb ProjectBuilder, recipes []*dto.Recipe, timeout time.Duration) ([]dto.Build, error) {
+// waitForBuilds polls Launchpad for the given recipes' builds until all
+// terminal, optionally retrying failed-but-retryable builds up to retryCount-1
+// times per b.SelfLink. retryCount <= 1 disables retries (legacy behavior).
+func (s *Service) waitForBuilds(
+	ctx context.Context,
+	pb ProjectBuilder,
+	recipes []*dto.Recipe,
+	timeout time.Duration,
+	retryCount int,
+) ([]dto.Build, error) {
 	deadline := time.Now().Add(timeout)
-	pollInterval := 60 * time.Second
+	pollInterval := s.waitPollInterval()
 
-	for {
+	// remaining retries per build SelfLink. First observation seeds the
+	// budget to retryCount-1 (observation #1 = attempt #1 consumed).
+	initBudget := max(retryCount-1, 0)
+	remaining := map[string]int{}
+
+	poll := func() ([]dto.Build, bool) {
 		var allBuilds []dto.Build
 		allTerminal := true
-
 		for _, recipe := range recipes {
 			builds, err := pb.Builder.ListBuilds(ctx, recipe)
 			if err != nil {
@@ -539,14 +598,72 @@ func (s *Service) waitForBuilds(ctx context.Context, pb ProjectBuilder, recipes 
 			}
 			allBuilds = append(allBuilds, builds...)
 			for _, b := range builds {
+				if _, seen := remaining[b.SelfLink]; !seen {
+					remaining[b.SelfLink] = initBudget
+				}
 				if !b.State.IsTerminal() {
 					allTerminal = false
 				}
 			}
 		}
+		return allBuilds, allTerminal
+	}
+
+	for {
+		if err := ctx.Err(); err != nil {
+			builds, _ := poll()
+			return builds, err
+		}
+
+		allBuilds, allTerminal := poll()
 
 		if allTerminal {
-			return allBuilds, nil
+			retried := false
+			for i := range allBuilds {
+				b := allBuilds[i]
+				if !b.State.IsFailure() || !b.CanRetry {
+					continue
+				}
+				if remaining[b.SelfLink] <= 0 {
+					continue
+				}
+				if err := ctx.Err(); err != nil {
+					return allBuilds, err
+				}
+				attemptIndex := retryCount - remaining[b.SelfLink] + 1
+				s.logger.Info("retrying failed build",
+					"recipe", b.Recipe,
+					"build", b.SelfLink,
+					"arch", b.Arch,
+					"attempt", attemptIndex,
+					"max_attempts", retryCount,
+				)
+				if err := pb.Builder.RetryBuild(ctx, b.SelfLink); err != nil {
+					s.logger.Warn("retry call failed; giving up on this build",
+						"build", b.SelfLink, "error", err)
+					remaining[b.SelfLink] = 0
+					continue
+				}
+				remaining[b.SelfLink]--
+				retried = true
+			}
+
+			if !retried {
+				return allBuilds, nil
+			}
+
+			// Refresh the snapshot after issuing retries so any subsequent
+			// deadline/cancel return reflects the post-retry pending state
+			// rather than the stale failure state. Give LP a brief moment
+			// to transition the build before re-polling.
+			select {
+			case <-ctx.Done():
+				refreshed, _ := poll()
+				return refreshed, ctx.Err()
+			case <-time.After(s.waitPostRetryDelay()):
+			}
+			refreshed, _ := poll()
+			allBuilds = refreshed
 		}
 
 		if time.Now().After(deadline) {

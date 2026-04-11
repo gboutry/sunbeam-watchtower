@@ -28,6 +28,11 @@ type mockRecipeBuilder struct {
 	retryErr     error
 	ownerListErr error
 	retried      []string // tracks retried build self links
+
+	// retryHook lets tests mutate builds in response to a retry call,
+	// simulating LP transitioning the build record (e.g. Failed → Pending
+	// → Succeeded across poll cycles).
+	retryHook func(buildSelfLink string)
 }
 
 func (m *mockRecipeBuilder) ArtifactType() dto.ArtifactType { return m.artifactType }
@@ -87,7 +92,13 @@ func (m *mockRecipeBuilder) ListBuilds(_ context.Context, recipe *dto.Recipe) ([
 
 func (m *mockRecipeBuilder) RetryBuild(_ context.Context, buildSelfLink string) error {
 	m.retried = append(m.retried, buildSelfLink)
-	return m.retryErr
+	if m.retryErr != nil {
+		return m.retryErr
+	}
+	if m.retryHook != nil {
+		m.retryHook(buildSelfLink)
+	}
+	return nil
 }
 
 func (m *mockRecipeBuilder) CancelBuild(_ context.Context, _ string) error { return nil }
@@ -907,6 +918,407 @@ func TestCleanup_DryRun(t *testing.T) {
 	}
 	if len(result.DeletedBranches) != 1 {
 		t.Errorf("expected 1 deleted branch in dry run, got %d", len(result.DeletedBranches))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Retry loop tests (waitForBuilds)
+// ---------------------------------------------------------------------------
+
+// newRetryService builds a Service configured with tiny poll + post-retry
+// delays so wait-loop tests complete in milliseconds.
+func newRetryService(t *testing.T, builder *mockRecipeBuilder) *Service {
+	t.Helper()
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
+		},
+		nil, testLogger(),
+	)
+	svc.pollInterval = 10 * time.Millisecond
+	svc.postRetryDelay = 2 * time.Millisecond
+	return svc
+}
+
+// setState replaces builds[recipeSelfLink] with a copy that sets the given
+// build SelfLink to the requested state. Preserves other builds untouched.
+func setState(builder *mockRecipeBuilder, recipeSelfLink, buildSelfLink string, state dto.BuildState) {
+	src := builder.builds[recipeSelfLink]
+	out := make([]dto.Build, len(src))
+	copy(out, src)
+	for i := range out {
+		if out[i].SelfLink == buildSelfLink {
+			out[i].State = state
+		}
+	}
+	builder.builds[recipeSelfLink] = out
+}
+
+// Case 1: retryCount=1 behaves like today — no retries.
+func TestTrigger_Wait_RetryCount1_NoRetries(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: true},
+			},
+		},
+	}
+	svc := newRetryService(t, builder)
+
+	_, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	// The existing legacy ActionRetryFailed path still fires once (before
+	// waitForBuilds). The new retry loop must NOT add further retries.
+	if got := len(builder.retried); got != 1 {
+		t.Fatalf("expected 1 retry (legacy path), got %d: %v", got, builder.retried)
+	}
+}
+
+// Case 2: retryCount=3, build fails once then succeeds on retry.
+func TestTrigger_Wait_RetryCount3_SucceedsOnFirstRetry(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: true},
+			},
+		},
+	}
+	// First retry transitions the build to Succeeded.
+	builder.retryHook = func(selfLink string) {
+		setState(builder, "/recipe/keystone", selfLink, dto.BuildSucceeded)
+	}
+	svc := newRetryService(t, builder)
+
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 3,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	if got := len(builder.retried); got != 1 {
+		t.Fatalf("expected exactly 1 retry call, got %d: %v", got, builder.retried)
+	}
+
+	rr := result.RecipeResults[0]
+	if len(rr.Builds) != 1 {
+		t.Fatalf("expected 1 build in result, got %d", len(rr.Builds))
+	}
+	if rr.Builds[0].State != dto.BuildSucceeded {
+		t.Errorf("final build state = %v, want BuildSucceeded", rr.Builds[0].State)
+	}
+}
+
+// Case 3: retryCount=3, build fails on every attempt — exactly 2 retries issued.
+func TestTrigger_Wait_RetryCount3_FailsAllAttempts(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: true},
+			},
+		},
+	}
+	// retryHook leaves state as Failed — build keeps failing forever.
+	builder.retryHook = func(string) {}
+	svc := newRetryService(t, builder)
+
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 3,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	// retryCount=3 means initial + 2 retries = 2 RetryBuild calls.
+	if got := len(builder.retried); got != 2 {
+		t.Fatalf("expected 2 retry calls, got %d: %v", got, builder.retried)
+	}
+
+	rr := result.RecipeResults[0]
+	if len(rr.Builds) != 1 || rr.Builds[0].State != dto.BuildFailed {
+		t.Errorf("expected final state BuildFailed, got %+v", rr.Builds)
+	}
+}
+
+// Case 4: CanRetry=false — zero retries issued regardless of retryCount.
+func TestTrigger_Wait_RetryCount3_NonRetryable(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: false},
+			},
+		},
+	}
+	svc := newRetryService(t, builder)
+
+	_, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 3,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	if got := len(builder.retried); got != 0 {
+		t.Fatalf("expected 0 retries for non-retryable build, got %d: %v", got, builder.retried)
+	}
+}
+
+// Case 5: RetryBuild itself errors on the first call — budget clamped to 0,
+// no further retries, build returned in failed state.
+func TestTrigger_Wait_RetryCount3_RetryBuildErrors(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: true},
+			},
+		},
+		retryErr: fmt.Errorf("LP retry API error"),
+	}
+	svc := newRetryService(t, builder)
+
+	_, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 3,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	// Only 1 RetryBuild call; after error, budget clamped to 0 so no further retries.
+	if got := len(builder.retried); got != 1 {
+		t.Fatalf("expected exactly 1 retry attempt, got %d: %v", got, builder.retried)
+	}
+}
+
+// Case 6: multi-arch recipe — per-arch retry budget independence.
+// arch A (/build/A): fails once then succeeds (1 retry)
+// arch B (/build/B): green from the start (0 retries)
+// arch C (/build/C): fails every attempt (2 retries, budget exhausted)
+func TestTrigger_Wait_RetryCount3_MultiArchIndependence(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/A", CanRetry: true},
+				{Recipe: "keystone", State: dto.BuildSucceeded, Arch: "arm64", SelfLink: "/build/B"},
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "s390x", SelfLink: "/build/C", CanRetry: true},
+			},
+		},
+	}
+	// Only arch A transitions to Succeeded on its first retry.
+	builder.retryHook = func(selfLink string) {
+		if selfLink == "/build/A" {
+			setState(builder, "/recipe/keystone", "/build/A", dto.BuildSucceeded)
+		}
+	}
+	svc := newRetryService(t, builder)
+
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 3,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	// Expect: A retried once, C retried twice (budget exhausted), B never.
+	countA, countB, countC := 0, 0, 0
+	for _, sl := range builder.retried {
+		switch sl {
+		case "/build/A":
+			countA++
+		case "/build/B":
+			countB++
+		case "/build/C":
+			countC++
+		}
+	}
+	if countA != 1 {
+		t.Errorf("expected /build/A retried 1 time, got %d", countA)
+	}
+	if countB != 0 {
+		t.Errorf("expected /build/B retried 0 times, got %d", countB)
+	}
+	if countC != 2 {
+		t.Errorf("expected /build/C retried 2 times, got %d", countC)
+	}
+
+	// Final states
+	byArch := map[string]dto.BuildState{}
+	for _, b := range result.RecipeResults[0].Builds {
+		byArch[b.Arch] = b.State
+	}
+	if byArch["amd64"] != dto.BuildSucceeded {
+		t.Errorf("amd64 state = %v, want BuildSucceeded", byArch["amd64"])
+	}
+	if byArch["arm64"] != dto.BuildSucceeded {
+		t.Errorf("arm64 state = %v, want BuildSucceeded", byArch["arm64"])
+	}
+	if byArch["s390x"] != dto.BuildFailed {
+		t.Errorf("s390x state = %v, want BuildFailed", byArch["s390x"])
+	}
+}
+
+// Case 7: pre-failed recipe with RetryCount>1 — executeAction must NOT eagerly
+// call RetryBuild (defer to waitForBuilds), and waitForBuilds owns the retries.
+func TestTrigger_Wait_RetryCount3_DefersFromActionRetryFailed(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: true},
+			},
+		},
+	}
+	// Fail forever so we can count retry calls exactly.
+	builder.retryHook = func(string) {}
+	svc := newRetryService(t, builder)
+
+	_, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 3,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	// With the unified retry path, exactly 2 retries (attempts 2 and 3) are
+	// issued — NOT 3 (which would indicate the legacy eager retry + the new
+	// loop both fired). This is the key correctness guarantee from the
+	// "unify the retry path" fix.
+	if got := len(builder.retried); got != 2 {
+		t.Fatalf("expected exactly 2 retries (unified path), got %d: %v", got, builder.retried)
+	}
+}
+
+// Case 8: legacy ActionRetryFailed preserved when RetryCount<=1.
+func TestTrigger_Wait_RetryCount1_LegacyEagerRetry(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: true},
+			},
+		},
+	}
+	builder.retryHook = func(string) {} // stays failed
+	svc := newRetryService(t, builder)
+
+	_, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 1, // legacy
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	// Legacy path fires exactly once in executeAction; waitForBuilds does not add retries.
+	if got := len(builder.retried); got != 1 {
+		t.Fatalf("expected exactly 1 legacy retry, got %d: %v", got, builder.retried)
+	}
+}
+
+// Case 9: context cancellation immediately after retry POST must return a
+// snapshot that reflects the post-retry state, not the stale failure state.
+func TestTrigger_Wait_RetryCount3_CancelAfterRetryReturnsFreshSnapshot(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: true},
+			},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Transition to Pending on retry AND cancel context so next iteration
+	// exits. The post-retry refresh poll inside waitForBuilds should pick
+	// up the Pending state before returning.
+	builder.retryHook = func(selfLink string) {
+		setState(builder, "/recipe/keystone", selfLink, dto.BuildPending)
+		cancel()
+	}
+	svc := newRetryService(t, builder)
+
+	result, _ := svc.Trigger(ctx, "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    5 * time.Second,
+		RetryCount: 3,
+	})
+
+	// Service.Trigger swallows the wait error (logs Warn, returns success),
+	// so we verify the captured snapshot instead of err.
+	if len(result.RecipeResults) == 0 {
+		t.Fatal("expected at least one recipe result")
+	}
+	rr := result.RecipeResults[0]
+	if len(rr.Builds) != 1 {
+		t.Fatalf("expected 1 build, got %d", len(rr.Builds))
+	}
+	// Key assertion: state is Pending (fresh snapshot), NOT Failed (stale).
+	if rr.Builds[0].State != dto.BuildPending {
+		t.Errorf("post-cancel build state = %v, want BuildPending (fresh post-retry snapshot)", rr.Builds[0].State)
+	}
+}
+
+// Case 10: defense-in-depth — RetryCount>1 without Wait is silently coerced to 1.
+func TestTrigger_RetryCountWithoutWait_IgnoredSilently(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildFailed, Arch: "amd64", SelfLink: "/build/1", CanRetry: true},
+			},
+		},
+	}
+	svc := newRetryService(t, builder)
+
+	// Wait=false: the wait loop does not run, so RetryCount>1 must coerce to
+	// legacy behavior (one retry from ActionRetryFailed).
+	_, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       false,
+		RetryCount: 3,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+
+	// Legacy ActionRetryFailed still fires once; no additional retries from
+	// waitForBuilds because it's never called.
+	if got := len(builder.retried); got != 1 {
+		t.Fatalf("expected 1 retry (legacy, coerced from RetryCount>1 + !Wait), got %d: %v", got, builder.retried)
 	}
 }
 
