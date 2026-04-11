@@ -6,8 +6,6 @@ package frontend
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -138,21 +136,35 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		return req, fmt.Errorf("wait for git ref: %w", err)
 	}
 
-	// 8. Discover artifacts from local clone. When the caller supplied an
-	// explicit artifact list we skip discovery and fall back to the
-	// strategy's shallow BuildPath heuristic. Discovered entries carry the
-	// recipe's real directory so nested monorepo layouts (e.g.
-	// charms/storage/foo) reach Launchpad correctly.
-	var recipes []build.DiscoveredRecipe
+	// 8. Discover artifacts from local clone. Discovery always runs in
+	// local mode so nested monorepo layouts (e.g. charms/storage/foo)
+	// reach Launchpad with the correct build path. When the caller supplied
+	// an explicit artifact list we filter the discovered recipes by that
+	// list and surface an error for any name that isn't present locally.
+	discovered, err := pb.Strategy.DiscoverRecipes(localPath)
+	if err != nil {
+		return req, fmt.Errorf("discover artifacts: %w", err)
+	}
+
+	recipes := discovered
 	if len(req.Artifacts) > 0 {
-		recipes = make([]build.DiscoveredRecipe, 0, len(req.Artifacts))
-		for _, name := range req.Artifacts {
-			recipes = append(recipes, build.DiscoveredRecipe{Name: name})
+		byName := make(map[string]build.DiscoveredRecipe, len(discovered))
+		for _, r := range discovered {
+			byName[r.Name] = r
 		}
-	} else {
-		recipes, err = pb.Strategy.DiscoverRecipes(localPath)
-		if err != nil {
-			return req, fmt.Errorf("discover artifacts: %w", err)
+		recipes = make([]build.DiscoveredRecipe, 0, len(req.Artifacts))
+		var missing []string
+		for _, name := range req.Artifacts {
+			r, ok := byName[name]
+			if !ok {
+				missing = append(missing, name)
+				continue
+			}
+			recipes = append(recipes, r)
+		}
+		if len(missing) > 0 {
+			return req, fmt.Errorf("artifact(s) not found in local repo %q: %s",
+				localPath, strings.Join(missing, ", "))
 		}
 	}
 
@@ -176,11 +188,9 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	for _, r := range recipes {
 		tempName := pb.Strategy.TempRecipeName(r.Name, sha, req.Prefix)
 		tempNames = append(tempNames, tempName)
-		if r.RelPath != "" {
-			buildPaths[tempName] = r.RelPath
-		} else {
-			buildPaths[tempName] = resolveBuildPath(pb.Strategy, r.Name, localPath)
-		}
+		// r.RelPath is empty for single-artifact repos (metadata at root),
+		// which is the correct build_path value for Launchpad in that case.
+		buildPaths[tempName] = r.RelPath
 	}
 	req.Artifacts = tempNames
 
@@ -344,27 +354,4 @@ func pushToLaunchpad(gitClient port.GitClient, localPath, gitSSHURL, lpOwner, br
 	}
 
 	return nil
-}
-
-// resolveBuildPath determines the correct LP build path for an artifact.
-// When a local repo path is available, it checks the filesystem to distinguish
-// monorepo layouts (e.g. charms/<name>/charmcraft.yaml) from single-artifact
-// repos (metadata at root). Falls back to the strategy's default BuildPath.
-func resolveBuildPath(strategy build.ArtifactStrategy, artifactName, localPath string) string {
-	defaultPath := strategy.BuildPath(artifactName)
-	if localPath == "" || defaultPath == "" {
-		return defaultPath
-	}
-	// Check if the default build path actually exists in the local repo.
-	candidate := filepath.Join(localPath, defaultPath, strategy.MetadataFileName())
-	if _, err := os.Stat(candidate); err == nil {
-		return defaultPath
-	}
-	// Default path doesn't exist — check if metadata is at root instead.
-	rootCandidate := filepath.Join(localPath, strategy.MetadataFileName())
-	if _, err := os.Stat(rootCandidate); err == nil {
-		return ""
-	}
-	// Neither exists (e.g. test paths) — keep the default.
-	return defaultPath
 }
