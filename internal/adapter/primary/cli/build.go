@@ -27,6 +27,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	var owner, prefix, localPath, artifactsDir string
 	var wait, download, async bool
 	var timeout time.Duration
+	var retryCount int
 
 	cmd := withActionID(&cobra.Command{
 		Use:   "trigger <project> [artifacts...]",
@@ -43,6 +44,15 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 			}
 			if async && wait {
 				return fmt.Errorf("--async cannot be combined with --wait or --download")
+			}
+			if retryCount < 1 {
+				return fmt.Errorf("--retry must be >= 1")
+			}
+			if retryCount > 1 && !wait {
+				return fmt.Errorf("--retry requires --wait (or --download, which implies --wait)")
+			}
+			if retryCount > 1 && async {
+				return fmt.Errorf("--retry cannot be combined with --async")
 			}
 
 			// Determine source mode: local when --local-path is explicitly set.
@@ -70,6 +80,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 				Timeout:      timeout,
 				Owner:        owner,
 				Prefix:       prefix,
+				RetryCount:   retryCount,
 			})
 			if err != nil {
 				return err
@@ -102,6 +113,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
 	cmd.Flags().StringVar(&localPath, "local-path", "", "path to local git repo (enables local mode)")
 	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory for downloaded artifacts (default from config)")
+	cmd.Flags().IntVar(&retryCount, "retry", 1, "max attempts per individual build when --wait is set (1 = no retry)")
 
 	return cmd
 }
