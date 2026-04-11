@@ -4,6 +4,8 @@
 package build
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 
@@ -171,6 +173,47 @@ func TestCharmStrategy_ParsePlatforms_Empty(t *testing.T) {
 		t.Fatal(err)
 	}
 	sortedEqual(t, got, []string{"amd64"})
+}
+
+func TestCharmStrategy_DiscoverRecipes_NestedLayout(t *testing.T) {
+	repo := t.TempDir()
+	layout := []string{
+		"charms/foo/charmcraft.yaml",
+		"charms/storage/bar/charmcraft.yaml",
+	}
+	for _, rel := range layout {
+		full := filepath.Join(repo, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", full, err)
+		}
+		if err := os.WriteFile(full, []byte("name: ignored\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", full, err)
+		}
+	}
+
+	s := &CharmStrategy{}
+	got, err := s.DiscoverRecipes(repo)
+	if err != nil {
+		t.Fatalf("DiscoverRecipes: %v", err)
+	}
+
+	want := map[string]string{
+		"foo": "charms/foo",
+		"bar": "charms/storage/bar",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d recipes, want %d: %+v", len(got), len(want), got)
+	}
+	for _, r := range got {
+		wantRel, ok := want[r.Name]
+		if !ok {
+			t.Errorf("unexpected recipe name %q", r.Name)
+			continue
+		}
+		if r.RelPath != wantRel {
+			t.Errorf("recipe %q: got RelPath %q, want %q", r.Name, r.RelPath, wantRel)
+		}
+	}
 }
 
 // --- SnapStrategy tests ---

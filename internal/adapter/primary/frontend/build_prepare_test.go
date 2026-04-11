@@ -84,7 +84,9 @@ func (f *fakeStrategy) ArtifactType() dto.ArtifactType                          
 func (f *fakeStrategy) MetadataFileName() string                                { return "rockcraft.yaml" }
 func (f *fakeStrategy) BuildPath(name string) string                            { return "rocks/" + name }
 func (f *fakeStrategy) ParsePlatforms([]byte) ([]string, error)                 { return []string{"amd64"}, nil }
-func (f *fakeStrategy) DiscoverRecipes(string) ([]string, error)                { return []string{"keystone"}, nil }
+func (f *fakeStrategy) DiscoverRecipes(string) ([]build.DiscoveredRecipe, error) {
+	return []build.DiscoveredRecipe{{Name: "keystone", RelPath: "rocks/keystone"}}, nil
+}
 func (f *fakeStrategy) OfficialRecipeName(name, series, devFocus string) string { return name }
 func (f *fakeStrategy) BranchForSeries(series, devFocus, defaultBranch string) string {
 	return defaultBranch
@@ -143,6 +145,62 @@ func TestLocalBuildPreparerPrepareTrigger(t *testing.T) {
 	}
 	if got.Prepared.Recipes[got.Artifacts[0]].SourceRef == "" {
 		t.Fatalf("Recipes = %+v", got.Prepared.Recipes)
+	}
+}
+
+// nestedFakeStrategy reports a DiscoveredRecipe whose RelPath differs from the
+// shallow BuildPath(name) — e.g. a monorepo charm nested at
+// charms/storage/bar — so we can prove the PreparedBuildRecipe.BuildPath
+// follows the discovered RelPath rather than the flat fallback.
+type nestedFakeStrategy struct {
+	fakeStrategy
+}
+
+func (n *nestedFakeStrategy) DiscoverRecipes(string) ([]build.DiscoveredRecipe, error) {
+	return []build.DiscoveredRecipe{{Name: "bar", RelPath: "charms/storage/bar"}}, nil
+}
+
+func (n *nestedFakeStrategy) BuildPath(name string) string { return "charms/" + name }
+
+func TestLocalBuildPreparerPrepareTriggerPreservesNestedRelPath(t *testing.T) {
+	preparer := NewLocalBuildPreparer(
+		&fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"},
+		&fakeRepoManager{
+			currentUser:  "lp-user",
+			project:      "lp-project",
+			repoSelfLink: "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo",
+			gitSSHURL:    "git+ssh://git.launchpad.net/~lp-user/lp-project/+git/demo",
+			refSelfLink:  "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo/+ref/refs/heads/tmp-01234567",
+			refErr:       fmt.Errorf("not found"),
+		},
+		map[string]build.ProjectBuilder{
+			"demo": {
+				Project:  "demo",
+				Strategy: &nestedFakeStrategy{},
+			},
+		},
+		nil,
+	)
+
+	got, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
+		Project: "demo",
+		Prefix:  "tmp-build",
+	}, "/tmp/demo")
+	if err != nil {
+		t.Fatalf("PrepareTrigger() error = %v", err)
+	}
+
+	if len(got.Artifacts) != 1 {
+		t.Fatalf("Artifacts = %v, want one entry", got.Artifacts)
+	}
+	tempName := got.Artifacts[0]
+	if got.Prepared == nil {
+		t.Fatalf("Prepared is nil")
+	}
+	recipe := got.Prepared.Recipes[tempName]
+	if recipe.BuildPath != "charms/storage/bar" {
+		t.Fatalf("BuildPath = %q, want %q (discovered RelPath must win over flat BuildPath)",
+			recipe.BuildPath, "charms/storage/bar")
 	}
 }
 

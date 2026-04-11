@@ -138,10 +138,19 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		return req, fmt.Errorf("wait for git ref: %w", err)
 	}
 
-	// 8. Discover artifacts from local clone.
-	artifactNames := req.Artifacts
-	if len(artifactNames) == 0 {
-		artifactNames, err = pb.Strategy.DiscoverRecipes(localPath)
+	// 8. Discover artifacts from local clone. When the caller supplied an
+	// explicit artifact list we skip discovery and fall back to the
+	// strategy's shallow BuildPath heuristic. Discovered entries carry the
+	// recipe's real directory so nested monorepo layouts (e.g.
+	// charms/storage/foo) reach Launchpad correctly.
+	var recipes []build.DiscoveredRecipe
+	if len(req.Artifacts) > 0 {
+		recipes = make([]build.DiscoveredRecipe, 0, len(req.Artifacts))
+		for _, name := range req.Artifacts {
+			recipes = append(recipes, build.DiscoveredRecipe{Name: name})
+		}
+	} else {
+		recipes, err = pb.Strategy.DiscoverRecipes(localPath)
 		if err != nil {
 			return req, fmt.Errorf("discover artifacts: %w", err)
 		}
@@ -153,21 +162,25 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		for _, s := range pb.SkipArtifacts {
 			skip[s] = true
 		}
-		filtered := artifactNames[:0]
-		for _, name := range artifactNames {
-			if !skip[name] {
-				filtered = append(filtered, name)
+		filtered := recipes[:0]
+		for _, r := range recipes {
+			if !skip[r.Name] {
+				filtered = append(filtered, r)
 			}
 		}
-		artifactNames = filtered
+		recipes = filtered
 	}
 
-	tempNames := make([]string, 0, len(artifactNames))
-	buildPaths := make(map[string]string, len(artifactNames))
-	for _, name := range artifactNames {
-		tempName := pb.Strategy.TempRecipeName(name, sha, req.Prefix)
+	tempNames := make([]string, 0, len(recipes))
+	buildPaths := make(map[string]string, len(recipes))
+	for _, r := range recipes {
+		tempName := pb.Strategy.TempRecipeName(r.Name, sha, req.Prefix)
 		tempNames = append(tempNames, tempName)
-		buildPaths[tempName] = resolveBuildPath(pb.Strategy, name, localPath)
+		if r.RelPath != "" {
+			buildPaths[tempName] = r.RelPath
+		} else {
+			buildPaths[tempName] = resolveBuildPath(pb.Strategy, r.Name, localPath)
+		}
 	}
 	req.Artifacts = tempNames
 

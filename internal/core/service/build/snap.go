@@ -19,17 +19,17 @@ func (s *SnapStrategy) ArtifactType() dto.ArtifactType { return dto.ArtifactSnap
 func (s *SnapStrategy) MetadataFileName() string       { return "snapcraft.yaml" }
 func (s *SnapStrategy) BuildPath(name string) string   { return "" }
 
-// DiscoverRecipes looks for snapcraft.yaml at the repo root or snap/ subdirectory.
-func (s *SnapStrategy) DiscoverRecipes(repoPath string) ([]string, error) {
-	// snap/snapcraft.yaml
+// DiscoverRecipes looks for snapcraft.yaml at the repo root or snap/
+// subdirectory. Snaps are single-artifact repos, so RelPath is always empty
+// (Launchpad picks up the metadata from the repo root).
+func (s *SnapStrategy) DiscoverRecipes(repoPath string) ([]DiscoveredRecipe, error) {
 	snapDir := filepath.Join(repoPath, "snap", s.MetadataFileName())
 	if _, err := os.Stat(snapDir); err == nil {
-		return []string{filepath.Base(repoPath)}, nil
+		return []DiscoveredRecipe{{Name: filepath.Base(repoPath)}}, nil
 	}
-	// snapcraft.yaml at root
 	rootMeta := filepath.Join(repoPath, s.MetadataFileName())
 	if _, err := os.Stat(rootMeta); err == nil {
-		return []string{filepath.Base(repoPath)}, nil
+		return []DiscoveredRecipe{{Name: filepath.Base(repoPath)}}, nil
 	}
 	return nil, nil
 }
