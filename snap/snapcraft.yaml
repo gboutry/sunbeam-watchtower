@@ -32,6 +32,10 @@ environment:
   WATCHTOWER_SSH_KEY_DIR: $SNAP_REAL_HOME/.ssh
   SSH_KNOWN_HOSTS: $SNAP_REAL_HOME/.ssh/known_hosts
 
+layout:
+  /etc/gitconfig:
+    symlink: $SNAP_DATA/etc/gitconfig
+
 apps:
   sunbeam-watchtower:
     command: bin/watchtower
