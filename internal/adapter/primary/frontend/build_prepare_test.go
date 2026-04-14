@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -201,6 +202,82 @@ func TestLocalBuildPreparerPrepareTriggerPreservesNestedRelPath(t *testing.T) {
 	if recipe.BuildPath != "charms/storage/bar" {
 		t.Fatalf("BuildPath = %q, want %q (discovered RelPath must win over flat BuildPath)",
 			recipe.BuildPath, "charms/storage/bar")
+	}
+}
+
+func TestLocalBuildPreparerPrepareTriggerExplicitArtifactsResolvesNestedRelPath(t *testing.T) {
+	// Simulates `build trigger demo bar` on a monorepo where bar lives at
+	// charms/storage/bar/charmcraft.yaml. The user passes the charm name
+	// positionally; PrepareTrigger must still run discovery and use the
+	// discovered RelPath instead of collapsing to the flat charms/bar.
+	preparer := NewLocalBuildPreparer(
+		&fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"},
+		&fakeRepoManager{
+			currentUser:  "lp-user",
+			project:      "lp-project",
+			repoSelfLink: "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo",
+			gitSSHURL:    "git+ssh://git.launchpad.net/~lp-user/lp-project/+git/demo",
+			refSelfLink:  "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo/+ref/refs/heads/tmp-01234567",
+			refErr:       fmt.Errorf("not found"),
+		},
+		map[string]build.ProjectBuilder{
+			"demo": {
+				Project:  "demo",
+				Strategy: &nestedFakeStrategy{},
+			},
+		},
+		nil,
+	)
+
+	got, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
+		Project:   "demo",
+		Prefix:    "tmp-build",
+		Artifacts: []string{"bar"},
+	}, "/tmp/demo")
+	if err != nil {
+		t.Fatalf("PrepareTrigger() error = %v", err)
+	}
+
+	if len(got.Artifacts) != 1 {
+		t.Fatalf("Artifacts = %v, want one entry", got.Artifacts)
+	}
+	recipe := got.Prepared.Recipes[got.Artifacts[0]]
+	if recipe.BuildPath != "charms/storage/bar" {
+		t.Fatalf("BuildPath = %q, want %q (explicit --artifacts must still go through discovery)",
+			recipe.BuildPath, "charms/storage/bar")
+	}
+}
+
+func TestLocalBuildPreparerPrepareTriggerRejectsUnknownArtifact(t *testing.T) {
+	preparer := NewLocalBuildPreparer(
+		&fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"},
+		&fakeRepoManager{
+			currentUser:  "lp-user",
+			project:      "lp-project",
+			repoSelfLink: "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo",
+			gitSSHURL:    "git+ssh://git.launchpad.net/~lp-user/lp-project/+git/demo",
+			refSelfLink:  "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo/+ref/refs/heads/tmp-01234567",
+			refErr:       fmt.Errorf("not found"),
+		},
+		map[string]build.ProjectBuilder{
+			"demo": {
+				Project:  "demo",
+				Strategy: &fakeStrategy{}, // only discovers "keystone"
+			},
+		},
+		nil,
+	)
+
+	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
+		Project:   "demo",
+		Prefix:    "tmp-build",
+		Artifacts: []string{"ghost"},
+	}, "/tmp/demo")
+	if err == nil {
+		t.Fatal("PrepareTrigger() error = nil, want error for unknown artifact")
+	}
+	if !strings.Contains(err.Error(), "ghost") {
+		t.Fatalf("error %q should mention the unknown artifact %q", err, "ghost")
 	}
 }
 
