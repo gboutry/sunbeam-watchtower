@@ -5,6 +5,7 @@ package git_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -292,4 +293,79 @@ func TestResetHard(t *testing.T) {
 	if resetSHA != origSHA {
 		t.Errorf("expected SHA %s after reset, got %s", origSHA, resetSHA)
 	}
+}
+
+func TestClient_Commit_LinkedWorktree(t *testing.T) {
+	t.Parallel()
+	// Arrange: create a source repo with one commit.
+	srcDir := t.TempDir()
+	runGit(t, srcDir, "init", "-q", "-b", "main")
+	runGit(t, srcDir, "config", "user.email", "test@example.com")
+	runGit(t, srcDir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(srcDir, "README.md"), []byte("hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, srcDir, "add", "README.md")
+	runGit(t, srcDir, "commit", "-q", "-m", "init")
+
+	sha := strings.TrimSpace(runGit(t, srcDir, "rev-parse", "HEAD"))
+
+	// Create a linked worktree via the real git CLI.
+	wtDir := filepath.Join(t.TempDir(), "wt")
+	runGit(t, srcDir, "worktree", "add", "-b", "tmp-branch", wtDir, sha)
+
+	// Add a new file inside the linked worktree.
+	if err := os.WriteFile(filepath.Join(wtDir, "new.txt"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, wtDir, "add", "new.txt")
+
+	// Act: commit via our adapter.
+	c := adapter.NewClient(nil)
+	if err := c.Commit(wtDir, "test commit in linked worktree"); err != nil {
+		t.Fatalf("Commit in linked worktree: %v", err)
+	}
+
+	// Assert: HEAD advanced.
+	newSHA := strings.TrimSpace(runGit(t, wtDir, "rev-parse", "HEAD"))
+	if newSHA == sha {
+		t.Fatalf("HEAD did not advance: still %s", sha)
+	}
+}
+
+// runGit is a test helper that invokes the git CLI and fails the test on error.
+// It strips git-specific environment variables (GIT_DIR, GIT_INDEX_FILE, etc.)
+// so that tests run correctly even when invoked from inside a git hook, where
+// git sets these variables to point at the host repository.
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	// Filter out git plumbing env vars that would redirect git operations
+	// away from the temp repo created for this test.
+	gitEnvPrefixes := []string{
+		"GIT_DIR=",
+		"GIT_INDEX_FILE=",
+		"GIT_WORK_TREE=",
+		"GIT_OBJECT_DIRECTORY=",
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES=",
+		"GIT_COMMON_DIR=",
+	}
+	for _, e := range os.Environ() {
+		skip := false
+		for _, prefix := range gitEnvPrefixes {
+			if strings.HasPrefix(e, prefix) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			cmd.Env = append(cmd.Env, e)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, string(out))
+	}
+	return string(out)
 }

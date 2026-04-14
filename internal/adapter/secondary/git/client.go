@@ -39,15 +39,24 @@ func NewClient(logger *slog.Logger) *Client {
 	return &Client{logger: logger}
 }
 
+// openRepo opens a repository with linked-worktree support enabled so
+// operations run inside a worktree created by `git worktree add` reach
+// the shared object store via the `.git` gitdir pointer file.
+func openRepo(path string) (*gogit.Repository, error) {
+	return gogit.PlainOpenWithOptions(path, &gogit.PlainOpenOptions{
+		EnableDotGitCommonDir: true,
+	})
+}
+
 func (c *Client) IsRepo(path string) bool {
 	c.logger.Debug("checking if path is repo", "path", path)
-	_, err := gogit.PlainOpen(path)
+	_, err := openRepo(path)
 	return err == nil
 }
 
 func (c *Client) HeadSHA(path string) (string, error) {
 	c.logger.Debug("reading HEAD SHA", "path", path)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return "", fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -62,7 +71,7 @@ func (c *Client) HeadSHA(path string) (string, error) {
 
 func (c *Client) HasUncommittedChanges(path string) (bool, error) {
 	c.logger.Debug("checking for uncommitted changes", "path", path)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return false, fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -79,7 +88,7 @@ func (c *Client) HasUncommittedChanges(path string) (bool, error) {
 
 func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) error {
 	c.logger.Debug("pushing", "path", path, "remote", remote, "localRef", localRef, "remoteRef", remoteRef, "force", force)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -207,7 +216,7 @@ func sshAuth(sshUser string) (transport.AuthMethod, error) {
 
 func (c *Client) AddRemote(path, name, url string) error {
 	c.logger.Debug("adding remote", "path", path, "name", name, "url", url)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -226,7 +235,7 @@ func (c *Client) AddRemote(path, name, url string) error {
 
 func (c *Client) RemoveRemote(path, name string) error {
 	c.logger.Debug("removing remote", "path", path, "name", name)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -238,7 +247,7 @@ func (c *Client) RemoveRemote(path, name string) error {
 
 func (c *Client) CreateBranch(path, branchName, startPoint string) error {
 	c.logger.Debug("creating branch", "path", path, "branch", branchName, "startPoint", startPoint)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -265,7 +274,7 @@ func (c *Client) CreateBranch(path, branchName, startPoint string) error {
 
 func (c *Client) CheckoutBranch(path, branchName string) error {
 	c.logger.Debug("checking out branch", "path", path, "branch", branchName)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -283,7 +292,7 @@ func (c *Client) CheckoutBranch(path, branchName string) error {
 
 func (c *Client) CurrentBranch(path string) (string, error) {
 	c.logger.Debug("getting current branch", "path", path)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return "", fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -299,7 +308,7 @@ func (c *Client) CurrentBranch(path string) (string, error) {
 
 func (c *Client) DeleteLocalBranch(path, branchName string) error {
 	c.logger.Debug("deleting local branch", "path", path, "branch", branchName)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -311,7 +320,7 @@ func (c *Client) DeleteLocalBranch(path, branchName string) error {
 
 func (c *Client) AddAll(path string) error {
 	c.logger.Debug("adding all changes", "path", path)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -327,7 +336,7 @@ func (c *Client) AddAll(path string) error {
 
 func (c *Client) Commit(path, message string) error {
 	c.logger.Debug("committing", "path", path)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
@@ -351,7 +360,7 @@ func (c *Client) Commit(path, message string) error {
 
 func (c *Client) ResetHard(path, ref string) error {
 	c.logger.Debug("resetting hard", "path", path, "ref", ref)
-	repo, err := gogit.PlainOpen(path)
+	repo, err := openRepo(path)
 	if err != nil {
 		return fmt.Errorf("open repo %s: %w", path, err)
 	}
