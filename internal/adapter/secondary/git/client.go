@@ -168,6 +168,15 @@ func sshAuth(sshUser string) (transport.AuthMethod, error) {
 		return auth, nil
 	}
 
+	// WATCHTOWER_SSH_KEY points to a specific key file.
+	if keyPath := os.Getenv("WATCHTOWER_SSH_KEY"); keyPath != "" {
+		keys, keyErr := gitssh.NewPublicKeysFromFile(sshUser, keyPath, "")
+		if keyErr != nil {
+			return nil, fmt.Errorf("SSH agent unavailable (%w) and cannot load key %s: %w", err, keyPath, keyErr)
+		}
+		return keys, nil
+	}
+
 	sshDir := os.Getenv("WATCHTOWER_SSH_KEY_DIR")
 	if sshDir == "" {
 		home, homeErr := os.UserHomeDir()
