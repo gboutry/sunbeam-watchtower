@@ -275,3 +275,97 @@ func TestBuildCleanupCmd_NoConfig(t *testing.T) {
 		t.Fatal("expected error for missing config file")
 	}
 }
+
+// ---------- --retry flag validation ----------
+
+func TestBuildTriggerCmd_RetryFlagDefined(t *testing.T) {
+	var out bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &bytes.Buffer{}}
+	root := NewRootCmd(opts)
+
+	cmd, _, _ := root.Find([]string{"build", "trigger"})
+	f := cmd.Flags().Lookup("retry")
+	if f == nil {
+		t.Fatal("flag --retry not defined on 'build trigger'")
+	}
+	if f.DefValue != "1" {
+		t.Errorf("flag --retry default = %q, want \"1\"", f.DefValue)
+	}
+}
+
+// setRetryTestEnv isolates the runtime dir and points the session at a
+// dummy remote server so PersistentPreRunE takes the "explicit remote target"
+// fast path at runtime.go:506-525 and does not try to spawn a local daemon.
+// This lets us exercise RunE-level flag validation without needing a real
+// server or daemon.
+func setRetryTestEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv("WATCHTOWER_SERVER", "http://127.0.0.1:1")
+}
+
+func TestBuildTriggerCmd_RetryWithoutWait(t *testing.T) {
+	setRetryTestEnv(t)
+	cfgFile := writeTempConfig(t)
+
+	var out, errOut bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &errOut}
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"build", "trigger", "--config", cfgFile, "--retry", "3", "myproj"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --retry without --wait")
+	}
+	if got := err.Error(); !containsAny(got, "--retry requires --wait") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestBuildTriggerCmd_RetryWithAsync(t *testing.T) {
+	setRetryTestEnv(t)
+	cfgFile := writeTempConfig(t)
+
+	var out, errOut bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &errOut}
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"build", "trigger", "--config", cfgFile, "--retry", "3", "--async", "myproj"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --retry with --async")
+	}
+	// Either the --retry + !wait check or the --retry + --async check
+	// fires depending on order; both are intentional rejections.
+	if got := err.Error(); !containsAny(got, "--retry") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestBuildTriggerCmd_RetryZero(t *testing.T) {
+	setRetryTestEnv(t)
+	cfgFile := writeTempConfig(t)
+
+	var out, errOut bytes.Buffer
+	opts := &Options{Out: &out, ErrOut: &errOut}
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"build", "trigger", "--config", cfgFile, "--retry", "0", "myproj"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for --retry 0")
+	}
+	if got := err.Error(); !containsAny(got, "--retry must be >= 1") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// containsAny reports whether s contains any of the substrings.
+func containsAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if bytes.Contains([]byte(s), []byte(sub)) {
+			return true
+		}
+	}
+	return false
+}

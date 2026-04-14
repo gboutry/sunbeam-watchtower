@@ -19,14 +19,15 @@ import (
 // BuildsTriggerInput holds the request body for triggering builds.
 type BuildsTriggerInput struct {
 	Body struct {
-		Project   string                   `json:"project" doc:"Project name"`
-		Artifacts []string                 `json:"artifacts,omitempty" required:"false" doc:"Artifact names to build (empty = all configured)"`
-		Wait      bool                     `json:"wait,omitempty" required:"false" doc:"Wait for builds to complete"`
-		Timeout   string                   `json:"timeout,omitempty" required:"false" doc:"Max wait time as Go duration (e.g. 5h)"`
-		Owner     string                   `json:"owner,omitempty" required:"false" doc:"Override backend owner"`
-		Prefix    string                   `json:"prefix,omitempty" required:"false" doc:"Temp recipe name prefix"`
-		TargetRef string                   `json:"target_ref,omitempty" required:"false" doc:"Override backend target reference for recipe operations"`
-		Prepared  *dto.PreparedBuildSource `json:"prepared,omitempty" required:"false" doc:"Frontend-prepared backend references for split local build workflows"`
+		Project    string                   `json:"project" doc:"Project name"`
+		Artifacts  []string                 `json:"artifacts,omitempty" required:"false" doc:"Artifact names to build (empty = all configured)"`
+		Wait       bool                     `json:"wait,omitempty" required:"false" doc:"Wait for builds to complete"`
+		Timeout    string                   `json:"timeout,omitempty" required:"false" doc:"Max wait time as Go duration (e.g. 5h)"`
+		Owner      string                   `json:"owner,omitempty" required:"false" doc:"Override backend owner"`
+		Prefix     string                   `json:"prefix,omitempty" required:"false" doc:"Temp recipe name prefix"`
+		TargetRef  string                   `json:"target_ref,omitempty" required:"false" doc:"Override backend target reference for recipe operations"`
+		Prepared   *dto.PreparedBuildSource `json:"prepared,omitempty" required:"false" doc:"Frontend-prepared backend references for split local build workflows"`
+		RetryCount int                      `json:"retry_count,omitempty" required:"false" doc:"Max attempts per build (>= 1, default 1). Requires wait=true. Not supported on the async endpoint."`
 	}
 }
 
@@ -112,6 +113,12 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid timeout duration", err)
 		}
+		if triggerOpts.RetryCount < 0 {
+			return nil, huma.Error422UnprocessableEntity("retry_count must be >= 0")
+		}
+		if triggerOpts.RetryCount > 1 && !triggerOpts.Wait {
+			return nil, huma.Error422UnprocessableEntity("retry_count > 1 requires wait=true")
+		}
 
 		result, err := facade.Builds().Trigger(ctx, input.Body.Project, input.Body.Artifacts, triggerOpts)
 		if err != nil {
@@ -134,6 +141,9 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		triggerOpts, err := buildTriggerOptionsFromInput(input)
 		if err != nil {
 			return nil, huma.Error422UnprocessableEntity("invalid timeout duration", err)
+		}
+		if triggerOpts.RetryCount > 1 {
+			return nil, huma.Error422UnprocessableEntity("retry_count is not supported on the async trigger endpoint")
 		}
 
 		job, err := facade.Builds().StartTrigger(ctx, input.Body.Project, input.Body.Artifacts, triggerOpts)
@@ -305,11 +315,12 @@ func buildTriggerOptionsFromInput(input *BuildsTriggerInput) (build.TriggerOpts,
 	}
 
 	return build.TriggerOpts{
-		Wait:      input.Body.Wait,
-		Timeout:   timeout,
-		Owner:     input.Body.Owner,
-		Prefix:    input.Body.Prefix,
-		TargetRef: input.Body.TargetRef,
-		Prepared:  input.Body.Prepared,
+		Wait:       input.Body.Wait,
+		Timeout:    timeout,
+		Owner:      input.Body.Owner,
+		Prefix:     input.Body.Prefix,
+		TargetRef:  input.Body.TargetRef,
+		Prepared:   input.Body.Prepared,
+		RetryCount: input.Body.RetryCount,
 	}, nil
 }

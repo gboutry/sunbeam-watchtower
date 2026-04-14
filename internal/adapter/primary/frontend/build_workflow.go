@@ -34,6 +34,7 @@ type BuildTriggerRequest struct {
 	Owner        string
 	Prefix       string
 	TargetRef    string
+	RetryCount   int
 }
 
 // BuildTriggerResponse contains the remote result plus CLI/TUI-friendly slices.
@@ -130,13 +131,14 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 		}
 	}
 	triggerOpts := client.BuildsTriggerOptions{
-		Project:   preparedTrigger.Project,
-		Artifacts: preparedTrigger.Artifacts,
-		Wait:      preparedTrigger.Wait,
-		Owner:     preparedTrigger.Owner,
-		Prefix:    preparedTrigger.Prefix,
-		TargetRef: req.TargetRef,
-		Prepared:  preparedTrigger.Prepared,
+		Project:    preparedTrigger.Project,
+		Artifacts:  preparedTrigger.Artifacts,
+		Wait:       preparedTrigger.Wait,
+		Owner:      preparedTrigger.Owner,
+		Prefix:     preparedTrigger.Prefix,
+		TargetRef:  req.TargetRef,
+		Prepared:   preparedTrigger.Prepared,
+		RetryCount: req.RetryCount,
 	}
 	if preparedTrigger.Timeout > 0 {
 		triggerOpts.Timeout = preparedTrigger.Timeout.String()
