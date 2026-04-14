@@ -54,7 +54,7 @@ func (a *App) ProjectService() (*projectsvc.Service, error) {
 		return projectsvc.NewService(nil, projectConfigs, a.Logger), nil
 	}
 
-	lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
+	lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 2*time.Minute))
 	if lpClient == nil {
 		return nil, ErrLaunchpadAuthRequired
 	}

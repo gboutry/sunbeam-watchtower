@@ -170,7 +170,7 @@ func (a *App) BuildForgeClients() (map[string]review.ProjectForge, error) {
 
 		case "launchpad":
 			if lpClient == nil {
-				raw := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
+				raw := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 2*time.Minute))
 				if raw == nil {
 					a.Logger.Warn("skipping Launchpad project (no auth configured)", "project", proj.Name)
 					continue
@@ -325,10 +325,10 @@ func (a *App) BuildBugTrackers() (map[string]bug.ProjectBugTracker, map[string][
 }
 
 func (a *App) newLaunchpadBugTrackerForReads(projectName string) *forge.LaunchpadBugTracker {
-	lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
+	lpClient := newLaunchpadClient(a.LaunchpadCredentialStore(), a.Logger, a.upstreamHTTPClient("launchpad", 2*time.Minute))
 	if lpClient == nil {
 		a.Logger.Info("using unauthenticated Launchpad client for bug tracker reads", "project", projectName)
-		lpClient = lp.NewClient(nil, a.Logger, a.upstreamHTTPClient("launchpad", 30*time.Second))
+		lpClient = lp.NewClient(nil, a.Logger, a.upstreamHTTPClient("launchpad", 2*time.Minute))
 	}
 	return forge.NewLaunchpadBugTracker(lpClient)
 }
