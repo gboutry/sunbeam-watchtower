@@ -47,6 +47,16 @@ projects:
       owner: canonical
       official_codehosting: true
       lp_project: sunbeam-charms
+      # prepare_command runs inside an isolated temporary checkout of the
+      # target commit before the source is pushed to Launchpad. Files
+      # produced by this command are pushed in full — including files
+      # that .gitignore would normally exclude (e.g. build/, dist/,
+      # generated tarballs). The live worktree is not modified.
+      #
+      # Security scope: isolation prevents accidental inclusion of
+      # pre-existing ignored files from the live tree (.env, IDE caches,
+      # credentials). It does NOT sandbox the command — it runs as your
+      # user with normal filesystem and environment access.
       prepare_command: "./repository.py prepare --clean"
       channels:
         charmcraft: latest/stable
