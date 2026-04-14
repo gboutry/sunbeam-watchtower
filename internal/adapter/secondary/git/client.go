@@ -383,3 +383,8 @@ func (c *Client) ResetHard(path, ref string) error {
 func (c *Client) CreateDetachedWorktree(_ context.Context, _, _, _ string) (string, func(), error) {
 	return "", func() {}, errors.New("CreateDetachedWorktree: not yet implemented")
 }
+
+// ForceAddAll is not yet implemented; placeholder satisfies port.GitClient.
+func (c *Client) ForceAddAll(_ context.Context, _ string) error {
+	return errors.New("ForceAddAll: not yet implemented")
+}

@@ -22,6 +22,11 @@ type GitClient interface {
 
 	// Staging and committing
 	AddAll(path string) error
+	// ForceAddAll stages every file in worktreePath, bypassing .gitignore
+	// (equivalent to `git add -f -A`). Intended only for temporary
+	// worktrees created by CreateDetachedWorktree, where no pre-existing
+	// ignored files can leak secrets.
+	ForceAddAll(ctx context.Context, worktreePath string) error
 	Commit(path, message string) error
 
 	// Detached-worktree operations for isolated prepare/push flows.

@@ -47,6 +47,7 @@ func (f *fakeGitClient) ResetHard(string, string) error         { return nil }
 func (f *fakeGitClient) CreateDetachedWorktree(context.Context, string, string, string) (string, func(), error) {
 	return "", func() {}, nil
 }
+func (f *fakeGitClient) ForceAddAll(context.Context, string) error { return nil }
 
 type fakeRepoManager struct {
 	currentUser  string
