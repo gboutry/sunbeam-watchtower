@@ -4,6 +4,7 @@
 package git
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -376,4 +377,9 @@ func (c *Client) ResetHard(path, ref string) error {
 		return fmt.Errorf("reset hard to %s in %s: %w", ref, path, err)
 	}
 	return nil
+}
+
+// CreateDetachedWorktree is not yet implemented; placeholder satisfies port.GitClient.
+func (c *Client) CreateDetachedWorktree(_ context.Context, _, _, _ string) (string, func(), error) {
+	return "", func() {}, errors.New("CreateDetachedWorktree: not yet implemented")
 }

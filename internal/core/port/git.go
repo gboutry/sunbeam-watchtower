@@ -3,6 +3,8 @@
 
 package port
 
+import "context"
+
 // GitClient handles local git operations.
 type GitClient interface {
 	IsRepo(path string) bool
@@ -21,6 +23,17 @@ type GitClient interface {
 	// Staging and committing
 	AddAll(path string) error
 	Commit(path, message string) error
+
+	// Detached-worktree operations for isolated prepare/push flows.
+	//
+	// CreateDetachedWorktree materialises a temporary linked worktree of
+	// repoPath at the given sha on a new local branch named `branch`. It
+	// honours $TMPDIR for the worktree directory (required for
+	// snap-confined invocations). The returned cleanup closure must be
+	// called to remove the worktree, the local branch, prune stale
+	// `.git/worktrees/<name>` metadata from repoPath, and remove the
+	// temporary directory. Cleanup is safe to call multiple times.
+	CreateDetachedWorktree(ctx context.Context, repoPath, branch, sha string) (worktreePath string, cleanup func(), err error)
 
 	// Reset
 	ResetHard(path, ref string) error
