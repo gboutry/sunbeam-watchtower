@@ -11,9 +11,11 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
@@ -379,9 +381,89 @@ func (c *Client) ResetHard(path, ref string) error {
 	return nil
 }
 
-// CreateDetachedWorktree is not yet implemented; placeholder satisfies port.GitClient.
-func (c *Client) CreateDetachedWorktree(_ context.Context, _, _, _ string) (string, func(), error) {
-	return "", func() {}, errors.New("CreateDetachedWorktree: not yet implemented")
+// gitEnvPrefixes lists git plumbing environment variables that must be stripped
+// before shelling out to git. When running inside a git hook (e.g. pre-commit),
+// git sets these to point at the host repository. Inheriting them would
+// redirect subprocess git commands away from the intended working directory.
+var gitEnvPrefixes = []string{
+	"GIT_DIR=",
+	"GIT_INDEX_FILE=",
+	"GIT_WORK_TREE=",
+	"GIT_OBJECT_DIRECTORY=",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES=",
+	"GIT_COMMON_DIR=",
+}
+
+// runGit executes `git` with fixed argv in the given working directory.
+// No shell is involved; arguments are never interpreted.
+// Git plumbing env vars are stripped so that invocations inside git hooks
+// operate on the intended repository, not the hook's host repository.
+func (c *Client) runGit(ctx context.Context, dir string, args ...string) error {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	for _, e := range os.Environ() {
+		skip := false
+		for _, prefix := range gitEnvPrefixes {
+			if strings.HasPrefix(e, prefix) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			cmd.Env = append(cmd.Env, e)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		c.logger.Debug("git command failed", "dir", dir, "args", args, "output", string(out), "err", err)
+		return fmt.Errorf("git %s: %w (output: %s)", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	c.logger.Debug("git command ok", "dir", dir, "args", args)
+	return nil
+}
+
+func (c *Client) CreateDetachedWorktree(ctx context.Context, repoPath, branch, sha string) (string, func(), error) {
+	c.logger.Debug("creating detached worktree", "repoPath", repoPath, "branch", branch, "sha", sha)
+
+	// Honour $TMPDIR for snap confinement.
+	wtPath, err := os.MkdirTemp("", "watchtower-prepare-*")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("mkdirtemp: %w", err)
+	}
+	// MkdirTemp created the directory, but `git worktree add` requires
+	// the target path not to exist. Remove it; git will recreate.
+	if err := os.Remove(wtPath); err != nil {
+		_ = os.RemoveAll(wtPath)
+		return "", func() {}, fmt.Errorf("remove tmp slot: %w", err)
+	}
+
+	if err := c.runGit(ctx, repoPath, "worktree", "add", "-b", branch, wtPath, sha); err != nil {
+		_ = os.RemoveAll(wtPath)
+		return "", func() {}, fmt.Errorf("git worktree add: %w", err)
+	}
+
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			cctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := c.runGit(cctx, repoPath, "worktree", "remove", "--force", wtPath); err != nil {
+				c.logger.Warn("worktree remove failed", "path", wtPath, "err", err)
+			}
+			if err := c.runGit(cctx, repoPath, "branch", "-D", branch); err != nil {
+				c.logger.Debug("branch -D failed (may already be gone)", "branch", branch, "err", err)
+			}
+			if err := c.runGit(cctx, repoPath, "worktree", "prune", "--expire", "now"); err != nil {
+				c.logger.Debug("worktree prune failed", "err", err)
+			}
+			if err := os.RemoveAll(wtPath); err != nil {
+				c.logger.Warn("removeall tempdir failed", "path", wtPath, "err", err)
+			}
+		})
+	}
+	return wtPath, cleanup, nil
 }
 
 // ForceAddAll is not yet implemented; placeholder satisfies port.GitClient.

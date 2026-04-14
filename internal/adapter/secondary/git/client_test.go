@@ -4,6 +4,7 @@
 package git_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -368,4 +369,80 @@ func runGit(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, string(out))
 	}
 	return string(out)
+}
+
+func TestClient_CreateDetachedWorktree_RoundTrip(t *testing.T) {
+	t.Parallel()
+	srcDir := t.TempDir()
+	runGit(t, srcDir, "init", "-q", "-b", "main")
+	runGit(t, srcDir, "config", "user.email", "test@example.com")
+	runGit(t, srcDir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(srcDir, "README.md"), []byte("hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, srcDir, "add", "README.md")
+	runGit(t, srcDir, "commit", "-q", "-m", "init")
+	sha := strings.TrimSpace(runGit(t, srcDir, "rev-parse", "HEAD"))
+
+	c := adapter.NewClient(nil)
+	wtPath, cleanup, err := c.CreateDetachedWorktree(context.Background(), srcDir, "tmp-test-branch", sha)
+	if err != nil {
+		t.Fatalf("CreateDetachedWorktree: %v", err)
+	}
+
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("worktree dir not created: %v", err)
+	}
+	gotBranch := strings.TrimSpace(runGit(t, wtPath, "branch", "--show-current"))
+	if gotBranch != "tmp-test-branch" {
+		t.Fatalf("branch = %q, want tmp-test-branch", gotBranch)
+	}
+
+	listOut := runGit(t, srcDir, "worktree", "list")
+	if !strings.Contains(listOut, wtPath) {
+		t.Fatalf("worktree not listed in parent: %s", listOut)
+	}
+
+	cleanup()
+
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Fatalf("worktree dir still present after cleanup: err=%v", err)
+	}
+	listOut = runGit(t, srcDir, "worktree", "list")
+	if strings.Contains(listOut, wtPath) {
+		t.Fatalf("worktree still listed after cleanup: %s", listOut)
+	}
+	branches := runGit(t, srcDir, "branch", "--list")
+	if strings.Contains(branches, "tmp-test-branch") {
+		t.Fatalf("branch still present after cleanup: %s", branches)
+	}
+
+	// Double-cleanup is safe.
+	cleanup()
+}
+
+func TestClient_CreateDetachedWorktree_FixedArgv(t *testing.T) {
+	t.Parallel()
+	// Proof that we don't route through `sh -c`: a branch name with
+	// shell metacharacters must reach git as literal argv. git itself
+	// rejects it as an invalid ref, which is the signal we want.
+	srcDir := t.TempDir()
+	runGit(t, srcDir, "init", "-q", "-b", "main")
+	runGit(t, srcDir, "config", "user.email", "test@example.com")
+	runGit(t, srcDir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(srcDir, "README.md"), []byte("hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, srcDir, "add", "README.md")
+	runGit(t, srcDir, "commit", "-q", "-m", "init")
+	sha := strings.TrimSpace(runGit(t, srcDir, "rev-parse", "HEAD"))
+
+	c := adapter.NewClient(nil)
+	_, _, err := c.CreateDetachedWorktree(context.Background(), srcDir, ";rm -rf /", sha)
+	if err == nil {
+		t.Fatalf("expected git to reject malformed branch name")
+	}
+	if _, statErr := os.Stat(srcDir); statErr != nil {
+		t.Fatalf("source dir destroyed: %v", statErr)
+	}
 }
