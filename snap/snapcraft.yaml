@@ -23,6 +23,12 @@ parts:
       go build -o $CRAFT_PART_INSTALL/bin/watchtower ./cmd/watchtower
       go build -o $CRAFT_PART_INSTALL/bin/watchtower-tui ./cmd/watchtower-tui
 
+environment:
+  HOME: $SNAP_USER_COMMON
+  XDG_CONFIG_HOME: $SNAP_USER_COMMON/.config
+  XDG_CACHE_HOME: $SNAP_USER_COMMON/.cache
+  XDG_RUNTIME_DIR: $SNAP_USER_COMMON/run
+
 apps:
   sunbeam-watchtower:
     command: bin/watchtower
@@ -33,14 +39,6 @@ apps:
       - ssh-keys
   tui:
     command: bin/watchtower-tui
-    plugs:
-      - network
-      - network-bind
-      - home
-      - ssh-keys
-  serve:
-    command: bin/watchtower serve
-    daemon: simple
     plugs:
       - network
       - network-bind
