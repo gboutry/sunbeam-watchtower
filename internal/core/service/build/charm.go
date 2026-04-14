@@ -4,10 +4,6 @@
 package build
 
 import (
-	"os"
-	"path/filepath"
-	"sort"
-
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 
 	"gopkg.in/yaml.v3"
@@ -20,29 +16,13 @@ func (s *CharmStrategy) ArtifactType() dto.ArtifactType { return dto.ArtifactCha
 func (s *CharmStrategy) MetadataFileName() string       { return "charmcraft.yaml" }
 func (s *CharmStrategy) BuildPath(name string) string   { return "charms/" + name }
 
-// DiscoverRecipes scans for charmcraft.yaml in charms/*/ subdirectories
-// or at the repo root (single-charm repo).
-func (s *CharmStrategy) DiscoverRecipes(repoPath string) ([]string, error) {
-	// Multi-charm repo: charms/*/charmcraft.yaml
-	pattern := filepath.Join(repoPath, "charms", "*", s.MetadataFileName())
-	matches, err := filepath.Glob(pattern)
-	if err != nil {
-		return nil, err
-	}
-	if len(matches) > 0 {
-		names := make([]string, 0, len(matches))
-		for _, m := range matches {
-			names = append(names, filepath.Base(filepath.Dir(m)))
-		}
-		sort.Strings(names)
-		return names, nil
-	}
-	// Single-charm repo: charmcraft.yaml at root
-	rootMeta := filepath.Join(repoPath, s.MetadataFileName())
-	if _, err := os.Stat(rootMeta); err == nil {
-		return []string{filepath.Base(repoPath)}, nil
-	}
-	return nil, nil
+// DiscoverRecipes walks the repo for charmcraft.yaml files and returns one
+// DiscoveredRecipe per match. A single-charm repo (charmcraft.yaml at root)
+// is reported with an empty RelPath. Monorepo layouts of any depth (for
+// example charms/storage/foo/charmcraft.yaml) are preserved verbatim so
+// Launchpad's build path points at the actual recipe directory.
+func (s *CharmStrategy) DiscoverRecipes(repoPath string) ([]DiscoveredRecipe, error) {
+	return walkRecipes(repoPath, "charms", s.MetadataFileName())
 }
 
 func (s *CharmStrategy) TempRecipeName(name, sha, prefix string) string {

@@ -200,8 +200,8 @@ func (m *mockStrategy) ParsePlatforms(_ []byte) ([]string, error) { return []str
 func (m *mockStrategy) TempRecipeName(name, sha, prefix string) string {
 	return prefix + "-" + sha[:8] + "-" + name
 }
-func (m *mockStrategy) DiscoverRecipes(_ string) ([]string, error) {
-	return []string{"discovered-recipe"}, nil
+func (m *mockStrategy) DiscoverRecipes(_ string) ([]DiscoveredRecipe, error) {
+	return []DiscoveredRecipe{{Name: "discovered-recipe", RelPath: "rocks/discovered-recipe"}}, nil
 }
 func (m *mockStrategy) OfficialRecipeName(name, series, devFocus string) string {
 	if series == devFocus {
