@@ -72,7 +72,7 @@ func newBugListCmd(opts *Options) *cobra.Command {
 	}, frontend.ActionBugList)
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by project name (repeatable)")
-	cmd.Flags().StringSliceVar(&status, "status", nil, "filter by status: New, Confirmed, Triaged, In Progress, etc. (repeatable)")
+	cmd.Flags().StringSliceVar(&status, "status", nil, "filter by status: New, Confirmed, Triaged, In Progress, etc. (repeatable; omit to include all statuses)")
 	cmd.Flags().StringSliceVar(&importance, "importance", nil, "filter by importance: Critical, High, Medium, Low, etc. (repeatable)")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "filter by assignee username")
 	cmd.Flags().StringSliceVar(&tags, "tag", nil, "filter by tag (repeatable)")
