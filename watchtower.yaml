@@ -116,12 +116,16 @@ projects:
         project: ubuntu-openstack-rocks
         group: sunbeam
 
-  - name: cinder-volume
+  - name: snap-cinder-volume
     artifact_type: snap
     code:
       forge: github
       owner: canonical
       project: snap-cinder-volume
+    build:
+      owner: openstack-snappers
+      official_codehosting: true
+      lp_project: snap-cinder-volume
     bugs:
       - forge: launchpad
         project: snap-openstack
