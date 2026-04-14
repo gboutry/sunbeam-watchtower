@@ -22,6 +22,8 @@ parts:
     override-build: |
       go build -o $CRAFT_PART_INSTALL/bin/watchtower ./cmd/watchtower
       go build -o $CRAFT_PART_INSTALL/bin/watchtower-tui ./cmd/watchtower-tui
+      mkdir -p $CRAFT_PART_INSTALL/etc
+      : > $CRAFT_PART_INSTALL/etc/gitconfig
     stage-packages:
       - git
 
@@ -34,7 +36,7 @@ environment:
 
 layout:
   /etc/gitconfig:
-    symlink: $SNAP_DATA/etc/gitconfig
+    bind-file: $SNAP/etc/gitconfig
 
 apps:
   sunbeam-watchtower:
