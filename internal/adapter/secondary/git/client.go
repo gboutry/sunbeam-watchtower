@@ -9,13 +9,16 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"os"
 	"os/user"
+	"path/filepath"
 	"strings"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
@@ -108,9 +111,9 @@ func (c *Client) Push(path, remote, localRef, remoteRef string, force bool) erro
 		return fmt.Errorf("determine SSH user for remote URL %s: %w", remoteURL, err)
 	}
 
-	auth, err := gitssh.NewSSHAgentAuth(sshUser)
+	auth, err := sshAuth(sshUser)
 	if err != nil {
-		return fmt.Errorf("creating SSH agent auth: %w", err)
+		return fmt.Errorf("creating SSH auth: %w", err)
 	}
 	refspec := config.RefSpec(fmt.Sprintf("%s:%s", localRef, remoteRef))
 	opts := &gogit.PushOptions{
@@ -155,6 +158,36 @@ func effectiveUser() (string, error) {
 		return "", fmt.Errorf("determining current user: %w", err)
 	}
 	return u.Username, nil
+}
+
+// sshAuth returns SSH authentication, preferring the SSH agent and falling
+// back to key files in ~/.ssh/ when the agent is unavailable.
+func sshAuth(sshUser string) (transport.AuthMethod, error) {
+	auth, err := gitssh.NewSSHAgentAuth(sshUser)
+	if err == nil {
+		return auth, nil
+	}
+
+	home, homeErr := os.UserHomeDir()
+	if homeErr != nil {
+		return nil, fmt.Errorf("SSH agent unavailable (%w) and cannot determine home directory: %w", err, homeErr)
+	}
+
+	// Try common key types in preference order.
+	keyNames := []string{"id_ed25519", "id_ecdsa", "id_rsa"}
+	for _, name := range keyNames {
+		keyPath := filepath.Join(home, ".ssh", name)
+		if _, statErr := os.Stat(keyPath); statErr != nil {
+			continue
+		}
+		keys, keyErr := gitssh.NewPublicKeysFromFile(sshUser, keyPath, "")
+		if keyErr != nil {
+			continue
+		}
+		return keys, nil
+	}
+
+	return nil, fmt.Errorf("SSH agent unavailable (%w) and no usable key found in %s", err, filepath.Join(home, ".ssh"))
 }
 
 func (c *Client) AddRemote(path, name, url string) error {
