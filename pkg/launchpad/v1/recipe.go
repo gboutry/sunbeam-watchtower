@@ -356,6 +356,7 @@ type CreateSnapOpts struct {
 	Owner       string // LP username
 	GitRefLink  string
 	Description string
+	Processors  []string // LP processor names (e.g. ["amd64", "arm64"])
 }
 
 // CreateSnap creates a new snap on Launchpad.
@@ -370,10 +371,41 @@ func (c *Client) CreateSnap(ctx context.Context, opts CreateSnapOpts) (Snap, err
 	if opts.Description != "" {
 		form.Set("description", opts.Description)
 	}
+	if len(opts.Processors) > 0 {
+		form.Set("processors", marshalProcessorLinks(c, opts.Processors))
+	}
 	if _, err := c.Post(ctx, "/+snaps", form); err != nil {
 		return Snap{}, fmt.Errorf("creating snap: %w", err)
 	}
 	return c.GetSnap(ctx, opts.Owner, opts.Name)
+}
+
+// SetSnapProcessors updates the list of processors (architectures) for an
+// existing snap. Accepts processor names (e.g. "amd64"); they are expanded
+// to the corresponding /+processors/<name> self_links.
+func (c *Client) SetSnapProcessors(ctx context.Context, snapSelfLink string, processors []string) error {
+	if len(processors) == 0 {
+		return fmt.Errorf("processors is required for setProcessors")
+	}
+	form := url.Values{
+		"ws.op":      {"setProcessors"},
+		"processors": {marshalProcessorLinks(c, processors)},
+	}
+	if _, err := c.Post(ctx, snapSelfLink, form); err != nil {
+		return fmt.Errorf("setting snap processors: %w", err)
+	}
+	return nil
+}
+
+// marshalProcessorLinks converts processor names to a JSON array of LP
+// self_links — the encoding LP expects for list form parameters.
+func marshalProcessorLinks(c *Client, names []string) string {
+	links := make([]string, len(names))
+	for i, name := range names {
+		links[i] = c.resolveURL("/+processors/" + name)
+	}
+	b, _ := json.Marshal(links)
+	return string(b)
 }
 
 // DeleteRockRecipe deletes a rock recipe.

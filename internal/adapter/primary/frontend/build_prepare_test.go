@@ -7,6 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -408,5 +411,37 @@ func TestLocalBuildPreparerPrepareListByPrefix(t *testing.T) {
 	}
 	if got.Owner != "lp-user" || got.TargetRef != "lp-project" || got.RecipePrefix != "tmp-build-01234567-" {
 		t.Fatalf("unexpected list opts: %+v", got)
+	}
+}
+
+func TestSnapProcessorsFromRepo(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, "snap"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	yaml := []byte("name: foo\nplatforms:\n  amd64:\n  arm64:\n  s390x:\n")
+	if err := os.WriteFile(filepath.Join(repo, "snap", "snapcraft.yaml"), yaml, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := snapProcessorsFromRepo(repo, build.DiscoveredRecipe{Name: "foo"}, &build.SnapStrategy{})
+	if err != nil {
+		t.Fatalf("snapProcessorsFromRepo() error = %v", err)
+	}
+	sort.Strings(got)
+	want := []string{"amd64", "arm64", "s390x"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("processors = %v, want %v", got, want)
+	}
+}
+
+func TestSnapProcessorsFromRepoMissing(t *testing.T) {
+	repo := t.TempDir()
+	got, err := snapProcessorsFromRepo(repo, build.DiscoveredRecipe{Name: "foo"}, &build.SnapStrategy{})
+	if err != nil {
+		t.Fatalf("snapProcessorsFromRepo() error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("processors = %v, want nil", got)
 	}
 }

@@ -110,6 +110,53 @@ func TestSnapBuilderWorkflow(t *testing.T) {
 	}
 }
 
+func TestSnapBuilderProcessors(t *testing.T) {
+	builder := NewSnapBuilder(newBuilderClientForTest(), "", "")
+
+	withLaunchpadTransport(t, repoRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodPost && req.URL.Path == "/devel/+snaps":
+			if err := req.ParseForm(); err != nil {
+				t.Fatalf("ParseForm() error = %v", err)
+			}
+			if got := req.FormValue("processors"); got != `["https://api.launchpad.net/devel/+processors/amd64","https://api.launchpad.net/devel/+processors/arm64","https://api.launchpad.net/devel/+processors/s390x"]` {
+				t.Fatalf("processors = %q", got)
+			}
+			return launchpadResponse(http.StatusCreated, ""), nil
+		case req.Method == http.MethodGet && req.URL.Path == "/devel/~owner/+snap/multi-arch":
+			return launchpadResponse(http.StatusOK, `{"name":"multi-arch","self_link":"https://api.launchpad.net/devel/~owner/+snap/multi-arch","owner_link":"https://api.launchpad.net/devel/~owner"}`), nil
+		case req.Method == http.MethodPost && req.URL.Path == "/devel/~owner/+snap/multi-arch":
+			if err := req.ParseForm(); err != nil {
+				t.Fatalf("ParseForm() error = %v", err)
+			}
+			if got := req.FormValue("ws.op"); got != "setProcessors" {
+				t.Fatalf("ws.op = %q, want setProcessors", got)
+			}
+			if got := req.FormValue("processors"); got != `["https://api.launchpad.net/devel/+processors/amd64","https://api.launchpad.net/devel/+processors/arm64"]` {
+				t.Fatalf("processors = %q", got)
+			}
+			return launchpadResponse(http.StatusOK, ""), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	}))
+
+	recipe, err := builder.CreateRecipe(context.Background(), dto.CreateRecipeOpts{
+		Name:       "multi-arch",
+		Owner:      "owner",
+		GitRefLink: "https://api.launchpad.net/devel/~owner/project/+git/repo/+ref/refs/heads/main",
+		Processors: []string{"amd64", "arm64", "s390x"},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecipe() error = %v", err)
+	}
+
+	if err := builder.SetProcessors(context.Background(), recipe, []string{"amd64", "arm64"}); err != nil {
+		t.Fatalf("SetProcessors() error = %v", err)
+	}
+}
+
 func TestCharmBuilderWorkflow(t *testing.T) {
 	builder := NewCharmBuilder(newBuilderClientForTest())
 

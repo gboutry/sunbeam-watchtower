@@ -229,14 +229,19 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	repoSelfLink := ""
 	var gitRefLinks map[string]string
 	var buildPaths map[string]string
+	var processorsByRecipe map[string][]string
 	if prepared != nil {
 		repoSelfLink = prepared.RepositoryRef
 		if len(prepared.Recipes) > 0 {
 			gitRefLinks = make(map[string]string, len(prepared.Recipes))
 			buildPaths = make(map[string]string, len(prepared.Recipes))
+			processorsByRecipe = make(map[string][]string, len(prepared.Recipes))
 			for recipeName, recipe := range prepared.Recipes {
 				gitRefLinks[recipeName] = recipe.SourceRef
 				buildPaths[recipeName] = recipe.BuildPath
+				if len(recipe.Processors) > 0 {
+					processorsByRecipe[recipeName] = recipe.Processors
+				}
 			}
 		}
 	}
@@ -245,6 +250,9 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 	}
 	if buildPaths == nil {
 		buildPaths = make(map[string]string)
+	}
+	if processorsByRecipe == nil {
+		processorsByRecipe = make(map[string][]string)
 	}
 
 	// If caller didn't provide pre-resolved values and project uses official
@@ -323,10 +331,11 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 				status := s.assessRecipe(ctx, pb, job.name)
 				refLink := gitRefLinks[job.name]
 				bp := buildPaths[job.name]
+				procs := processorsByRecipe[job.name]
 				s.logger.Debug("dispatching recipe action",
 					"recipe", job.name, "action", status.Action,
 					"repoSelfLink", repoSelfLink, "gitRefLink", refLink, "buildPath", bp)
-				rr := s.executeAction(ctx, pb, status, opts, repoSelfLink, refLink, bp)
+				rr := s.executeAction(ctx, pb, status, opts, repoSelfLink, refLink, bp, procs)
 				results <- triggerResult{index: job.index, result: rr}
 			}
 		}()
@@ -428,7 +437,7 @@ func (s *Service) assessRecipe(ctx context.Context, pb ProjectBuilder, recipeNam
 	return RecipeStatus{Name: recipeName, Action: ActionRequestBuilds, Recipe: recipe, Builds: builds}
 }
 
-func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status RecipeStatus, opts TriggerOpts, repoSelfLink, gitRefLink, buildPath string) RecipeResult {
+func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status RecipeStatus, opts TriggerOpts, repoSelfLink, gitRefLink, buildPath string, processors []string) RecipeResult {
 	result := RecipeResult{Name: status.Name, Action: status.Action, Recipe: status.Recipe}
 
 	setErr := func(err error) {
@@ -453,6 +462,7 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 			GitRefLink:  gitRefLink,
 			BuildPath:   bp,
 			Channels:    opts.Channels,
+			Processors:  processors,
 		}
 		// LP has a propagation delay between its git indexer and recipe
 		// service. Retry on "No such object" errors for the git_ref.
@@ -487,6 +497,15 @@ func (s *Service) executeAction(ctx context.Context, pb ProjectBuilder, status R
 		result.Builds = s.waitForBuildRecords(ctx, pb, recipe)
 
 	case ActionRequestBuilds:
+		// Sync recipe-level processors (snap-only — no-op for rock/charm)
+		// before requesting builds, so a snapcraft.yaml platforms change
+		// takes effect on the next trigger.
+		if len(processors) > 0 {
+			if err := pb.Builder.SetProcessors(ctx, status.Recipe, processors); err != nil {
+				setErr(fmt.Errorf("sync processors for %q: %w", status.Name, err))
+				return result
+			}
+		}
 		br, err := pb.Builder.RequestBuilds(ctx, status.Recipe, buildOpts(opts))
 		result.BuildRequest = br
 		if err != nil {

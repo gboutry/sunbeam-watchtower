@@ -5,7 +5,10 @@ package frontend
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -185,12 +188,24 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 
 	tempNames := make([]string, 0, len(recipes))
 	buildPaths := make(map[string]string, len(recipes))
+	processors := make(map[string][]string, len(recipes))
 	for _, r := range recipes {
 		tempName := pb.Strategy.TempRecipeName(r.Name, sha, req.Prefix)
 		tempNames = append(tempNames, tempName)
 		// r.RelPath is empty for single-artifact repos (metadata at root),
 		// which is the correct build_path value for Launchpad in that case.
 		buildPaths[tempName] = r.RelPath
+		// LP snap.requestBuilds takes no architectures arg — the snap's
+		// processors field drives dispatch. Auto-detect from snapcraft.yaml.
+		if pb.Strategy.ArtifactType() == dto.ArtifactSnap {
+			procs, err := snapProcessorsFromRepo(localPath, r, pb.Strategy)
+			if err != nil {
+				return req, fmt.Errorf("parse snap platforms for %q: %w", r.Name, err)
+			}
+			if len(procs) > 0 {
+				processors[tempName] = procs
+			}
+		}
 	}
 	req.Artifacts = tempNames
 
@@ -203,12 +218,36 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 	}
 	for _, name := range tempNames {
 		req.Prepared.Recipes[name] = dto.PreparedBuildRecipe{
-			SourceRef: refLink,
-			BuildPath: buildPaths[name],
+			SourceRef:  refLink,
+			BuildPath:  buildPaths[name],
+			Processors: processors[name],
 		}
 	}
 
 	return req, nil
+}
+
+// snapProcessorsFromRepo reads the snap metadata file from the local repo and
+// returns the parsed platforms. Looks at snap/snapcraft.yaml first, then at
+// the repo root (matching SnapStrategy.DiscoverRecipes). Returns nil when no
+// metadata file is found, so the caller can fall back to LP defaults.
+func snapProcessorsFromRepo(repoPath string, r build.DiscoveredRecipe, strategy build.ArtifactStrategy) ([]string, error) {
+	metaName := strategy.MetadataFileName()
+	candidates := []string{
+		filepath.Join(repoPath, r.RelPath, "snap", metaName),
+		filepath.Join(repoPath, r.RelPath, metaName),
+	}
+	for _, candidate := range candidates {
+		content, err := os.ReadFile(candidate)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, err
+		}
+		return strategy.ParsePlatforms(content)
+	}
+	return nil, nil
 }
 
 // prepareAndPush creates a temp branch, optionally runs a prepare command, and pushes to LP.

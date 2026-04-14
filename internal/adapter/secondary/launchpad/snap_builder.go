@@ -50,11 +50,22 @@ func (s *SnapBuilder) CreateRecipe(ctx context.Context, opts dto.CreateRecipeOpt
 		Owner:       opts.Owner,
 		GitRefLink:  opts.GitRefLink,
 		Description: opts.Name,
+		Processors:  opts.Processors,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return snapToPortRecipe(snap), nil
+}
+
+func (s *SnapBuilder) SetProcessors(ctx context.Context, recipe *dto.Recipe, processors []string) error {
+	if recipe == nil || recipe.SelfLink == "" {
+		return nil
+	}
+	if len(processors) == 0 {
+		return nil
+	}
+	return s.client.SetSnapProcessors(ctx, recipe.SelfLink, processors)
 }
 
 func (s *SnapBuilder) DeleteRecipe(ctx context.Context, selfLink string) error {

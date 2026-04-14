@@ -69,6 +69,12 @@ func (b *CharmBuilder) ListRecipesByOwner(ctx context.Context, owner string) ([]
 	return out, nil
 }
 
+// SetProcessors is a no-op for charm recipes — LP charm_recipe has no
+// processors field; architectures are passed per-build via requestBuilds.
+func (b *CharmBuilder) SetProcessors(_ context.Context, _ *dto.Recipe, _ []string) error {
+	return nil
+}
+
 func (b *CharmBuilder) RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error) {
 	// Charm recipes do not take archive/pocket — LP determines the build
 	// environment from the charmcraft.yaml bases/platforms declaration.

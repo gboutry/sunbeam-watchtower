@@ -66,6 +66,12 @@ func (c *RockBuilder) ListRecipesByOwner(ctx context.Context, owner string) ([]*
 	return out, nil
 }
 
+// SetProcessors is a no-op for rock recipes — LP rock_recipe has no
+// processors field; architectures are passed per-build via requestBuilds.
+func (c *RockBuilder) SetProcessors(_ context.Context, _ *dto.Recipe, _ []string) error {
+	return nil
+}
+
 func (c *RockBuilder) RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error) {
 	archiveLink := opts.ArchiveLink
 	if archiveLink == "" {

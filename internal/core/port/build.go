@@ -18,6 +18,11 @@ type RecipeBuilder interface {
 	DeleteRecipe(ctx context.Context, recipeSelfLink string) error
 	ListRecipesByOwner(ctx context.Context, owner string) ([]*dto.Recipe, error)
 	RequestBuilds(ctx context.Context, recipe *dto.Recipe, opts dto.RequestBuildsOpts) (*dto.BuildRequest, error)
+	// SetProcessors syncs the recipe's processor/architecture list.
+	// Only meaningful for snap (LP snaps carry processors as resource state,
+	// unlike charm/rock where architectures are requestBuilds args). Other
+	// artifact types should implement this as a no-op.
+	SetProcessors(ctx context.Context, recipe *dto.Recipe, processors []string) error
 	ListBuilds(ctx context.Context, recipe *dto.Recipe) ([]dto.Build, error)
 	RetryBuild(ctx context.Context, buildSelfLink string) error
 	CancelBuild(ctx context.Context, buildSelfLink string) error

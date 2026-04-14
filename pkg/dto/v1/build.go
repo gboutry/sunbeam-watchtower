@@ -155,8 +155,9 @@ const (
 
 // PreparedBuildRecipe holds prepared recipe inputs for one backend recipe/buildable unit.
 type PreparedBuildRecipe struct {
-	SourceRef string `json:"source_ref" yaml:"source_ref"`
-	BuildPath string `json:"build_path,omitempty" yaml:"build_path,omitempty"`
+	SourceRef  string   `json:"source_ref" yaml:"source_ref"`
+	BuildPath  string   `json:"build_path,omitempty" yaml:"build_path,omitempty"`
+	Processors []string `json:"processors,omitempty" yaml:"processors,omitempty"`
 }
 
 // PreparedBuildSource holds frontend-prepared backend references for split build workflows.
@@ -197,6 +198,7 @@ type CreateRecipeOpts struct {
 	GitRefLink  string
 	BuildPath   string
 	Channels    map[string]string // snap channels for build tools (e.g. {"charmcraft": "latest/stable"})
+	Processors  []string          // snap-only: LP processor names (e.g. ["amd64", "arm64"])
 }
 
 // RequestBuildsOpts holds parameters for requesting builds.

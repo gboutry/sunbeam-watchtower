@@ -29,6 +29,9 @@ type mockRecipeBuilder struct {
 	ownerListErr error
 	retried      []string // tracks retried build self links
 
+	// processorsSet tracks SetProcessors calls (recipe SelfLink → processors).
+	processorsSet map[string][]string
+
 	// retryHook lets tests mutate builds in response to a retry call,
 	// simulating LP transitioning the build record (e.g. Failed → Pending
 	// → Succeeded across poll cycles).
@@ -61,6 +64,16 @@ func (m *mockRecipeBuilder) CreateRecipe(_ context.Context, opts dto.CreateRecip
 }
 
 func (m *mockRecipeBuilder) DeleteRecipe(_ context.Context, _ string) error { return nil }
+
+func (m *mockRecipeBuilder) SetProcessors(_ context.Context, recipe *dto.Recipe, processors []string) error {
+	if m.processorsSet == nil {
+		m.processorsSet = make(map[string][]string)
+	}
+	if recipe != nil {
+		m.processorsSet[recipe.SelfLink] = append([]string(nil), processors...)
+	}
+	return nil
+}
 
 func (m *mockRecipeBuilder) RequestBuilds(_ context.Context, recipe *dto.Recipe, _ dto.RequestBuildsOpts) (*dto.BuildRequest, error) {
 	if m.requestErr != nil {
