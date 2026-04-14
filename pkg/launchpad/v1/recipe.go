@@ -213,6 +213,12 @@ func (c *Client) GetSnapByLink(ctx context.Context, selfLink string) (Snap, erro
 // LP returns an empty body for requestBuilds — the build request
 // status is retrieved later via ListBuilds.
 func (c *Client) RequestSnapBuilds(ctx context.Context, snapSelfLink, archiveLink, pocket string, channels map[string]string) (BuildRequest, error) {
+	if archiveLink == "" {
+		return BuildRequest{}, fmt.Errorf("archive is required for snap requestBuilds")
+	}
+	if pocket == "" {
+		return BuildRequest{}, fmt.Errorf("pocket is required for snap requestBuilds")
+	}
 	form := url.Values{
 		"ws.op":   {"requestBuilds"},
 		"archive": {archiveLink},

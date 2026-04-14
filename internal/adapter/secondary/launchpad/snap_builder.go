@@ -78,9 +78,15 @@ func (s *SnapBuilder) RequestBuilds(ctx context.Context, recipe *dto.Recipe, opt
 	if opts.ArchiveLink != "" {
 		archiveLink = opts.ArchiveLink
 	}
+	if archiveLink == "" {
+		archiveLink = "/ubuntu/+archive/primary"
+	}
 	pocket := s.defaultPocket
 	if opts.Pocket != "" {
 		pocket = opts.Pocket
+	}
+	if pocket == "" {
+		pocket = "Updates"
 	}
 
 	br, err := s.client.RequestSnapBuilds(ctx, recipe.SelfLink, archiveLink, pocket, opts.Channels)
