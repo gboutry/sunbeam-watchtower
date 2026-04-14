@@ -123,11 +123,22 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 
 	// 5. Check if branch already exists on LP.
 	_, refCheckErr := p.repoManager.GetGitRef(ctx, repoSelfLink, refPath)
-	if refCheckErr != nil {
-		// 6. Branch doesn't exist — prepare and push.
-		if err := p.prepareAndPush(ctx, localPath, gitSSHURL, repoSelfLink, lpOwner, branchName, sha, pb.PrepareCommand); err != nil {
-			return req, fmt.Errorf("prepare and push: %w", err)
+	skipPush := refCheckErr == nil
+
+	// 6. Prepare and optionally push. discoverPath is the path discovery
+	// should read — localPath for the no-prepare case, the temp worktree
+	// for the prepare case (so LP and discovery see the same source).
+	// cleanupWorktree is always registered via defer so it fires even when
+	// prepareAndPush returns an error after creating the worktree.
+	var cleanupWorktree func()
+	defer func() {
+		if cleanupWorktree != nil {
+			cleanupWorktree()
 		}
+	}()
+	discoverPath, cleanupWorktree, err := p.prepareAndPush(ctx, localPath, gitSSHURL, repoSelfLink, lpOwner, branchName, sha, pb.PrepareCommand, skipPush)
+	if err != nil {
+		return req, fmt.Errorf("prepare and push: %w", err)
 	}
 
 	// 7. Always wait for the ref to be usable on LP.
@@ -139,12 +150,14 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		return req, fmt.Errorf("wait for git ref: %w", err)
 	}
 
-	// 8. Discover artifacts from local clone. Discovery always runs in
-	// local mode so nested monorepo layouts (e.g. charms/storage/foo)
-	// reach Launchpad with the correct build path. When the caller supplied
-	// an explicit artifact list we filter the discovered recipes by that
-	// list and surface an error for any name that isn't present locally.
-	discovered, err := pb.Strategy.DiscoverRecipes(localPath)
+	// 8. Discover artifacts. When prepare_command is set, discovery reads
+	// the prepared worktree so LP and discovery see the same source.
+	// Discovery always runs in local mode so nested monorepo layouts
+	// (e.g. charms/storage/foo) reach Launchpad with the correct build
+	// path. When the caller supplied an explicit artifact list we filter
+	// the discovered recipes by that list and surface an error for any
+	// name that isn't present locally.
+	discovered, err := pb.Strategy.DiscoverRecipes(discoverPath)
 	if err != nil {
 		return req, fmt.Errorf("discover artifacts: %w", err)
 	}
@@ -198,7 +211,7 @@ func (p *LocalBuildPreparer) PrepareTrigger(
 		// LP snap.requestBuilds takes no architectures arg — the snap's
 		// processors field drives dispatch. Auto-detect from snapcraft.yaml.
 		if pb.Strategy.ArtifactType() == dto.ArtifactSnap {
-			procs, err := snapProcessorsFromRepo(localPath, r, pb.Strategy)
+			procs, err := snapProcessorsFromRepo(discoverPath, r, pb.Strategy)
 			if err != nil {
 				return req, fmt.Errorf("parse snap platforms for %q: %w", r.Name, err)
 			}
@@ -250,61 +263,97 @@ func snapProcessorsFromRepo(repoPath string, r build.DiscoveredRecipe, strategy 
 	return nil, nil
 }
 
-// prepareAndPush creates a temp branch, optionally runs a prepare command, and pushes to LP.
+// prepareAndPush isolates the optional prepare command in a temporary
+// linked worktree, stages + commits its outputs (bypassing .gitignore),
+// and pushes from there. When prepareCommand is empty, it preserves the
+// prior branch-dance flow on the live repo via pushFromLocalPath.
+//
+// Returns the path that subsequent discovery should read from (localPath
+// or the temp worktree) plus a cleanup closure the caller must defer.
+// cleanup is a no-op when prepareCommand is empty.
+//
+// When skipPush is true (LP ref already exists), the push is skipped but
+// the worktree is still materialised and prepare still runs — so
+// discovery has a prepared tree.
 func (p *LocalBuildPreparer) prepareAndPush(
 	ctx context.Context,
 	localPath, gitSSHURL, repoSelfLink, lpOwner, branchName, sha, prepareCommand string,
+	skipPush bool,
+) (discoverPath string, cleanup func(), err error) {
+	cleanup = func() {}
+
+	if prepareCommand == "" {
+		// Non-prepare path: byte-for-byte the old behaviour.
+		if !skipPush {
+			if err := pushFromLocalPath(ctx, p.gitClient, p.repoManager, localPath, gitSSHURL, repoSelfLink, lpOwner, branchName, sha); err != nil {
+				return "", cleanup, fmt.Errorf("push from local path: %w", err)
+			}
+		}
+		return localPath, cleanup, nil
+	}
+
+	if p.cmdRunner == nil {
+		return "", cleanup, fmt.Errorf("prepare command configured but no command runner available")
+	}
+
+	wtPath, wtCleanup, err := p.gitClient.CreateDetachedWorktree(ctx, localPath, branchName, sha)
+	if err != nil {
+		return "", cleanup, fmt.Errorf("create detached worktree: %w", err)
+	}
+	cleanup = wtCleanup
+
+	if err := p.cmdRunner.Run(ctx, wtPath, prepareCommand); err != nil {
+		return "", cleanup, fmt.Errorf("run prepare command: %w", err)
+	}
+	if err := p.gitClient.ForceAddAll(ctx, wtPath); err != nil {
+		return "", cleanup, fmt.Errorf("force-stage prepared changes: %w", err)
+	}
+	if err := p.gitClient.Commit(wtPath, "watchtower: prepare build"); err != nil {
+		return "", cleanup, fmt.Errorf("commit prepared changes: %w", err)
+	}
+
+	if !skipPush {
+		needsMain := true
+		if _, err := p.repoManager.GetGitRef(ctx, repoSelfLink, "refs/heads/main"); err == nil {
+			needsMain = false
+		}
+		if err := pushToLaunchpad(p.gitClient, wtPath, gitSSHURL, lpOwner, branchName, needsMain); err != nil {
+			return "", cleanup, fmt.Errorf("push to LP: %w", err)
+		}
+	}
+
+	return wtPath, cleanup, nil
+}
+
+// pushFromLocalPath replicates the pre-worktree branch-dance for the
+// no-prepare-command path: create the temp branch on localPath, push via
+// the same pushToLaunchpad helper, then restore origBranch and delete
+// the temp branch. Preserves prior behaviour exactly.
+func pushFromLocalPath(
+	ctx context.Context,
+	gitClient port.GitClient,
+	repoManager port.RepoManager,
+	localPath, gitSSHURL, repoSelfLink, lpOwner, branchName, sha string,
 ) error {
-	// Save current branch.
-	origBranch, err := p.gitClient.CurrentBranch(localPath)
+	origBranch, err := gitClient.CurrentBranch(localPath)
 	if err != nil {
 		return fmt.Errorf("get current branch: %w", err)
 	}
-
-	// Create and checkout temp branch.
-	if err := p.gitClient.CreateBranch(localPath, branchName, sha); err != nil {
+	if err := gitClient.CreateBranch(localPath, branchName, sha); err != nil {
 		return fmt.Errorf("create branch %s: %w", branchName, err)
 	}
-	if err := p.gitClient.CheckoutBranch(localPath, branchName); err != nil {
+	if err := gitClient.CheckoutBranch(localPath, branchName); err != nil {
 		return fmt.Errorf("checkout branch %s: %w", branchName, err)
 	}
-
-	// Restore original branch and delete temp branch on exit.
 	defer func() {
-		_ = p.gitClient.CheckoutBranch(localPath, origBranch)
-		_ = p.gitClient.DeleteLocalBranch(localPath, branchName)
+		_ = gitClient.CheckoutBranch(localPath, origBranch)
+		_ = gitClient.DeleteLocalBranch(localPath, branchName)
 	}()
-
-	// Optionally run prepare command.
-	if prepareCommand != "" {
-		if p.cmdRunner == nil {
-			return fmt.Errorf("prepare command configured but no command runner available")
-		}
-		if err := p.cmdRunner.Run(ctx, localPath, prepareCommand); err != nil {
-			return fmt.Errorf("run prepare command: %w", err)
-		}
-		if err := p.gitClient.AddAll(localPath); err != nil {
-			return fmt.Errorf("stage prepared changes: %w", err)
-		}
-		if err := p.gitClient.Commit(localPath, "watchtower: prepare build"); err != nil {
-			return fmt.Errorf("commit prepared changes: %w", err)
-		}
-	}
-
-	// Ensure LP repo has a main branch — LP requires it before processing
-	// other refs. Only push main if it doesn't already exist to avoid
-	// conflicting with concurrent CI runs.
 	needsMain := true
-	if _, err := p.repoManager.GetGitRef(ctx, repoSelfLink, "refs/heads/main"); err == nil {
+	if _, err := repoManager.GetGitRef(ctx, repoSelfLink, "refs/heads/main"); err == nil {
 		needsMain = false
 	}
-
-	// Push to Launchpad.
-	if err := pushToLaunchpad(p.gitClient, localPath, gitSSHURL, lpOwner, branchName, needsMain); err != nil {
-		return fmt.Errorf("push to LP: %w", err)
-	}
-
-	return nil
+	return pushToLaunchpad(gitClient, localPath, gitSSHURL, lpOwner, branchName, needsMain)
 }
 
 // PrepareListByPrefix resolves Launchpad owner/project state for local-build discovery by prefix.

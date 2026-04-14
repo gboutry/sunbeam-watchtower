@@ -22,6 +22,22 @@ import (
 type fakeGitClient struct {
 	headSHA       string
 	currentBranch string
+
+	// Call counts and last args for the new prepared-worktree flow.
+	createWtCalls    int
+	forceAddAllCalls int
+	commitCalls      int
+	cleanupCalls     int
+
+	// tempWorktreeDir is returned by CreateDetachedWorktree when set;
+	// otherwise a real os.MkdirTemp result is allocated on first call so
+	// callers can stat/read it.
+	tempWorktreeDir string
+
+	// Captured args.
+	lastCreateWtBranch string
+	lastCreateWtSHA    string
+	lastCommitPath     string
 }
 
 func (f *fakeGitClient) IsRepo(string) bool                         { return true }
@@ -42,12 +58,29 @@ func (f *fakeGitClient) CurrentBranch(string) (string, error) {
 }
 func (f *fakeGitClient) DeleteLocalBranch(string, string) error { return nil }
 func (f *fakeGitClient) AddAll(string) error                    { return nil }
-func (f *fakeGitClient) Commit(string, string) error            { return nil }
-func (f *fakeGitClient) ResetHard(string, string) error         { return nil }
-func (f *fakeGitClient) CreateDetachedWorktree(context.Context, string, string, string) (string, func(), error) {
-	return "", func() {}, nil
+func (f *fakeGitClient) Commit(path, _ string) error {
+	f.commitCalls++
+	f.lastCommitPath = path
+	return nil
 }
-func (f *fakeGitClient) ForceAddAll(context.Context, string) error { return nil }
+func (f *fakeGitClient) ResetHard(string, string) error { return nil }
+func (f *fakeGitClient) CreateDetachedWorktree(_ context.Context, _, branch, sha string) (string, func(), error) {
+	f.createWtCalls++
+	f.lastCreateWtBranch = branch
+	f.lastCreateWtSHA = sha
+	if f.tempWorktreeDir == "" {
+		d, err := os.MkdirTemp("", "watchtower-test-wt-*")
+		if err != nil {
+			return "", func() {}, err
+		}
+		f.tempWorktreeDir = d
+	}
+	return f.tempWorktreeDir, func() { f.cleanupCalls++ }, nil
+}
+func (f *fakeGitClient) ForceAddAll(_ context.Context, _ string) error {
+	f.forceAddAllCalls++
+	return nil
+}
 
 type fakeRepoManager struct {
 	currentUser  string
@@ -346,16 +379,18 @@ func (p *pushTrackingGitClient) Push(path, remote, localRef, remoteRef string, f
 }
 
 func TestLocalBuildPreparerPrepareTriggerWithPrepareCommand(t *testing.T) {
-	var ranCommand string
+	var ranCommand, ranCwd string
 	runner := &fakeCommandRunner{
-		runFn: func(_ context.Context, _ string, command string) error {
+		runFn: func(_ context.Context, dir string, command string) error {
 			ranCommand = command
+			ranCwd = dir
 			return nil
 		},
 	}
 
+	gitFake := &fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"}
 	preparer := NewLocalBuildPreparer(
-		&fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"},
+		gitFake,
 		&fakeRepoManager{
 			currentUser:  "lp-user",
 			project:      "lp-project",
@@ -381,8 +416,28 @@ func TestLocalBuildPreparerPrepareTriggerWithPrepareCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
+	t.Cleanup(func() { os.RemoveAll(gitFake.tempWorktreeDir) })
+
 	if ranCommand != "./repository.py prepare" {
 		t.Fatalf("expected prepare command %q, got %q", "./repository.py prepare", ranCommand)
+	}
+	if ranCwd != gitFake.tempWorktreeDir {
+		t.Fatalf("prepare command cwd = %q, want tempdir %q", ranCwd, gitFake.tempWorktreeDir)
+	}
+	if gitFake.createWtCalls != 1 {
+		t.Fatalf("CreateDetachedWorktree called %d times, want 1", gitFake.createWtCalls)
+	}
+	if gitFake.forceAddAllCalls != 1 {
+		t.Fatalf("ForceAddAll called %d times, want 1", gitFake.forceAddAllCalls)
+	}
+	if gitFake.commitCalls != 1 {
+		t.Fatalf("Commit called %d times, want 1", gitFake.commitCalls)
+	}
+	if gitFake.lastCommitPath != gitFake.tempWorktreeDir {
+		t.Fatalf("Commit called on %q, want temp worktree %q", gitFake.lastCommitPath, gitFake.tempWorktreeDir)
+	}
+	if gitFake.cleanupCalls != 1 {
+		t.Fatalf("cleanup called %d times, want 1", gitFake.cleanupCalls)
 	}
 	if got.Prepared == nil || got.Prepared.TargetRef != "lp-project" {
 		t.Fatalf("unexpected prepared trigger: %+v", got)
@@ -447,5 +502,142 @@ func TestSnapProcessorsFromRepoMissing(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("processors = %v, want nil", got)
+	}
+}
+
+func TestLocalBuildPreparerPrepareTriggerPrepareSkipsPushWhenRefExists(t *testing.T) {
+	// prepare_command is set, BUT the LP ref already exists. Prepare
+	// still runs (so discovery has a prepared tree), push is skipped.
+	var ranCommand string
+	runner := &fakeCommandRunner{
+		runFn: func(_ context.Context, _ string, command string) error {
+			ranCommand = command
+			return nil
+		},
+	}
+
+	gitFake := &fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"}
+	pushed := false
+	tracked := &pushTrackingGitClient{fakeGitClient: gitFake, pushed: &pushed}
+
+	preparer := NewLocalBuildPreparer(
+		tracked,
+		&fakeRepoManager{
+			currentUser:  "lp-user",
+			project:      "lp-project",
+			repoSelfLink: "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo",
+			gitSSHURL:    "git+ssh://git.launchpad.net/~lp-user/lp-project/+git/demo",
+			refSelfLink:  "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo/+ref/refs/heads/tmp-tmp-build-01234567",
+			// refErr nil → ref exists → push skipped.
+		},
+		map[string]build.ProjectBuilder{
+			"demo": {
+				Project:        "demo",
+				Strategy:       &fakeStrategy{},
+				PrepareCommand: "./prep.sh",
+			},
+		},
+		runner,
+	)
+
+	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
+		Project: "demo",
+		Prefix:  "tmp-build",
+	}, "/tmp/demo")
+	if err != nil {
+		t.Fatalf("PrepareTrigger: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(gitFake.tempWorktreeDir) })
+
+	if ranCommand == "" {
+		t.Fatal("prepare command should have run even when ref exists")
+	}
+	if gitFake.createWtCalls != 1 {
+		t.Fatalf("CreateDetachedWorktree calls = %d, want 1", gitFake.createWtCalls)
+	}
+	if gitFake.forceAddAllCalls != 1 {
+		t.Fatalf("ForceAddAll calls = %d, want 1", gitFake.forceAddAllCalls)
+	}
+	if gitFake.commitCalls != 1 {
+		t.Fatalf("Commit calls = %d, want 1", gitFake.commitCalls)
+	}
+	if pushed {
+		t.Fatal("Push should NOT have been called when LP ref exists")
+	}
+	if gitFake.cleanupCalls != 1 {
+		t.Fatalf("cleanup calls = %d, want 1", gitFake.cleanupCalls)
+	}
+}
+
+func TestLocalBuildPreparerPrepareTriggerNoPrepareCommandSkipsWorktree(t *testing.T) {
+	// prepare_command unset: byte-for-byte today's flow. No worktree.
+	gitFake := &fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"}
+
+	preparer := NewLocalBuildPreparer(
+		gitFake,
+		&fakeRepoManager{
+			currentUser:  "lp-user",
+			project:      "lp-project",
+			repoSelfLink: "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo",
+			gitSSHURL:    "git+ssh://git.launchpad.net/~lp-user/lp-project/+git/demo",
+			refSelfLink:  "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo/+ref/refs/heads/tmp-tmp-build-01234567",
+			refErr:       fmt.Errorf("not found"),
+		},
+		map[string]build.ProjectBuilder{
+			"demo": {Project: "demo", Strategy: &fakeStrategy{}}, // PrepareCommand intentionally empty
+		},
+		nil, // no cmdRunner — proves prepare path not entered
+	)
+
+	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
+		Project: "demo",
+		Prefix:  "tmp-build",
+	}, "/tmp/demo")
+	if err != nil {
+		t.Fatalf("PrepareTrigger: %v", err)
+	}
+
+	if gitFake.createWtCalls != 0 {
+		t.Fatalf("CreateDetachedWorktree should not be called without prepare_command; got %d", gitFake.createWtCalls)
+	}
+	if gitFake.forceAddAllCalls != 0 {
+		t.Fatalf("ForceAddAll should not be called without prepare_command; got %d", gitFake.forceAddAllCalls)
+	}
+}
+
+func TestLocalBuildPreparerPrepareTriggerCleanupOnPrepareFailure(t *testing.T) {
+	// prepare_command fails — cleanup must still run.
+	runner := &fakeCommandRunner{
+		runFn: func(_ context.Context, _ string, _ string) error {
+			return fmt.Errorf("boom")
+		},
+	}
+	gitFake := &fakeGitClient{headSHA: "0123456789abcdef0123456789abcdef01234567", currentBranch: "main"}
+	preparer := NewLocalBuildPreparer(
+		gitFake,
+		&fakeRepoManager{
+			currentUser:  "lp-user",
+			project:      "lp-project",
+			repoSelfLink: "https://api.launchpad.net/devel/~lp-user/lp-project/+git/demo",
+			gitSSHURL:    "git+ssh://git.launchpad.net/~lp-user/lp-project/+git/demo",
+			refSelfLink:  "",
+			refErr:       fmt.Errorf("not found"),
+		},
+		map[string]build.ProjectBuilder{
+			"demo": {Project: "demo", Strategy: &fakeStrategy{}, PrepareCommand: "./prep.sh"},
+		},
+		runner,
+	)
+
+	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
+		Project: "demo",
+		Prefix:  "tmp-build",
+	}, "/tmp/demo")
+	if err == nil {
+		t.Fatal("expected error from failing prepare command")
+	}
+	t.Cleanup(func() { os.RemoveAll(gitFake.tempWorktreeDir) })
+	if gitFake.cleanupCalls != 1 {
+		t.Fatalf("cleanup calls after failure = %d, want 1", gitFake.cleanupCalls)
 	}
 }
