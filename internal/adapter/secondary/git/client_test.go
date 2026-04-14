@@ -446,3 +446,41 @@ func TestClient_CreateDetachedWorktree_FixedArgv(t *testing.T) {
 		t.Fatalf("source dir destroyed: %v", statErr)
 	}
 }
+
+func TestClient_ForceAddAll_StagesIgnoredFiles(t *testing.T) {
+	t.Parallel()
+	srcDir := t.TempDir()
+	runGit(t, srcDir, "init", "-q", "-b", "main")
+	runGit(t, srcDir, "config", "user.email", "test@example.com")
+	runGit(t, srcDir, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(srcDir, ".gitignore"), []byte("build/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, srcDir, "add", ".gitignore")
+	runGit(t, srcDir, "commit", "-q", "-m", "init")
+
+	if err := os.MkdirAll(filepath.Join(srcDir, "build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "build", "artifact.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Baseline sanity: plain `git add -A` does NOT stage the ignored file.
+	runGit(t, srcDir, "add", "-A")
+	staged := strings.TrimSpace(runGit(t, srcDir, "diff", "--cached", "--name-only"))
+	if strings.Contains(staged, "build/artifact.txt") {
+		t.Fatalf("plain add staged ignored file — test setup wrong: %s", staged)
+	}
+	runGit(t, srcDir, "reset", "-q")
+
+	c := adapter.NewClient(nil)
+	if err := c.ForceAddAll(context.Background(), srcDir); err != nil {
+		t.Fatalf("ForceAddAll: %v", err)
+	}
+
+	staged = strings.TrimSpace(runGit(t, srcDir, "diff", "--cached", "--name-only"))
+	if !strings.Contains(staged, "build/artifact.txt") {
+		t.Fatalf("ignored file not staged: %s", staged)
+	}
+}

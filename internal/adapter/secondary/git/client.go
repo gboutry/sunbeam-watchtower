@@ -466,7 +466,7 @@ func (c *Client) CreateDetachedWorktree(ctx context.Context, repoPath, branch, s
 	return wtPath, cleanup, nil
 }
 
-// ForceAddAll is not yet implemented; placeholder satisfies port.GitClient.
-func (c *Client) ForceAddAll(_ context.Context, _ string) error {
-	return errors.New("ForceAddAll: not yet implemented")
+func (c *Client) ForceAddAll(ctx context.Context, worktreePath string) error {
+	c.logger.Debug("force-staging all", "path", worktreePath)
+	return c.runGit(ctx, worktreePath, "add", "-f", "-A")
 }
