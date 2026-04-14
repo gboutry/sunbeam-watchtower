@@ -13,11 +13,13 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
@@ -333,7 +335,15 @@ func (c *Client) Commit(path, message string) error {
 	if err != nil {
 		return fmt.Errorf("get worktree for %s: %w", path, err)
 	}
-	if _, err := wt.Commit(message, &gogit.CommitOptions{}); err != nil {
+	// Pass an explicit author signature so go-git does not try to read
+	// /etc/gitconfig, which may be unreadable (e.g. in confined snaps or
+	// GitHub Actions runners) and would otherwise fail the commit.
+	sig := &object.Signature{
+		Name:  "sunbeam-watchtower",
+		Email: "watchtower@localhost",
+		When:  time.Now(),
+	}
+	if _, err := wt.Commit(message, &gogit.CommitOptions{Author: sig, Committer: sig}); err != nil {
 		return fmt.Errorf("commit in %s: %w", path, err)
 	}
 	return nil
