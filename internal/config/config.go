@@ -261,8 +261,14 @@ type ProjectConfig struct {
 	Bugs             []BugTrackerConfig    `mapstructure:"bugs" yaml:"bugs,omitempty"`
 	Build            *ProjectBuildConfig   `mapstructure:"build" yaml:"build,omitempty"`
 	Release          *ProjectReleaseConfig `mapstructure:"release" yaml:"release,omitempty"`
+	Team             *ProjectTeamConfig    `mapstructure:"team" yaml:"team,omitempty"`
 	Series           []string              `mapstructure:"series" yaml:"series,omitempty"`
 	DevelopmentFocus string                `mapstructure:"development_focus" yaml:"development_focus,omitempty"`
+}
+
+// ProjectTeamConfig holds per-project team collaborator sync settings.
+type ProjectTeamConfig struct {
+	SkipArtifacts []string `mapstructure:"skip_artifacts" yaml:"skip_artifacts,omitempty"`
 }
 
 // BuildConfig holds build pipeline settings.

@@ -20,6 +20,7 @@ import (
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/reviewcache"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/artifactdiscovery"
 	opsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/operation"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/teamsync"
 )
@@ -107,6 +108,9 @@ type App struct {
 	teamSyncServiceOnce sync.Once
 	teamSyncService     *teamsync.Service
 	teamSyncServiceErr  error
+
+	artifactDiscoveryOnce sync.Once
+	artifactDiscoverySvc  *artifactdiscovery.Service
 }
 
 // NewApp creates a new App instance.

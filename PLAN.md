@@ -118,7 +118,7 @@ These are the main known gaps that still matter:
 ### Near term
 
 - if telemetry snapshot methods grow further, extract pure reducer helpers over already-fetched DTO slices (keep orchestration in `internal/app`)
-- consolidate artifact discovery: a canonical `internal/core/service/artifactdiscovery` now exists (charm/snap/rock, HEAD-tree based via a `TreeReader` seam). Migrate callers (release bootstrap, team sync, build strategy) off their parallel ad-hoc discoverers in follow-up tasks, then remove the legacy helpers in `internal/app/release_helpers.go` and `internal/core/service/team_discovery.go`.
+- consolidate artifact discovery: a canonical `internal/core/service/artifactdiscovery` now exists (charm/snap/rock, HEAD-tree based via a `TreeReader` seam). Team sync has been migrated to it: `TeamServerWorkflow.Sync` fans out one `SyncTarget` per discovered artifact instead of one per project (fixing `HTTP 404: Name sunbeam-charms not found` for mono-repos), honours an optional `proj.Team.SkipArtifacts` filter, and surfaces discovery errors as per-project warnings without failing the whole sync. Authorization surface: `team.sync` ActionID unchanged, but the fan-out widens reach — a single `team sync` invocation may now issue one `InviteCollaborator` call per charm in a mono-repo where previously it would fail before any store call was made. Release bootstrap and build strategy still use their ad-hoc discoverers; their migration and the removal of legacy helpers in `internal/app/release_helpers.go` and `internal/adapter/primary/frontend/team_discovery.go` are follow-up tasks.
 
 ### Frontend/runtime
 
