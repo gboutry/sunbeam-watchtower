@@ -6,6 +6,7 @@ package port
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
@@ -21,6 +22,15 @@ var ErrCollaboratorsUnsupported = errors.New("store collaborator management is u
 // Service and CLI layers use this sentinel to surface an actionable
 // re-authentication hint instead of the raw HTTP status.
 var ErrStoreAuthExpired = errors.New("store authentication expired or invalid")
+
+// ErrCharmhubReloginRequired signals that the stored Charmhub discharged
+// bundle can no longer be re-exchanged for a fresh publisher token and a
+// full interactive login is required. Wraps ErrStoreAuthExpired so generic
+// store-auth handling keeps working.
+var ErrCharmhubReloginRequired = fmt.Errorf(
+	"charmhub re-login required: run `watchtower auth charmhub login`: %w",
+	ErrStoreAuthExpired,
+)
 
 // StoreCollaboratorManager manages collaborators on a backing store artifact.
 type StoreCollaboratorManager interface {

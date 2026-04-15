@@ -825,7 +825,7 @@ func TestFinalizeGitHubReturnsDeleteError(t *testing.T) {
 	}
 }
 
-// fakeStoreCredentialStore is a test double for SnapStoreCredentialStore / CharmhubCredentialStore.
+// fakeStoreCredentialStore is a test double for SnapStoreCredentialStore.
 type fakeStoreCredentialStore struct {
 	record   *dto.StoreCredentialRecord
 	loadErr  error
@@ -864,6 +864,48 @@ func (s *fakeStoreCredentialStore) Clear(context.Context) error {
 	return nil
 }
 
+// fakeCharmhubCredentialStore is a test double for CharmhubCredentialStore.
+// Save captures both the discharged bundle and the exchanged token so tests
+// can assert on the refresh-readable layout.
+type fakeCharmhubCredentialStore struct {
+	record   *dto.StoreCredentialRecord
+	loadErr  error
+	saveErr  error
+	clearErr error
+}
+
+func (s *fakeCharmhubCredentialStore) Load(context.Context) (*dto.StoreCredentialRecord, error) {
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
+	if s.record == nil {
+		return nil, nil
+	}
+	recordCopy := *s.record
+	return &recordCopy, nil
+}
+
+func (s *fakeCharmhubCredentialStore) Save(_ context.Context, dischargedBundle, exchangedMacaroon string) (*dto.StoreCredentialRecord, error) {
+	if s.saveErr != nil {
+		return nil, s.saveErr
+	}
+	s.record = &dto.StoreCredentialRecord{
+		Macaroon:         exchangedMacaroon,
+		DischargedBundle: dischargedBundle,
+		Source:           "file",
+		Path:             "/tmp/charmhub-creds.json",
+	}
+	return s.Load(context.Background())
+}
+
+func (s *fakeCharmhubCredentialStore) Clear(context.Context) error {
+	if s.clearErr != nil {
+		return s.clearErr
+	}
+	s.record = nil
+	return nil
+}
+
 type fakeStoreAuthenticator struct {
 	flow            *sa.PendingAuthFlow
 	beginErr        error
@@ -895,7 +937,7 @@ func (a *fakeStoreAuthenticator) ExchangeToken(_ context.Context, bundle string)
 	return a.exchangeToken, nil
 }
 
-func newServiceWithStores(snapStore, charmhubStore *fakeStoreCredentialStore) *Service {
+func newServiceWithStores(snapStore *fakeStoreCredentialStore, charmhubStore *fakeCharmhubCredentialStore) *Service {
 	var ss port.SnapStoreCredentialStore
 	if snapStore != nil {
 		ss = snapStore
@@ -918,7 +960,7 @@ func newServiceWithStores(snapStore, charmhubStore *fakeStoreCredentialStore) *S
 func newServiceWithStoreAuth(
 	snapStore *fakeStoreCredentialStore,
 	snapAuth *fakeStoreAuthenticator,
-	charmhubStore *fakeStoreCredentialStore,
+	charmhubStore *fakeCharmhubCredentialStore,
 	charmhubAuth *fakeStoreAuthenticator,
 ) *Service {
 	var ss port.SnapStoreCredentialStore
@@ -1081,7 +1123,7 @@ func TestLogoutSnapStoreNoCredentials(t *testing.T) {
 }
 
 func TestBeginCharmhubReturnsRootMacaroon(t *testing.T) {
-	store := &fakeStoreCredentialStore{}
+	store := &fakeCharmhubCredentialStore{}
 	auth := &fakeStoreAuthenticator{
 		flow: &sa.PendingAuthFlow{
 			RootMacaroon: "root-mac",
@@ -1099,7 +1141,7 @@ func TestBeginCharmhubReturnsRootMacaroon(t *testing.T) {
 }
 
 func TestSaveCharmhubCredentialExchangesAndSavesToken(t *testing.T) {
-	store := &fakeStoreCredentialStore{}
+	store := &fakeCharmhubCredentialStore{}
 	auth := &fakeStoreAuthenticator{
 		flow:          &sa.PendingAuthFlow{RootMacaroon: "root-mac"},
 		exchangeToken: "exchanged-publisher-token",
@@ -1122,10 +1164,13 @@ func TestSaveCharmhubCredentialExchangesAndSavesToken(t *testing.T) {
 	if store.record == nil || store.record.Macaroon != "exchanged-publisher-token" {
 		t.Fatalf("expected exchanged token to be saved, got %+v", store.record)
 	}
+	if store.record.DischargedBundle != "bound-credential" {
+		t.Fatalf("expected discharged bundle to be persisted, got %q", store.record.DischargedBundle)
+	}
 }
 
 func TestSaveCharmhubCredentialPropagatesExchangeError(t *testing.T) {
-	store := &fakeStoreCredentialStore{}
+	store := &fakeCharmhubCredentialStore{}
 	auth := &fakeStoreAuthenticator{
 		flow:        &sa.PendingAuthFlow{RootMacaroon: "root-mac"},
 		exchangeErr: errors.New("boom"),
@@ -1142,7 +1187,7 @@ func TestSaveCharmhubCredentialPropagatesExchangeError(t *testing.T) {
 }
 
 func TestBeginCharmhubRejectsEnvironmentCredentials(t *testing.T) {
-	store := &fakeStoreCredentialStore{
+	store := &fakeCharmhubCredentialStore{
 		record: &dto.StoreCredentialRecord{Macaroon: "env-mac", Source: "environment"},
 	}
 	auth := &fakeStoreAuthenticator{
@@ -1195,7 +1240,7 @@ func TestSaveCharmhubCredentialRejectsNilStore(t *testing.T) {
 }
 
 func TestLogoutCharmhubClearsCredentials(t *testing.T) {
-	store := &fakeStoreCredentialStore{
+	store := &fakeCharmhubCredentialStore{
 		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "file", Path: "/tmp/charmhub-creds.json"},
 	}
 	svc := newServiceWithStores(nil, store)
@@ -1213,7 +1258,7 @@ func TestLogoutCharmhubClearsCredentials(t *testing.T) {
 }
 
 func TestLogoutCharmhubRejectsEnvironmentCredentials(t *testing.T) {
-	store := &fakeStoreCredentialStore{
+	store := &fakeCharmhubCredentialStore{
 		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "environment"},
 	}
 	svc := newServiceWithStores(nil, store)
@@ -1225,7 +1270,7 @@ func TestLogoutCharmhubRejectsEnvironmentCredentials(t *testing.T) {
 }
 
 func TestLogoutCharmhubNoCredentials(t *testing.T) {
-	store := &fakeStoreCredentialStore{}
+	store := &fakeCharmhubCredentialStore{}
 	svc := newServiceWithStores(nil, store)
 
 	result, err := svc.LogoutCharmhub(context.Background())
@@ -1241,7 +1286,7 @@ func TestStatusReportsStoreAuthentication(t *testing.T) {
 	snapStore := &fakeStoreCredentialStore{
 		record: &dto.StoreCredentialRecord{Macaroon: "snap-mac", Source: "file", Path: "/tmp/snap.json"},
 	}
-	charmhubStore := &fakeStoreCredentialStore{
+	charmhubStore := &fakeCharmhubCredentialStore{
 		record: &dto.StoreCredentialRecord{Macaroon: "charm-mac", Source: "environment"},
 	}
 	svc := newServiceWithStores(snapStore, charmhubStore)

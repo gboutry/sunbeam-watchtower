@@ -25,7 +25,7 @@ func TestNewCharmhubStore_DefaultPath(t *testing.T) {
 func TestCharmhubStoreLoad_PrefersEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
-	if _, err := store.Save(context.Background(), "file-macaroon"); err != nil {
+	if _, err := store.Save(context.Background(), "bundle", "file-macaroon"); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
@@ -49,7 +49,7 @@ func TestCharmhubStoreLoad_PrefersEnvironment(t *testing.T) {
 func TestCharmhubStoreLoad_FromFile(t *testing.T) {
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
-	if _, err := store.Save(context.Background(), "file-macaroon"); err != nil {
+	if _, err := store.Save(context.Background(), "saved-bundle", "file-macaroon"); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
@@ -65,6 +65,35 @@ func TestCharmhubStoreLoad_FromFile(t *testing.T) {
 	}
 	if record.Macaroon != "file-macaroon" {
 		t.Fatalf("Macaroon = %q, want %q", record.Macaroon, "file-macaroon")
+	}
+	if record.DischargedBundle != "saved-bundle" {
+		t.Fatalf("DischargedBundle = %q, want %q", record.DischargedBundle, "saved-bundle")
+	}
+}
+
+// TestCharmhubStoreLoad_LegacyFileWithoutBundle: records written by the
+// b2793 era only carried `macaroon`. The new loader must still accept
+// them; the missing bundle surfaces later as a re-login-required error.
+func TestCharmhubStoreLoad_LegacyFileWithoutBundle(t *testing.T) {
+	dir := t.TempDir()
+	store := NewCharmhubStore(dir)
+	legacyPath := filepath.Join(dir, charmhubCredentialFile)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(legacyPath, []byte(`{"macaroon":"legacy-token"}`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	record, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if record == nil || record.Macaroon != "legacy-token" {
+		t.Fatalf("Load() = %+v, want legacy-token", record)
+	}
+	if record.DischargedBundle != "" {
+		t.Fatalf("DischargedBundle = %q, want empty for legacy record", record.DischargedBundle)
 	}
 }
 
@@ -86,12 +115,15 @@ func TestCharmhubStoreSaveAndClear(t *testing.T) {
 	store := NewCharmhubStore(dir)
 	path := filepath.Join(dir, charmhubCredentialFile)
 
-	record, err := store.Save(context.Background(), "saved-macaroon")
+	record, err := store.Save(context.Background(), "saved-bundle", "saved-macaroon")
 	if err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 	if record.Path != path {
 		t.Fatalf("Path = %q, want %q", record.Path, path)
+	}
+	if record.DischargedBundle != "saved-bundle" {
+		t.Fatalf("DischargedBundle = %q, want saved-bundle", record.DischargedBundle)
 	}
 
 	if err := store.Clear(context.Background()); err != nil {

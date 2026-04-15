@@ -20,8 +20,14 @@ const (
 )
 
 // charmhubFileCredentials is the JSON-serialized form of Charmhub credentials.
+//
+// DischargedBundle is the long-lived client-discharged macaroon bundle kept
+// so the short-lived Macaroon (exchanged publisher token) can be silently
+// re-exchanged when it expires. Older records without this field still load
+// fine — the refresh path surfaces ErrCharmhubReloginRequired in that case.
 type charmhubFileCredentials struct {
-	Macaroon string `json:"macaroon"`
+	Macaroon         string `json:"macaroon"`
+	DischargedBundle string `json:"discharged_bundle,omitempty"`
 }
 
 // CharmhubStore loads credentials from environment variables or a file cache.
@@ -77,14 +83,15 @@ func (s *CharmhubStore) Load(_ context.Context) (*dto.StoreCredentialRecord, err
 		return nil, nil
 	}
 	return &dto.StoreCredentialRecord{
-		Macaroon: creds.Macaroon,
-		Source:   storeCredentialSourceFile,
-		Path:     s.path,
+		Macaroon:         creds.Macaroon,
+		DischargedBundle: creds.DischargedBundle,
+		Source:           storeCredentialSourceFile,
+		Path:             s.path,
 	}, nil
 }
 
 // Save persists Charmhub credentials to the configured file path.
-func (s *CharmhubStore) Save(_ context.Context, macaroon string) (*dto.StoreCredentialRecord, error) {
+func (s *CharmhubStore) Save(_ context.Context, dischargedBundle, exchangedMacaroon string) (*dto.StoreCredentialRecord, error) {
 	if s.path == "" {
 		return nil, fmt.Errorf("cannot determine credentials path")
 	}
@@ -93,7 +100,10 @@ func (s *CharmhubStore) Save(_ context.Context, macaroon string) (*dto.StoreCred
 		return nil, fmt.Errorf("creating config dir: %w", err)
 	}
 
-	creds := charmhubFileCredentials{Macaroon: macaroon}
+	creds := charmhubFileCredentials{
+		Macaroon:         exchangedMacaroon,
+		DischargedBundle: dischargedBundle,
+	}
 	data, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshaling charmhub credentials: %w", err)
@@ -102,9 +112,10 @@ func (s *CharmhubStore) Save(_ context.Context, macaroon string) (*dto.StoreCred
 		return nil, fmt.Errorf("writing charmhub credentials: %w", err)
 	}
 	return &dto.StoreCredentialRecord{
-		Macaroon: creds.Macaroon,
-		Source:   storeCredentialSourceFile,
-		Path:     s.path,
+		Macaroon:         creds.Macaroon,
+		DischargedBundle: creds.DischargedBundle,
+		Source:           storeCredentialSourceFile,
+		Path:             s.path,
 	}, nil
 }
 

@@ -64,10 +64,27 @@ type SnapStoreCredentialStore interface {
 }
 
 // CharmhubCredentialStore manages persisted Charmhub credentials.
+//
+// Save takes both the long-lived discharged bundle (kept so the short-lived
+// token can be silently re-exchanged on expiry) and the short-lived
+// exchanged publisher token that actually authorises `/v1/charm/...`
+// requests.
 type CharmhubCredentialStore interface {
 	Load(ctx context.Context) (*dto.StoreCredentialRecord, error)
-	Save(ctx context.Context, macaroon string) (*dto.StoreCredentialRecord, error)
+	Save(ctx context.Context, dischargedBundle, exchangedMacaroon string) (*dto.StoreCredentialRecord, error)
 	Clear(ctx context.Context) error
+}
+
+// CharmhubCredentialProvider returns the current Charmhub publisher
+// token and can silently re-exchange the stored discharged bundle when
+// that token has expired. Callers invoke Refresh reactively after a
+// publisher request comes back as ErrStoreAuthExpired and retry the
+// request exactly once. Repeated refresh failure surfaces
+// ErrCharmhubReloginRequired so the CLI can point the user at
+// `watchtower auth charmhub login`.
+type CharmhubCredentialProvider interface {
+	Token(ctx context.Context) (string, error)
+	Refresh(ctx context.Context) error
 }
 
 // StoreAuthenticator requests root macaroons from a store API.

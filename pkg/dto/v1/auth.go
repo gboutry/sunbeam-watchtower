@@ -169,8 +169,15 @@ type CharmhubAuthLogoutResult struct {
 func (CharmhubAuthLogoutResult) SchemaName() string { return "CharmhubAuthLogoutResult" }
 
 // StoreCredentialRecord describes loaded or saved store credentials (Snap Store or Charmhub).
+//
+// For Charmhub, Macaroon is the short-lived exchanged publisher token that
+// `/v1/charm/...` callers send on `Authorization: Macaroon <token>`, and
+// DischargedBundle is the long-lived client-discharged bundle kept so the
+// token can be re-exchanged without a fresh browser discharge when it
+// expires. For Snap Store, only Macaroon is populated.
 type StoreCredentialRecord struct {
-	Macaroon string
-	Source   string
-	Path     string
+	Macaroon         string
+	DischargedBundle string
+	Source           string
+	Path             string
 }

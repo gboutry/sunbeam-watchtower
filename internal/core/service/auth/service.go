@@ -564,6 +564,8 @@ func (s *Service) SaveCharmhubCredential(ctx context.Context, macaroon string) (
 		return nil, fmt.Errorf("charmhub credential store not configured")
 	}
 
+	// The caller passes the discharged bundle; we keep it alongside the
+	// exchanged token so expired-token refreshes can be silent.
 	stored := macaroon
 	if s.charmhubAuth != nil {
 		exchanged, err := s.charmhubAuth.ExchangeToken(ctx, macaroon)
@@ -573,7 +575,7 @@ func (s *Service) SaveCharmhubCredential(ctx context.Context, macaroon string) (
 		stored = exchanged
 	}
 
-	saved, err := s.charmhubStore.Save(ctx, stored)
+	saved, err := s.charmhubStore.Save(ctx, macaroon, stored)
 	if err != nil {
 		return nil, fmt.Errorf("saving charmhub credentials: %w", err)
 	}

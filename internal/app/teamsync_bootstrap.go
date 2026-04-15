@@ -92,18 +92,19 @@ func (a *App) TeamSyncService() (*teamsync.Service, error) {
 
 		teamProvider := &lpTeamProvider{client: lpClient, emailOverrides: emailOverrides}
 
-		// Load store credentials for collaborator managers. The snap store
-		// adapter ignores credentials because per-snap collaborator management
-		// is intentionally unsupported (see
-		// docs/agents/specs/snapstore-collaborator-api.md).
-		charmhubAuth := ""
-		if rec, err := a.CharmhubCredentialStore().Load(context.Background()); err == nil && rec != nil {
-			charmhubAuth = rec.Macaroon
-		}
+		// The snap store adapter ignores credentials because per-snap
+		// collaborator management is intentionally unsupported (see
+		// docs/agents/specs/snapstore-collaborator-api.md). The Charmhub
+		// provider re-reads the store on every request and can re-exchange
+		// the stored discharged bundle when the short-lived token expires.
+		charmhubProvider := charmhub.NewCredentialProvider(
+			a.CharmhubCredentialStore(),
+			charmhub.NewAuthenticator(a.Logger, a.upstreamHTTPClient("charmhub", 30*time.Second)),
+		)
 
 		stores := map[dto.ArtifactType]port.StoreCollaboratorManager{
 			dto.ArtifactSnap:  snapstore.NewCollaboratorManager(),
-			dto.ArtifactCharm: charmhub.NewCollaboratorManager(charmhubAuth),
+			dto.ArtifactCharm: charmhub.NewCollaboratorManager(charmhubProvider),
 		}
 
 		a.teamSyncService = teamsync.NewService(teamProvider, stores, a.Logger)
