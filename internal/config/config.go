@@ -664,6 +664,18 @@ func (c *Config) Validate() error {
 				}
 			}
 		}
+		if p.Team != nil {
+			seenTeamArtifacts := make(map[string]bool, len(p.Team.SkipArtifacts))
+			for _, name := range p.Team.SkipArtifacts {
+				if name == "" {
+					return fmt.Errorf("projects[%d] (%s): team.skip_artifacts cannot contain empty values", i, p.Name)
+				}
+				if seenTeamArtifacts[name] {
+					return fmt.Errorf("projects[%d] (%s): team.skip_artifacts contains duplicate %q", i, p.Name, name)
+				}
+				seenTeamArtifacts[name] = true
+			}
+		}
 
 		if p.DevelopmentFocus != "" && len(p.Series) > 0 {
 			found := false

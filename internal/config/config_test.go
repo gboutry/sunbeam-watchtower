@@ -800,6 +800,70 @@ func TestValidate_ReleaseSkipArtifactsRejectsEmptyAndDuplicateValues(t *testing.
 	}
 }
 
+func TestValidate_TeamSkipArtifactsRejectsEmptyAndDuplicateValues(t *testing.T) {
+	cfg := &Config{
+		Projects: []ProjectConfig{{
+			Name:         "sunbeam-charms",
+			Code:         CodeConfig{Forge: "gerrit", Host: "https://review.opendev.org", Project: "openstack/sunbeam-charms"},
+			ArtifactType: "charm",
+			Team: &ProjectTeamConfig{
+				SkipArtifacts: []string{"sunbeam-libs", ""},
+			},
+		}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject empty team.skip_artifacts values")
+	}
+
+	cfg.Projects[0].Team.SkipArtifacts = []string{"sunbeam-libs", "sunbeam-libs"}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject duplicate team.skip_artifacts values")
+	}
+}
+
+func TestLoad_ProjectTeamSkipArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+
+	yaml := `
+projects:
+  - name: sunbeam-charms
+    artifact_type: charm
+    code:
+      forge: gerrit
+      host: https://review.opendev.org
+      project: openstack/sunbeam-charms
+    team:
+      skip_artifacts:
+        - foo
+        - bar
+`
+	if err := os.WriteFile(cfgFile, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if len(cfg.Projects) != 1 {
+		t.Fatalf("len(Projects) = %d, want 1", len(cfg.Projects))
+	}
+	team := cfg.Projects[0].Team
+	if team == nil {
+		t.Fatal("Projects[0].Team = nil, want populated ProjectTeamConfig")
+	}
+	want := []string{"foo", "bar"}
+	if len(team.SkipArtifacts) != len(want) {
+		t.Fatalf("Team.SkipArtifacts = %v, want %v", team.SkipArtifacts, want)
+	}
+	for i, v := range want {
+		if team.SkipArtifacts[i] != v {
+			t.Errorf("Team.SkipArtifacts[%d] = %q, want %q", i, team.SkipArtifacts[i], v)
+		}
+	}
+}
+
 func TestValidate_OTelMetricsListenerRequiresAddressWhenEnabled(t *testing.T) {
 	cfg := &Config{OTel: OTelConfig{Metrics: OTelMetricsConfig{Self: OTelMetricsListenerConfig{Enabled: true}}}}
 	if err := cfg.Validate(); err == nil {
