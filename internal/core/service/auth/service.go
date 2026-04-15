@@ -69,9 +69,9 @@ type Service struct {
 	githubMutableErr error
 
 	snapStoreStore port.SnapStoreCredentialStore
-	snapStoreAuth  port.StoreAuthenticator
+	snapStoreAuth  port.SnapStoreAuthenticator
 	charmhubStore  port.CharmhubCredentialStore
-	charmhubAuth   port.StoreAuthenticator
+	charmhubAuth   port.CharmhubAuthenticator
 
 	logger    *slog.Logger
 	now       func() time.Time
@@ -128,9 +128,9 @@ func NewServiceWithStores(
 	githubAuth port.GitHubAuthenticator,
 	githubMutableErr error,
 	snapStoreStore port.SnapStoreCredentialStore,
-	snapStoreAuth port.StoreAuthenticator,
+	snapStoreAuth port.SnapStoreAuthenticator,
 	charmhubStore port.CharmhubCredentialStore,
-	charmhubAuth port.StoreAuthenticator,
+	charmhubAuth port.CharmhubAuthenticator,
 	logger *slog.Logger,
 ) *Service {
 	if logger == nil {
@@ -552,13 +552,28 @@ func (s *Service) BeginCharmhub(ctx context.Context) (*dto.CharmhubAuthBeginResu
 	}, nil
 }
 
-// SaveCharmhubCredential persists a discharged Charmhub credential.
+// SaveCharmhubCredential persists a Charmhub credential.
+//
+// The caller passes the client-side discharged macaroon bundle. Charmhub's
+// publisher API rejects the discharged root directly ("Invalid macaroon"), so
+// we exchange it server-side for the short-lived publisher token and persist
+// that instead — the stored macaroon is what every downstream /v1/charm/...
+// caller sends as `Authorization: Macaroon <token>`.
 func (s *Service) SaveCharmhubCredential(ctx context.Context, macaroon string) (*dto.CharmhubAuthSaveResult, error) {
 	if s.charmhubStore == nil {
 		return nil, fmt.Errorf("charmhub credential store not configured")
 	}
 
-	saved, err := s.charmhubStore.Save(ctx, macaroon)
+	stored := macaroon
+	if s.charmhubAuth != nil {
+		exchanged, err := s.charmhubAuth.ExchangeToken(ctx, macaroon)
+		if err != nil {
+			return nil, fmt.Errorf("exchanging charmhub macaroon: %w", err)
+		}
+		stored = exchanged
+	}
+
+	saved, err := s.charmhubStore.Save(ctx, stored)
 	if err != nil {
 		return nil, fmt.Errorf("saving charmhub credentials: %w", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/go-macaroon-bakery/macaroon-bakery/v3/bakery"
 	"github.com/go-macaroon-bakery/macaroon-bakery/v3/httpbakery"
@@ -70,6 +71,46 @@ func SerializeMacaroonSlice(ms macaroon.Slice) (string, error) {
 		result += base64.RawURLEncoding.EncodeToString(raw)
 	}
 	return result, nil
+}
+
+// DecodeMacaroonSlice reverses SerializeMacaroonSlice: it parses a
+// space-separated string of base64-encoded binary macaroons back into a
+// macaroon.Slice. Both raw-URL and standard base64 variants are accepted
+// per-element to tolerate legacy encodings.
+func DecodeMacaroonSlice(s string) (macaroon.Slice, error) {
+	if s == "" {
+		return nil, fmt.Errorf("empty macaroon bundle")
+	}
+	parts := strings.Fields(s)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("empty macaroon bundle")
+	}
+	out := make(macaroon.Slice, 0, len(parts))
+	encodings := []*base64.Encoding{
+		base64.RawURLEncoding,
+		base64.URLEncoding,
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+	}
+	for i, p := range parts {
+		var decoded []byte
+		var err error
+		for _, enc := range encodings {
+			decoded, err = enc.DecodeString(p)
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("decoding macaroon %d: %w", i, err)
+		}
+		var m macaroon.Macaroon
+		if err := m.UnmarshalBinary(decoded); err != nil {
+			return nil, fmt.Errorf("unmarshaling macaroon %d: %w", i, err)
+		}
+		out = append(out, &m)
+	}
+	return out, nil
 }
 
 // DecodeMacaroonAny tries multiple deserialization strategies for a macaroon.

@@ -80,5 +80,14 @@ type StoreAuthenticator interface {
 // SnapStoreAuthenticator is an alias for StoreAuthenticator used for Snap Store auth.
 type SnapStoreAuthenticator = StoreAuthenticator
 
-// CharmhubAuthenticator is an alias for StoreAuthenticator used for Charmhub auth.
-type CharmhubAuthenticator = StoreAuthenticator
+// CharmhubAuthenticator requests root macaroons and exchanges discharged
+// macaroon bundles for short-lived Charmhub publisher tokens.
+//
+// Charmhub's publisher API has a two-step auth: the root macaroon returned by
+// BeginAuth must be discharged client-side via httpbakery, then exchanged via
+// ExchangeToken for the macaroon that the /v1/charm/... endpoints accept on
+// `Authorization: Macaroon <token>`.
+type CharmhubAuthenticator interface {
+	StoreAuthenticator
+	ExchangeToken(ctx context.Context, dischargedBundle string) (string, error)
+}

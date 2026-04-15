@@ -865,8 +865,12 @@ func (s *fakeStoreCredentialStore) Clear(context.Context) error {
 }
 
 type fakeStoreAuthenticator struct {
-	flow     *sa.PendingAuthFlow
-	beginErr error
+	flow            *sa.PendingAuthFlow
+	beginErr        error
+	exchangeToken   string
+	exchangeErr     error
+	exchangeCalls   int
+	lastExchangeArg string
 }
 
 func (a *fakeStoreAuthenticator) BeginAuth(context.Context) (*sa.PendingAuthFlow, error) {
@@ -874,6 +878,21 @@ func (a *fakeStoreAuthenticator) BeginAuth(context.Context) (*sa.PendingAuthFlow
 		return nil, a.beginErr
 	}
 	return a.flow, nil
+}
+
+// ExchangeToken satisfies port.CharmhubAuthenticator. It is harmless for the
+// snap-store code path because snap wires this type through the bare
+// StoreAuthenticator alias.
+func (a *fakeStoreAuthenticator) ExchangeToken(_ context.Context, bundle string) (string, error) {
+	a.exchangeCalls++
+	a.lastExchangeArg = bundle
+	if a.exchangeErr != nil {
+		return "", a.exchangeErr
+	}
+	if a.exchangeToken == "" {
+		return bundle, nil
+	}
+	return a.exchangeToken, nil
 }
 
 func newServiceWithStores(snapStore, charmhubStore *fakeStoreCredentialStore) *Service {
@@ -1079,11 +1098,13 @@ func TestBeginCharmhubReturnsRootMacaroon(t *testing.T) {
 	}
 }
 
-func TestSaveCharmhubCredentialSavesCredentials(t *testing.T) {
+func TestSaveCharmhubCredentialExchangesAndSavesToken(t *testing.T) {
 	store := &fakeStoreCredentialStore{}
-	svc := newServiceWithStoreAuth(nil, nil, store, &fakeStoreAuthenticator{
-		flow: &sa.PendingAuthFlow{RootMacaroon: "root-mac"},
-	})
+	auth := &fakeStoreAuthenticator{
+		flow:          &sa.PendingAuthFlow{RootMacaroon: "root-mac"},
+		exchangeToken: "exchanged-publisher-token",
+	}
+	svc := newServiceWithStoreAuth(nil, nil, store, auth)
 
 	result, err := svc.SaveCharmhubCredential(context.Background(), "bound-credential")
 	if err != nil {
@@ -1092,8 +1113,31 @@ func TestSaveCharmhubCredentialSavesCredentials(t *testing.T) {
 	if !result.Charmhub.Authenticated {
 		t.Fatal("expected authenticated status after save")
 	}
-	if store.record == nil || store.record.Macaroon != "bound-credential" {
-		t.Fatalf("expected credential to be saved, got %+v", store.record)
+	if auth.exchangeCalls != 1 {
+		t.Fatalf("expected 1 exchange call, got %d", auth.exchangeCalls)
+	}
+	if auth.lastExchangeArg != "bound-credential" {
+		t.Fatalf("ExchangeToken called with %q, want bound-credential", auth.lastExchangeArg)
+	}
+	if store.record == nil || store.record.Macaroon != "exchanged-publisher-token" {
+		t.Fatalf("expected exchanged token to be saved, got %+v", store.record)
+	}
+}
+
+func TestSaveCharmhubCredentialPropagatesExchangeError(t *testing.T) {
+	store := &fakeStoreCredentialStore{}
+	auth := &fakeStoreAuthenticator{
+		flow:        &sa.PendingAuthFlow{RootMacaroon: "root-mac"},
+		exchangeErr: errors.New("boom"),
+	}
+	svc := newServiceWithStoreAuth(nil, nil, store, auth)
+
+	_, err := svc.SaveCharmhubCredential(context.Background(), "bound-credential")
+	if err == nil {
+		t.Fatal("expected error when exchange fails")
+	}
+	if store.record != nil {
+		t.Fatalf("expected store to be untouched on exchange failure, got %+v", store.record)
 	}
 }
 

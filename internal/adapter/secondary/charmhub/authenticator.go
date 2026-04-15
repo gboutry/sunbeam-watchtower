@@ -5,6 +5,7 @@ package charmhub
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,8 +18,9 @@ import (
 )
 
 const (
-	defaultTokensEndpoint = "https://api.charmhub.io/v1/tokens"
-	defaultFlowTTL        = 10 * time.Minute
+	defaultTokensEndpoint   = "https://api.charmhub.io/v1/tokens"
+	defaultExchangeEndpoint = "https://api.charmhub.io/v1/tokens/exchange"
+	defaultFlowTTL          = 10 * time.Minute
 )
 
 // tokensRequest is the JSON body for the Charmhub tokens endpoint.
@@ -34,9 +36,10 @@ type tokensResponse struct {
 
 // Authenticator performs Charmhub authentication via httpbakery macaroon discharge.
 type Authenticator struct {
-	tokensEndpoint string
-	logger         *slog.Logger
-	httpClient     *http.Client
+	tokensEndpoint   string
+	exchangeEndpoint string
+	logger           *slog.Logger
+	httpClient       *http.Client
 }
 
 // NewAuthenticator creates a Charmhub authenticator adapter.
@@ -48,9 +51,10 @@ func NewAuthenticator(logger *slog.Logger, httpClient *http.Client) *Authenticat
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	return &Authenticator{
-		tokensEndpoint: defaultTokensEndpoint,
-		logger:         logger,
-		httpClient:     httpClient,
+		tokensEndpoint:   defaultTokensEndpoint,
+		exchangeEndpoint: defaultExchangeEndpoint,
+		logger:           logger,
+		httpClient:       httpClient,
 	}
 }
 
@@ -113,4 +117,58 @@ func (a *Authenticator) requestRootMacaroon(ctx context.Context) (string, error)
 	}
 
 	return tokensResp.Macaroon, nil
+}
+
+// ExchangeToken exchanges a client-discharged macaroon bundle for the
+// short-lived token that Charmhub's publisher endpoints actually accept on
+// Authorization: Macaroon <token>.
+//
+// dischargedBundle is the space-separated base64 macaroon slice produced by
+// storeauth/v1.SerializeMacaroonSlice. Charmhub expects the slice re-encoded
+// as a base64 JSON array in the `Macaroons` request header (craft-store's
+// CandidClient.exchange_macaroons convention).
+func (a *Authenticator) ExchangeToken(ctx context.Context, dischargedBundle string) (string, error) {
+	if strings.TrimSpace(dischargedBundle) == "" {
+		return "", fmt.Errorf("empty discharged macaroon bundle")
+	}
+
+	slice, err := sa.DecodeMacaroonSlice(dischargedBundle)
+	if err != nil {
+		return "", fmt.Errorf("decoding discharged bundle: %w", err)
+	}
+
+	sliceJSON, err := json.Marshal(slice)
+	if err != nil {
+		return "", fmt.Errorf("marshaling discharged macaroons: %w", err)
+	}
+	header := base64.StdEncoding.EncodeToString(sliceJSON)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.exchangeEndpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("creating exchange request: %w", err)
+	}
+	req.Header.Set("Macaroons", header)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	a.logger.Info("exchanging discharged macaroon for charmhub token")
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("executing exchange request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("charmhub exchange failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	var out tokensResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", fmt.Errorf("decoding exchange response: %w", err)
+	}
+	if out.Macaroon == "" {
+		return "", fmt.Errorf("charmhub returned empty exchanged macaroon")
+	}
+	return out.Macaroon, nil
 }
