@@ -199,12 +199,15 @@ projects:
       - "1.19"
     development_focus: "1.19"
 
-  - name: microovn-operator
+  - name: rabbitmq-k8s
     artifact_type: charm
     code:
       forge: github
       owner: canonical
-      project: microovn-operator
+      project: charm-rabbitmq-k8s
+    series:
+      - "3.12"
+    development_focus: "3.12"
 
 packages:
   upstream:
