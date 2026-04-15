@@ -118,6 +118,7 @@ These are the main known gaps that still matter:
 ### Near term
 
 - if telemetry snapshot methods grow further, extract pure reducer helpers over already-fetched DTO slices (keep orchestration in `internal/app`)
+- consolidate artifact discovery: a canonical `internal/core/service/artifactdiscovery` now exists (charm/snap/rock, HEAD-tree based via a `TreeReader` seam). Migrate callers (release bootstrap, team sync, build strategy) off their parallel ad-hoc discoverers in follow-up tasks, then remove the legacy helpers in `internal/app/release_helpers.go` and `internal/core/service/team_discovery.go`.
 
 ### Frontend/runtime
 
