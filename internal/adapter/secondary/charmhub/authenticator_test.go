@@ -84,9 +84,13 @@ func TestAuthenticatorExchangeTokenSendsMacaroonsHeader(t *testing.T) {
 
 	var gotHeader string
 	var gotMethod string
+	var gotBody []byte
+	var gotContentType string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotHeader = r.Header.Get("Macaroons")
+		gotContentType = r.Header.Get("Content-Type")
+		gotBody, _ = io.ReadAll(r.Body)
 		_ = json.NewEncoder(w).Encode(tokensResponse{Macaroon: "exchanged-token"})
 	}))
 	defer srv.Close()
@@ -106,6 +110,14 @@ func TestAuthenticatorExchangeTokenSendsMacaroonsHeader(t *testing.T) {
 	}
 	if gotHeader == "" {
 		t.Fatal("expected Macaroons header to be set")
+	}
+	if gotContentType != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", gotContentType)
+	}
+	// Charmhub's Python server rejects an empty body with "Expecting value:
+	// line 1 column 1 (char 0)"; send an empty JSON object instead.
+	if string(gotBody) != "{}" {
+		t.Fatalf("body = %q, want %q", gotBody, "{}")
 	}
 
 	raw, err := base64.StdEncoding.DecodeString(gotHeader)

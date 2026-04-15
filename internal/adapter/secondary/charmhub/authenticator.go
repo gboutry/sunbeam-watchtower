@@ -143,7 +143,7 @@ func (a *Authenticator) ExchangeToken(ctx context.Context, dischargedBundle stri
 	}
 	header := base64.StdEncoding.EncodeToString(sliceJSON)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.exchangeEndpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.exchangeEndpoint, strings.NewReader("{}"))
 	if err != nil {
 		return "", fmt.Errorf("creating exchange request: %w", err)
 	}
