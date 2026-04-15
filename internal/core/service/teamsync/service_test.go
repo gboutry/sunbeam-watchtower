@@ -330,6 +330,102 @@ func TestSync_StoreAPIErrorNonFatal(t *testing.T) {
 	}
 }
 
+// TestSync_UnsupportedMarksArtifactAndDoesNotFailOthers: a store that returns
+// ErrCollaboratorsUnsupported should surface as a non-fatal per-artifact
+// status with the dashboard URL attached, and sibling artifacts on other
+// store types should still sync normally.
+func TestSync_UnsupportedMarksArtifactAndDoesNotFailOthers(t *testing.T) {
+	team := &fakeTeamProvider{
+		members: []dto.TeamMember{
+			{Username: "alice", Email: "alice@example.com"},
+		},
+	}
+	snapStore := &fakeStoreManager{
+		listErr: fmt.Errorf("wrapping: %w", port.ErrCollaboratorsUnsupported),
+	}
+	charmStore := &fakeStoreManager{
+		collaborators: map[string][]dto.StoreCollaborator{
+			"my-charm": {
+				{Username: "alice", Email: "alice@example.com", Status: "accepted"},
+			},
+		},
+	}
+	stores := map[dto.ArtifactType]port.StoreCollaboratorManager{
+		dto.ArtifactSnap:  snapStore,
+		dto.ArtifactCharm: charmStore,
+	}
+	targets := []dto.SyncTarget{
+		{Project: "snap-proj", ArtifactType: dto.ArtifactSnap, StoreName: "my-snap"},
+		{Project: "charm-proj", ArtifactType: dto.ArtifactCharm, StoreName: "my-charm"},
+	}
+
+	svc := NewService(team, stores, testLogger())
+	result, err := svc.Sync(context.Background(), "myteam", targets, false)
+	if err != nil {
+		t.Fatalf("Sync() returned fatal error: %v", err)
+	}
+
+	if len(result.Artifacts) != 2 {
+		t.Fatalf("expected 2 artifact results, got %d", len(result.Artifacts))
+	}
+
+	snap := result.Artifacts[0]
+	if !snap.Unsupported {
+		t.Errorf("snap artifact Unsupported = false, want true")
+	}
+	if snap.Error != "" {
+		t.Errorf("snap artifact Error = %q, want empty (unsupported should not set Error)", snap.Error)
+	}
+	wantURL := "https://dashboard.snapcraft.io/snaps/my-snap/collaboration/"
+	if snap.UnsupportedURL != wantURL {
+		t.Errorf("snap artifact UnsupportedURL = %q, want %q", snap.UnsupportedURL, wantURL)
+	}
+	if len(snap.Invited) != 0 {
+		t.Errorf("snap artifact Invited = %v, want []", snap.Invited)
+	}
+	// Invite must not be attempted when listing reports unsupported.
+	if len(snapStore.invited) != 0 {
+		t.Errorf("InviteCollaborator should not be called on unsupported store, got %v", snapStore.invited)
+	}
+
+	charm := result.Artifacts[1]
+	if charm.Unsupported {
+		t.Errorf("charm artifact Unsupported = true, want false")
+	}
+	if !charm.AlreadySync {
+		t.Errorf("charm artifact AlreadySync = false, want true")
+	}
+}
+
+// TestSync_UnsupportedURLEmptyForNonSnapArtifact: non-snap artifacts that
+// report unsupported get Unsupported=true but no dashboard URL (we only know
+// one today).
+func TestSync_UnsupportedURLEmptyForNonSnapArtifact(t *testing.T) {
+	team := &fakeTeamProvider{
+		members: []dto.TeamMember{{Username: "alice", Email: "alice@example.com"}},
+	}
+	store := &fakeStoreManager{listErr: port.ErrCollaboratorsUnsupported}
+	stores := map[dto.ArtifactType]port.StoreCollaboratorManager{
+		dto.ArtifactCharm: store,
+	}
+	targets := []dto.SyncTarget{
+		{Project: "charm-proj", ArtifactType: dto.ArtifactCharm, StoreName: "my-charm"},
+	}
+
+	svc := NewService(team, stores, testLogger())
+	result, err := svc.Sync(context.Background(), "myteam", targets, false)
+	if err != nil {
+		t.Fatalf("Sync() returned fatal error: %v", err)
+	}
+	art := result.Artifacts[0]
+	if !art.Unsupported {
+		t.Errorf("Unsupported = false, want true")
+	}
+	if art.UnsupportedURL != "" {
+		t.Errorf("UnsupportedURL = %q, want empty string for non-snap artifact", art.UnsupportedURL)
+	}
+}
+
 // contains is a helper to check if a string contains a substring.
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||

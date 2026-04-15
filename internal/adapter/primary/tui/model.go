@@ -4437,6 +4437,14 @@ func summarizeTeamSyncResult(result *frontend.TeamSyncResponse) []string {
 	}
 	lines := []string{fmt.Sprintf("Artifacts: %d", len(result.Artifacts))}
 	for _, artifact := range result.Artifacts[:minInt(3, len(result.Artifacts))] {
+		if artifact.Unsupported {
+			dest := artifact.UnsupportedURL
+			if dest == "" {
+				dest = "store web UI"
+			}
+			lines = append(lines, fmt.Sprintf("%s  %s  unsupported: manage at %s", artifact.Project, artifact.ArtifactType, dest))
+			continue
+		}
 		lines = append(lines, fmt.Sprintf("%s  %s  invited=%d  extra=%d", artifact.Project, artifact.ArtifactType, len(artifact.Invited), len(artifact.Extra)))
 	}
 	for _, warning := range result.Warnings {

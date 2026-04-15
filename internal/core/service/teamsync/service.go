@@ -5,6 +5,7 @@ package teamsync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -72,6 +73,11 @@ func (s *Service) syncTarget(ctx context.Context, target dto.SyncTarget, teamEma
 
 	collabs, err := store.ListCollaborators(ctx, target.StoreName)
 	if err != nil {
+		if errors.Is(err, port.ErrCollaboratorsUnsupported) {
+			art.Unsupported = true
+			art.UnsupportedURL = unsupportedDashboardURL(target)
+			return art
+		}
 		art.Error = fmt.Sprintf("listing collaborators for %s: %v", target.StoreName, err)
 		return art
 	}
@@ -116,6 +122,17 @@ func (s *Service) syncTarget(ctx context.Context, target dto.SyncTarget, teamEma
 	}
 
 	return art
+}
+
+// unsupportedDashboardURL returns the store-side web UI URL where operators
+// can manage collaborators by hand for artifacts whose stores have no public
+// collaborator API. Only populated for snaps today; other types fall back to
+// an empty string and rely on ArtifactSyncResult.Unsupported alone.
+func unsupportedDashboardURL(target dto.SyncTarget) string {
+	if target.ArtifactType == dto.ArtifactSnap {
+		return fmt.Sprintf("https://dashboard.snapcraft.io/snaps/%s/collaboration/", target.StoreName)
+	}
+	return ""
 }
 
 func toSet(ss []string) map[string]bool {

@@ -670,6 +670,14 @@ func renderTeamSyncTable(w io.Writer, styler *outputStyler, result *dto.TeamSync
 			fmt.Fprintf(w, "%s %s: %s\n", styler.Action("error:"), label, a.Error)
 			continue
 		}
+		if a.Unsupported {
+			dest := a.UnsupportedURL
+			if dest == "" {
+				dest = "the store's web UI"
+			}
+			fmt.Fprintf(w, "%s %s: manage collaborators at %s\n", styler.Action("unsupported:"), label, dest)
+			continue
+		}
 		if a.AlreadySync {
 			fmt.Fprintf(w, "%s %s\n", styler.Action("in-sync:"), label)
 			continue

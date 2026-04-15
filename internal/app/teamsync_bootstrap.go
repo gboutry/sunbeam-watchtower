@@ -92,18 +92,17 @@ func (a *App) TeamSyncService() (*teamsync.Service, error) {
 
 		teamProvider := &lpTeamProvider{client: lpClient, emailOverrides: emailOverrides}
 
-		// Load store credentials for collaborator managers.
-		snapStoreAuth := ""
-		if rec, err := a.SnapStoreCredentialStore().Load(context.Background()); err == nil && rec != nil {
-			snapStoreAuth = rec.Macaroon
-		}
+		// Load store credentials for collaborator managers. The snap store
+		// adapter ignores credentials because per-snap collaborator management
+		// is intentionally unsupported (see
+		// docs/agents/specs/snapstore-collaborator-api.md).
 		charmhubAuth := ""
 		if rec, err := a.CharmhubCredentialStore().Load(context.Background()); err == nil && rec != nil {
 			charmhubAuth = rec.Macaroon
 		}
 
 		stores := map[dto.ArtifactType]port.StoreCollaboratorManager{
-			dto.ArtifactSnap:  snapstore.NewCollaboratorManager(snapStoreAuth),
+			dto.ArtifactSnap:  snapstore.NewCollaboratorManager(),
 			dto.ArtifactCharm: charmhub.NewCollaboratorManager(charmhubAuth),
 		}
 

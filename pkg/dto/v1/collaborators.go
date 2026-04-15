@@ -46,4 +46,10 @@ type ArtifactSyncResult struct {
 	Pending      []string     `json:"pending,omitempty" yaml:"pending,omitempty"`
 	AlreadySync  bool         `json:"already_sync" yaml:"already_sync"`
 	Error        string       `json:"error,omitempty" yaml:"error,omitempty"`
+	// Unsupported is true when the backing store has no programmatic
+	// collaborator API, so the sync deliberately skipped this artifact.
+	Unsupported bool `json:"unsupported,omitempty" yaml:"unsupported,omitempty"`
+	// UnsupportedURL points operators at the store's web UI where they can
+	// manage collaborators by hand. Only set when Unsupported is true.
+	UnsupportedURL string `json:"unsupported_url,omitempty" yaml:"unsupported_url,omitempty"`
 }
