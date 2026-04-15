@@ -6,9 +6,13 @@ package charmhub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 )
 
 func TestCollaboratorManager_ListCollaborators(t *testing.T) {
@@ -114,5 +118,112 @@ func TestCollaboratorManager_ListCollaborators_Error(t *testing.T) {
 	_, err := mgr.ListCollaborators(context.Background(), "my-charm")
 	if err == nil {
 		t.Fatal("ListCollaborators() expected error for HTTP 401, got nil")
+	}
+}
+
+// TestCollaboratorManager_ListCollaborators_DecodesErrorList: a 400 with
+// the documented error-list body must surface both the status and the
+// decoded code/message in the wrapped error string.
+func TestCollaboratorManager_ListCollaborators_DecodesErrorList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error-list":[{"code":"macaroon-needs-refresh","message":"macaroon has expired"}]}`))
+	}))
+	defer server.Close()
+
+	mgr := NewCollaboratorManager("expired-auth", server.Client())
+	mgr.baseURL = server.URL
+
+	_, err := mgr.ListCollaborators(context.Background(), "my-charm")
+	if err == nil {
+		t.Fatal("ListCollaborators() expected error, got nil")
+	}
+	msg := err.Error()
+	for _, want := range []string{"HTTP 400", "macaroon-needs-refresh", "macaroon has expired"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q missing %q", msg, want)
+		}
+	}
+	// An auth-error code maps to ErrUnauthorized even on a 400 status.
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Errorf("errors.Is(err, ErrUnauthorized) = false, want true (err=%v)", err)
+	}
+	if !errors.Is(err, port.ErrStoreAuthExpired) {
+		t.Errorf("errors.Is(err, port.ErrStoreAuthExpired) = false, want true")
+	}
+}
+
+// TestCollaboratorManager_ListCollaborators_401MapsToUnauthorized: plain
+// 401 without a JSON body must still map to ErrUnauthorized.
+func TestCollaboratorManager_ListCollaborators_401MapsToUnauthorized(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	mgr := NewCollaboratorManager("bad-auth", server.Client())
+	mgr.baseURL = server.URL
+
+	_, err := mgr.ListCollaborators(context.Background(), "my-charm")
+	if err == nil {
+		t.Fatal("ListCollaborators() expected error")
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Errorf("errors.Is(err, ErrUnauthorized) = false for HTTP 401 (err=%v)", err)
+	}
+}
+
+// TestCollaboratorManager_ListCollaborators_MalformedBodyFallsBack: when
+// the response body isn't either documented JSON shape, the raw text must
+// be included verbatim in the error.
+func TestCollaboratorManager_ListCollaborators_MalformedBodyFallsBack(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("upstream exploded: backend timeout"))
+	}))
+	defer server.Close()
+
+	mgr := NewCollaboratorManager("ok-auth", server.Client())
+	mgr.baseURL = server.URL
+
+	_, err := mgr.ListCollaborators(context.Background(), "my-charm")
+	if err == nil {
+		t.Fatal("ListCollaborators() expected error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "HTTP 500") || !strings.Contains(msg, "upstream exploded") {
+		t.Errorf("error %q should contain status + raw body fallback", msg)
+	}
+	if errors.Is(err, ErrUnauthorized) {
+		t.Errorf("plain 500 must not map to ErrUnauthorized (err=%v)", err)
+	}
+}
+
+// TestCollaboratorManager_InviteCollaborator_DecodesSingleErrorShape:
+// exercise the `{"error":{...}}` shape on the invite path.
+func TestCollaboratorManager_InviteCollaborator_DecodesSingleErrorShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"code":"permission-required","message":"missing package-manage-collaborators"}}`))
+	}))
+	defer server.Close()
+
+	mgr := NewCollaboratorManager("ok-auth", server.Client())
+	mgr.baseURL = server.URL
+
+	err := mgr.InviteCollaborator(context.Background(), "my-charm", "x@example.com")
+	if err == nil {
+		t.Fatal("InviteCollaborator() expected error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"HTTP 403", "permission-required", "missing package-manage-collaborators"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q missing %q", msg, want)
+		}
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Errorf("permission-required code should map to ErrUnauthorized (err=%v)", err)
 	}
 }

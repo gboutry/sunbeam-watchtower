@@ -52,4 +52,11 @@ type ArtifactSyncResult struct {
 	// UnsupportedURL points operators at the store's web UI where they can
 	// manage collaborators by hand. Only set when Unsupported is true.
 	UnsupportedURL string `json:"unsupported_url,omitempty" yaml:"unsupported_url,omitempty"`
+	// AuthExpired is true when the store rejected the request because of
+	// missing or expired credentials, so the sync was skipped pending a
+	// re-login rather than reporting a generic error.
+	AuthExpired bool `json:"auth_expired,omitempty" yaml:"auth_expired,omitempty"`
+	// AuthHint carries the operator-facing command to re-authenticate with
+	// the store. Only set when AuthExpired is true.
+	AuthHint string `json:"auth_hint,omitempty" yaml:"auth_hint,omitempty"`
 }

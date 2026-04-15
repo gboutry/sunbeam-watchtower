@@ -60,7 +60,7 @@ func (m *CollaboratorManager) ListCollaborators(ctx context.Context, storeName s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("listing collaborators: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("listing collaborators: %w", decodeHTTPError(resp))
 	}
 
 	var payload charmCollaboratorsResponse
@@ -108,7 +108,7 @@ func (m *CollaboratorManager) InviteCollaborator(ctx context.Context, storeName 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("inviting collaborator: HTTP %d", resp.StatusCode)
+		return fmt.Errorf("inviting collaborator: %w", decodeHTTPError(resp))
 	}
 	return nil
 }

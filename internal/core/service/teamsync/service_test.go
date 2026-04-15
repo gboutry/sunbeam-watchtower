@@ -426,6 +426,68 @@ func TestSync_UnsupportedURLEmptyForNonSnapArtifact(t *testing.T) {
 	}
 }
 
+// TestSync_AuthExpiredMarksArtifactWithHint: when a store reports
+// ErrStoreAuthExpired (e.g. Charmhub returning an expired macaroon), the
+// artifact must be flagged with AuthExpired + a login hint without
+// aborting the sync, and sibling artifacts on other stores must still run.
+func TestSync_AuthExpiredMarksArtifactWithHint(t *testing.T) {
+	team := &fakeTeamProvider{
+		members: []dto.TeamMember{
+			{Username: "alice", Email: "alice@example.com"},
+		},
+	}
+	charmStore := &fakeStoreManager{
+		listErr: fmt.Errorf("listing collaborators: HTTP 400: macaroon-needs-refresh: macaroon has expired: %w", port.ErrStoreAuthExpired),
+	}
+	snapStore := &fakeStoreManager{
+		collaborators: map[string][]dto.StoreCollaborator{
+			"my-snap": {
+				{Username: "alice", Email: "alice@example.com", Status: "accepted"},
+			},
+		},
+	}
+	stores := map[dto.ArtifactType]port.StoreCollaboratorManager{
+		dto.ArtifactCharm: charmStore,
+		dto.ArtifactSnap:  snapStore,
+	}
+	targets := []dto.SyncTarget{
+		{Project: "charm-proj", ArtifactType: dto.ArtifactCharm, StoreName: "rabbitmq-k8s"},
+		{Project: "snap-proj", ArtifactType: dto.ArtifactSnap, StoreName: "my-snap"},
+	}
+
+	svc := NewService(team, stores, testLogger())
+	result, err := svc.Sync(context.Background(), "myteam", targets, false)
+	if err != nil {
+		t.Fatalf("Sync() returned fatal error: %v", err)
+	}
+
+	if len(result.Artifacts) != 2 {
+		t.Fatalf("expected 2 artifact results, got %d", len(result.Artifacts))
+	}
+
+	charm := result.Artifacts[0]
+	if !charm.AuthExpired {
+		t.Errorf("charm AuthExpired = false, want true")
+	}
+	if charm.Error != "" {
+		t.Errorf("charm Error = %q, want empty (auth-expired should not set Error)", charm.Error)
+	}
+	if !contains(charm.AuthHint, "watchtower auth charmhub login") {
+		t.Errorf("charm AuthHint = %q, want mention of \"watchtower auth charmhub login\"", charm.AuthHint)
+	}
+	if len(charmStore.invited) != 0 {
+		t.Errorf("InviteCollaborator should not be called when auth expired, got %v", charmStore.invited)
+	}
+
+	snap := result.Artifacts[1]
+	if snap.AuthExpired {
+		t.Errorf("snap AuthExpired = true, want false")
+	}
+	if !snap.AlreadySync {
+		t.Errorf("snap AlreadySync = false, want true (sibling must still sync)")
+	}
+}
+
 // contains is a helper to check if a string contains a substring.
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||

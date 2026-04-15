@@ -16,6 +16,12 @@ import (
 // safe programmatic path and operators must use the store's web UI instead.
 var ErrCollaboratorsUnsupported = errors.New("store collaborator management is unsupported")
 
+// ErrStoreAuthExpired signals that a store adapter rejected the request
+// because its credentials were missing, expired, or otherwise unaccepted.
+// Service and CLI layers use this sentinel to surface an actionable
+// re-authentication hint instead of the raw HTTP status.
+var ErrStoreAuthExpired = errors.New("store authentication expired or invalid")
+
 // StoreCollaboratorManager manages collaborators on a backing store artifact.
 type StoreCollaboratorManager interface {
 	ListCollaborators(ctx context.Context, storeName string) ([]dto.StoreCollaborator, error)

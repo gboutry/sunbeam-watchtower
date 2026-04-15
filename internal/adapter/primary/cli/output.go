@@ -678,6 +678,14 @@ func renderTeamSyncTable(w io.Writer, styler *outputStyler, result *dto.TeamSync
 			fmt.Fprintf(w, "%s %s: manage collaborators at %s\n", styler.Action("unsupported:"), label, dest)
 			continue
 		}
+		if a.AuthExpired {
+			hint := a.AuthHint
+			if hint == "" {
+				hint = "re-authenticate with the store"
+			}
+			fmt.Fprintf(w, "%s %s: authentication expired — %s\n", styler.Action("auth:"), label, hint)
+			continue
+		}
 		if a.AlreadySync {
 			fmt.Fprintf(w, "%s %s\n", styler.Action("in-sync:"), label)
 			continue

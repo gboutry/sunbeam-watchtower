@@ -78,6 +78,11 @@ func (s *Service) syncTarget(ctx context.Context, target dto.SyncTarget, teamEma
 			art.UnsupportedURL = unsupportedDashboardURL(target)
 			return art
 		}
+		if errors.Is(err, port.ErrStoreAuthExpired) {
+			art.AuthExpired = true
+			art.AuthHint = reauthHint(target)
+			return art
+		}
 		art.Error = fmt.Sprintf("listing collaborators for %s: %v", target.StoreName, err)
 		return art
 	}
@@ -122,6 +127,20 @@ func (s *Service) syncTarget(ctx context.Context, target dto.SyncTarget, teamEma
 	}
 
 	return art
+}
+
+// reauthHint returns the operator-facing command to re-authenticate with
+// the artifact's backing store. Returns an empty string when the artifact
+// type has no known login command.
+func reauthHint(target dto.SyncTarget) string {
+	switch target.ArtifactType {
+	case dto.ArtifactCharm:
+		return `run "watchtower auth charmhub login"`
+	case dto.ArtifactSnap:
+		return `run "watchtower auth snapstore login"`
+	default:
+		return ""
+	}
 }
 
 // unsupportedDashboardURL returns the store-side web UI URL where operators
