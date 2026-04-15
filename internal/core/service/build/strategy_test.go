@@ -9,6 +9,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/artifactdiscovery"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
@@ -177,16 +178,16 @@ func TestCharmStrategy_ParsePlatforms_Empty(t *testing.T) {
 
 func TestCharmStrategy_DiscoverRecipes_NestedLayout(t *testing.T) {
 	repo := t.TempDir()
-	layout := []string{
-		"charms/foo/charmcraft.yaml",
-		"charms/storage/bar/charmcraft.yaml",
+	layout := map[string]string{
+		"charms/foo/charmcraft.yaml":         "name: foo\n",
+		"charms/storage/bar/charmcraft.yaml": "name: bar\n",
 	}
-	for _, rel := range layout {
+	for rel, body := range layout {
 		full := filepath.Join(repo, rel)
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", full, err)
 		}
-		if err := os.WriteFile(full, []byte("name: ignored\n"), 0o644); err != nil {
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
 			t.Fatalf("write %s: %v", full, err)
 		}
 	}
@@ -213,6 +214,79 @@ func TestCharmStrategy_DiscoverRecipes_NestedLayout(t *testing.T) {
 		if r.RelPath != wantRel {
 			t.Errorf("recipe %q: got RelPath %q, want %q", r.Name, r.RelPath, wantRel)
 		}
+	}
+}
+
+// TestCharmStrategy_DiscoverRecipes_ManifestNameWins verifies the YAML-declared
+// name wins over the directory base name.
+func TestCharmStrategy_DiscoverRecipes_ManifestNameWins(t *testing.T) {
+	repo := t.TempDir()
+	full := filepath.Join(repo, "charms", "dirname", "charmcraft.yaml")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(full, []byte("name: manifest-wins\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := (&CharmStrategy{}).DiscoverRecipes(repo)
+	if err != nil {
+		t.Fatalf("DiscoverRecipes: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "manifest-wins" {
+		t.Fatalf("got %+v, want single recipe named manifest-wins", got)
+	}
+	if got[0].RelPath != "charms/dirname" {
+		t.Fatalf("RelPath = %q, want charms/dirname", got[0].RelPath)
+	}
+}
+
+// TestCharmStrategy_DiscoverRecipes_AgreesWithSharedParser verifies the
+// build walker and the shared artifactdiscovery.ParseManifestName agree on
+// the extracted name — the refactor's core invariant.
+func TestCharmStrategy_DiscoverRecipes_AgreesWithSharedParser(t *testing.T) {
+	manifest := []byte("name: shared-parser-name\nsummary: test\n")
+	repo := t.TempDir()
+	full := filepath.Join(repo, "charms", "somewhere", "charmcraft.yaml")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(full, manifest, 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	walkResult, err := (&CharmStrategy{}).DiscoverRecipes(repo)
+	if err != nil {
+		t.Fatalf("DiscoverRecipes: %v", err)
+	}
+	if len(walkResult) != 1 {
+		t.Fatalf("got %d recipes, want 1", len(walkResult))
+	}
+	parsed, err := artifactdiscovery.ParseManifestName(manifest, "charmcraft.yaml")
+	if err != nil {
+		t.Fatalf("ParseManifestName: %v", err)
+	}
+	if walkResult[0].Name != parsed {
+		t.Fatalf("walker name %q != shared parser name %q", walkResult[0].Name, parsed)
+	}
+}
+
+// TestCharmStrategy_DiscoverRecipes_FallbackToDirName verifies the directory
+// base name is used when the manifest omits a name.
+func TestCharmStrategy_DiscoverRecipes_FallbackToDirName(t *testing.T) {
+	repo := t.TempDir()
+	full := filepath.Join(repo, "charms", "fallbackname", "charmcraft.yaml")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(full, []byte("summary: no name declared\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := (&CharmStrategy{}).DiscoverRecipes(repo)
+	if err != nil {
+		t.Fatalf("DiscoverRecipes: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "fallbackname" {
+		t.Fatalf("got %+v, want single recipe named fallbackname", got)
 	}
 }
 

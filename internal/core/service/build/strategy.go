@@ -9,8 +9,21 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/artifactdiscovery"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
+
+// manifestName reads metadataPath and returns the declared artifact name via
+// the shared manifest-name parser. An empty name (no error) signals to the
+// caller that the manifest did not declare one, so a fallback (directory
+// base name) can be applied.
+func manifestName(metadataPath string) (string, error) {
+	content, err := os.ReadFile(metadataPath)
+	if err != nil {
+		return "", err
+	}
+	return artifactdiscovery.ParseManifestName(content, filepath.Base(metadataPath))
+}
 
 // DiscoveredRecipe is a recipe found on disk during local build preparation.
 // RelPath is the directory containing the metadata file, relative to the repo
@@ -71,8 +84,16 @@ type ArtifactStrategy interface {
 func walkRecipes(repoPath, scanSubdir, metadataFile string) ([]DiscoveredRecipe, error) {
 	var out []DiscoveredRecipe
 
-	if _, err := os.Stat(filepath.Join(repoPath, metadataFile)); err == nil {
-		out = append(out, DiscoveredRecipe{Name: filepath.Base(repoPath), RelPath: ""})
+	rootMeta := filepath.Join(repoPath, metadataFile)
+	if _, err := os.Stat(rootMeta); err == nil {
+		name, parseErr := manifestName(rootMeta)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		if name == "" {
+			name = filepath.Base(repoPath)
+		}
+		out = append(out, DiscoveredRecipe{Name: name, RelPath: ""})
 	}
 
 	scanRoot := filepath.Join(repoPath, scanSubdir)
@@ -103,8 +124,15 @@ func walkRecipes(repoPath, scanSubdir, metadataFile string) ([]DiscoveredRecipe,
 			if relErr != nil {
 				return relErr
 			}
+			name, parseErr := manifestName(candidate)
+			if parseErr != nil {
+				return parseErr
+			}
+			if name == "" {
+				name = filepath.Base(path)
+			}
 			out = append(out, DiscoveredRecipe{
-				Name:    filepath.Base(path),
+				Name:    name,
 				RelPath: filepath.ToSlash(rel),
 			})
 			return fs.SkipDir

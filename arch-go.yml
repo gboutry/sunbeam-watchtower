@@ -42,6 +42,7 @@ dependenciesRules:
     shouldOnlyDependsOn:
       internal:
         - "**.internal.core.port.**"
+        - "**.internal.core.service.**"
         - "**.pkg.**"
 
   - package: "**.internal.adapter.primary.**"
