@@ -2,3 +2,4 @@ devel.html
 watchtower
 watchtower-tui
 *.snap
+email-overrides.yaml
