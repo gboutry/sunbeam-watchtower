@@ -1,6 +1,14 @@
 # Team Collaborator Sync Implementation Plan
 
 > **Superseded note:** The `internal/adapter/primary/frontend/team_discovery.go` primitive (`DiscoverTargets`) described in Task 4 and listed under File Structure has been removed. Manifest discovery is now provided by the canonical `internal/core/service/artifactdiscovery` service, which the team sync workflow consumes directly.
+>
+> **Final architecture (mono-repo fan-out):**
+>
+> - `internal/core/service/artifactdiscovery` is the single server-side discovery seam. It reads artifact manifests from a `gitcache`-backed bare repo (HEAD tree only, no worktree) for charm/snap/rock types and returns a deterministic sorted `[]DiscoveredArtifact{Name, RelPath, ArtifactType, Resources}` list. The concrete `gitcache` adapter is wired through `internal/app/artifactdiscovery_bootstrap.go` and reached from `TeamServerWorkflow` via `app.ArtifactDiscoveryService()`.
+> - `TeamServerWorkflow.Sync` iterates configured projects, calls `app.GitCache().EnsureRepo` for each, invokes the discovery service, and emits one `dto.SyncTarget` per discovered artifact. Single-artifact repos still produce exactly one target (e.g. `openstack` → one snap name from `snap/snapcraft.yaml`); mono-repos fan out (e.g. `sunbeam-charms` → ~50 charms under `charms/*/charmcraft.yaml`). Discovery errors become per-project warnings on the result instead of aborting the whole sync.
+> - `proj.team.skip_artifacts` (defined on `ProjectTeamConfig` in `internal/config/config.go`) is an optional per-project allow-list filter that drops individual artifacts from the fan-out. The field mirrors the existing `proj.release.skip_artifacts` pattern, is validated the same way (no empty strings, no duplicates), and is a no-op when the `team` block is absent. Example: `sunbeam-charms` configures `team.skip_artifacts: [sunbeam-libs]` to keep the internal-only library charm out of collaborator sync while still letting it ship via release tracking.
+> - Test coverage: `internal/core/service/artifactdiscovery` has unit tests for single-charm root, charm and nested-charm mono-repos, snap root and mono-repo, rock mono-repo, missing manifests, and malformed YAML. `internal/adapter/primary/frontend/team_server_workflow_test.go` exercises the fan-out end-to-end for single-snap, monorepo-charms, project-filter, discovery-error, no-artifacts, skip-artifacts, and non-artifact-project cases against in-memory discoverer/cache/syncer seams.
+> - The original `DiscoverTargets`-based design (Task 4 in this plan) is fully superseded. Task 4 is retained below only as historical context.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -27,6 +27,10 @@ Place the `Assisted-By` trailer at the end of the commit message, separated by a
 
 ## Non-obvious behaviours encountered during development
 
+## Team sync discovery failures are warnings, not errors
+
+`TeamServerWorkflow.Sync` fans out projects through the canonical `artifactdiscovery` service and intentionally treats per-project discovery failures (bad clone URL, cache miss, parse error, empty manifest set) as **warnings attached to the result**, not as errors that abort the whole sync. One unreachable or misconfigured project must not block collaborator invites for its siblings, so every discovery step that fails appends to `TeamSyncResult.Warnings` and the loop continues with the next project. If you refactor this path, preserve that policy — do not bubble per-project discovery errors out of `Sync`.
+
 ## Config reload boundary
 
 The server supports live config reload (fsnotify file watching, SIGHUP, `POST /api/v1/config/reload`). Not all services pick up changes immediately:
