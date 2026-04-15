@@ -81,10 +81,15 @@ func (m *CollaboratorManager) ListCollaborators(ctx context.Context, storeName s
 }
 
 // InviteCollaborator sends a collaborator invitation for the named charm.
+//
+// The documented Charmhub publisher endpoint accepts a batch of invites under
+// the `invites` key and POSTs to `/v1/charm/{name}/collaborators/invites`.
 func (m *CollaboratorManager) InviteCollaborator(ctx context.Context, storeName string, email string) error {
-	endpoint := m.baseURL + "/v1/charm/" + url.PathEscape(storeName) + "/collaborators"
+	endpoint := m.baseURL + "/v1/charm/" + url.PathEscape(storeName) + "/collaborators/invites"
 
-	body, err := json.Marshal(map[string]string{"email": email})
+	body, err := json.Marshal(charmInvitesRequest{
+		Invites: []charmInviteRequest{{Email: email}},
+	})
 	if err != nil {
 		return fmt.Errorf("encoding invite request: %w", err)
 	}
@@ -106,6 +111,14 @@ func (m *CollaboratorManager) InviteCollaborator(ctx context.Context, storeName 
 		return fmt.Errorf("inviting collaborator: HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+type charmInvitesRequest struct {
+	Invites []charmInviteRequest `json:"invites"`
+}
+
+type charmInviteRequest struct {
+	Email string `json:"email"`
 }
 
 type charmCollaboratorsResponse struct {

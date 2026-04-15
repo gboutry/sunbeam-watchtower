@@ -16,6 +16,9 @@ func TestCollaboratorManager_ListCollaborators(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Fatalf("expected GET, got %s", r.Method)
 		}
+		if r.URL.Path != "/v1/charm/my-charm/collaborators" {
+			t.Fatalf("path = %q, want /v1/charm/my-charm/collaborators", r.URL.Path)
+		}
 		if got := r.Header.Get("Authorization"); got != "Macaroon test-auth" {
 			t.Fatalf("Authorization = %q, want Macaroon test-auth", got)
 		}
@@ -47,10 +50,17 @@ func TestCollaboratorManager_ListCollaborators(t *testing.T) {
 }
 
 func TestCollaboratorManager_InviteCollaborator(t *testing.T) {
-	var receivedBody map[string]string
+	var receivedBody struct {
+		Invites []struct {
+			Email string `json:"email"`
+		} `json:"invites"`
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/charm/my-charm/collaborators/invites" {
+			t.Fatalf("path = %q, want /v1/charm/my-charm/collaborators/invites", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Macaroon test-auth" {
 			t.Fatalf("Authorization = %q, want Macaroon test-auth", got)
@@ -72,8 +82,23 @@ func TestCollaboratorManager_InviteCollaborator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InviteCollaborator() error = %v", err)
 	}
-	if receivedBody["email"] != "carol@example.com" {
-		t.Fatalf("request body email = %q, want carol@example.com", receivedBody["email"])
+	if len(receivedBody.Invites) != 1 || receivedBody.Invites[0].Email != "carol@example.com" {
+		t.Fatalf("request invites = %+v, want single invite for carol@example.com", receivedBody.Invites)
+	}
+}
+
+func TestCollaboratorManager_InviteCollaborator_Error(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	mgr := NewCollaboratorManager("bad-auth", server.Client())
+	mgr.baseURL = server.URL
+
+	err := mgr.InviteCollaborator(context.Background(), "my-charm", "carol@example.com")
+	if err == nil {
+		t.Fatal("InviteCollaborator() expected error for HTTP 403, got nil")
 	}
 }
 
