@@ -153,7 +153,7 @@ func decodeHTTPError(resp *http.Response) *HTTPError {
 	return out
 }
 
-var _ interface {
-	error
-	Unwrap() error
-} = (*HTTPError)(nil)
+var (
+	_ error                  = (*HTTPError)(nil)
+	_ func(*HTTPError) error = (*HTTPError).Unwrap
+)
