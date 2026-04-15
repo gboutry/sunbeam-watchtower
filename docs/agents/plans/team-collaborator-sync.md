@@ -1,5 +1,7 @@
 # Team Collaborator Sync Implementation Plan
 
+> **Superseded note:** The `internal/adapter/primary/frontend/team_discovery.go` primitive (`DiscoverTargets`) described in Task 4 and listed under File Structure has been removed. Manifest discovery is now provided by the canonical `internal/core/service/artifactdiscovery` service, which the team sync workflow consumes directly.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Sync Launchpad team members as collaborators on Snap Store and Charmhub artifacts, with dry-run/apply semantics and CLI/API/TUI frontends.
