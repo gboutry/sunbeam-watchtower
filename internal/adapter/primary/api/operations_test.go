@@ -21,6 +21,11 @@ func TestProjectsSyncAsync_EmptyConfigCreatesOperation(t *testing.T) {
 	RegisterProjectsAPI(srv.API(), application)
 	RegisterOperationsAPI(srv.API(), application)
 
+	service, err := application.OperationService()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	resp, err := http.Post(base+"/api/v1/projects/sync/async", "application/json", bytes.NewReader([]byte(`{}`)))
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +44,7 @@ func TestProjectsSyncAsync_EmptyConfigCreatesOperation(t *testing.T) {
 		t.Fatalf("unexpected async job: %+v", job)
 	}
 
-	finalJob := waitForOperationState(t, base, job.ID, dto.OperationStateSucceeded)
+	finalJob := waitForOperationState(t, service, job.ID, dto.OperationStateSucceeded)
 	if finalJob.Summary == "" {
 		t.Fatalf("expected operation summary, got %+v", finalJob)
 	}
@@ -105,36 +110,27 @@ func TestOperationsCancel_CancelsRunningOperation(t *testing.T) {
 	}
 	<-done
 
-	finalJob := waitForOperationState(t, base, job.ID, dto.OperationStateCancelled)
+	finalJob := waitForOperationState(t, service, job.ID, dto.OperationStateCancelled)
 	if finalJob.Error != context.Canceled.Error() {
 		t.Fatalf("expected cancellation error, got %+v", finalJob)
 	}
 }
 
-func waitForOperationState(t *testing.T, baseURL, id string, want dto.OperationState) dto.OperationJob {
+func waitForOperationState(t *testing.T, service *opsvc.Service, id string, want dto.OperationState) dto.OperationJob {
 	t.Helper()
 
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		resp, err := http.Get(baseURL + "/api/v1/operations/" + id)
-		if err != nil {
-			t.Fatal(err)
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-		var job dto.OperationJob
-		if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
-			resp.Body.Close()
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-
-		if job.State == want {
-			return job
-		}
-
-		time.Sleep(10 * time.Millisecond)
+	job, err := service.Wait(ctx, id)
+	if err != nil {
+		t.Fatalf("Wait(%s) error = %v", id, err)
 	}
-
-	t.Fatalf("operation %q did not reach %q", id, want)
-	return dto.OperationJob{}
+	if job == nil {
+		t.Fatalf("Wait(%s) = nil, want job in state %q", id, want)
+	}
+	if job.State != want {
+		t.Fatalf("operation %q final state = %q, want %q", id, job.State, want)
+	}
+	return *job
 }

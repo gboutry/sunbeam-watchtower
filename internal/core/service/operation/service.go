@@ -30,6 +30,7 @@ type Service struct {
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
+	dones   map[string]chan struct{}
 }
 
 // Reporter emits progress snapshots and events for a running job.
@@ -52,6 +53,7 @@ func NewService(store port.OperationStore, logger *slog.Logger) *Service {
 		now:     time.Now,
 		newID:   randomID,
 		cancels: make(map[string]context.CancelFunc),
+		dones:   make(map[string]chan struct{}),
 	}
 	service.recoverInterruptedJobs(context.Background())
 	return service
@@ -93,8 +95,10 @@ func (s *Service) Start(ctx context.Context, kind dto.OperationKind, attributes 
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	s.mu.Lock()
 	s.cancels[jobID] = cancel
+	s.dones[jobID] = done
 	s.mu.Unlock()
 
 	reporter := &Reporter{service: s, jobID: jobID}
@@ -116,6 +120,39 @@ func (s *Service) List(ctx context.Context) ([]dto.OperationJob, error) {
 // Events returns the event history for one operation job.
 func (s *Service) Events(ctx context.Context, id string) ([]dto.OperationEvent, error) {
 	return s.store.Events(ctx, id)
+}
+
+// Wait blocks until the job reaches a terminal state, the context is cancelled,
+// or the job is unknown. It returns the final job snapshot. Wait is safe to
+// call after the job has already finished — in that case it returns
+// immediately with the persisted state.
+func (s *Service) Wait(ctx context.Context, id string) (*dto.OperationJob, error) {
+	s.mu.Lock()
+	done, tracked := s.dones[id]
+	s.mu.Unlock()
+
+	if !tracked {
+		return s.store.Get(ctx, id)
+	}
+
+	select {
+	case <-done:
+		return s.store.Get(ctx, id)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *Service) signalDone(jobID string) {
+	s.mu.Lock()
+	done, ok := s.dones[jobID]
+	if ok {
+		delete(s.dones, jobID)
+	}
+	s.mu.Unlock()
+	if ok {
+		close(done)
+	}
 }
 
 // Cancel requests cancellation for a running job.
@@ -211,6 +248,10 @@ func (s *Service) finishJob(jobID string, kind dto.OperationKind, summary string
 	s.mu.Lock()
 	delete(s.cancels, jobID)
 	s.mu.Unlock()
+
+	// why: close the done channel only after persisting the terminal state
+	// below, so Wait() observers always see the final job snapshot.
+	defer s.signalDone(jobID)
 
 	finishedAt := s.now()
 	event := dto.OperationEvent{

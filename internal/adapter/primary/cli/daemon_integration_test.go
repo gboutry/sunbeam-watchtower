@@ -244,9 +244,15 @@ func waitForOperationStateViaCLI(
 ) dto.OperationJob {
 	t.Helper()
 
-	deadline := time.Now().Add(20 * time.Second)
+	// why: the daemon runs in a separate process, so we can't share a
+	// completion channel with it. Each iteration spawns a fresh CLI
+	// subprocess (~hundreds of ms), and an empty project sync completes
+	// in well under a second; 20s gives >20x headroom for slow CI.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
 	var lastJob dto.OperationJob
-	for time.Now().Before(deadline) {
+	for {
 		show := runCLIHelper(t, wrapper, env, "", "-o", "json", "operation", "show", id)
 
 		var job dto.OperationJob
@@ -258,11 +264,13 @@ func waitForOperationStateViaCLI(
 			return job
 		}
 
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			t.Fatalf("operation %q did not reach %q; last observed job: %+v", id, want, lastJob)
+			return dto.OperationJob{}
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
-
-	t.Fatalf("operation %q did not reach %q; last observed job: %+v", id, want, lastJob)
-	return dto.OperationJob{}
 }
 
 func containsOperationID(jobs []dto.OperationJob, id string) bool {

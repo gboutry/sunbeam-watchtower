@@ -178,24 +178,20 @@ func TestNewServiceLeavesTerminalJobsUntouched(t *testing.T) {
 func waitForState(t *testing.T, service *Service, jobID string, want dto.OperationState) dto.OperationJob {
 	t.Helper()
 
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		job, err := service.Get(context.Background(), jobID)
-		if err != nil {
-			t.Fatalf("Get() error = %v", err)
-		}
-		if job != nil && job.State == want {
-			return *job
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	job, err := service.Get(context.Background(), jobID)
+	job, err := service.Wait(ctx, jobID)
 	if err != nil {
-		t.Fatalf("Get() error = %v", err)
+		t.Fatalf("Wait(%s) error = %v", jobID, err)
 	}
-	t.Fatalf("job %q did not reach %q, latest = %+v", jobID, want, job)
-	return dto.OperationJob{}
+	if job == nil {
+		t.Fatalf("Wait(%s) = nil, want job in state %q", jobID, want)
+	}
+	if job.State != want {
+		t.Fatalf("job %q final state = %q, want %q (job=%+v)", jobID, job.State, want, job)
+	}
+	return *job
 }
 
 type testStore struct {

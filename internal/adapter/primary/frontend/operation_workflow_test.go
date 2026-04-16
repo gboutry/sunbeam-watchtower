@@ -135,22 +135,17 @@ func TestOperationWorkflowStartListGetCancel(t *testing.T) {
 		t.Fatalf("Cancel() error = %v", err)
 	}
 
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		got, err = workflow.Get(context.Background(), job.ID)
-		if err != nil {
-			t.Fatalf("Get() after cancel error = %v", err)
-		}
-		if got != nil && got.State == dto.OperationStateCancelled {
-			if got.Error != context.Canceled.Error() {
-				t.Fatalf("cancelled job error = %q, want %q", got.Error, context.Canceled.Error())
-			}
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	got, err = service.Wait(waitCtx, job.ID)
+	if err != nil {
+		t.Fatalf("Wait() after cancel error = %v", err)
 	}
 	if got == nil || got.State != dto.OperationStateCancelled {
 		t.Fatalf("job state after cancel = %+v, want cancelled", got)
+	}
+	if got.Error != context.Canceled.Error() {
+		t.Fatalf("cancelled job error = %q, want %q", got.Error, context.Canceled.Error())
 	}
 
 	events, err = workflow.Events(context.Background(), job.ID)

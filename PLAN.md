@@ -81,6 +81,7 @@ Watchtower has a working baseline across the main domains:
 
 - continue removing host-environment assumptions from tests
 - raise tests with feature work to keep changed-package coverage healthy without bypassing the guard
+- prefer deterministic completion signals (e.g. `operation.Service.Wait`) over `time.Now().Before(deadline)` polling in tests; reserve polling for cross-process boundaries with a 5x deadline and a `// why:` comment
 
 ## Validation Baseline
 
