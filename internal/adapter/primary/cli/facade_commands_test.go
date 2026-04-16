@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -48,6 +49,9 @@ func TestConfigShowCmd_RendersYAML(t *testing.T) {
 }
 
 func TestCacheStatusCmd_RendersCacheStatus(t *testing.T) {
+	baseDir := t.TempDir()
+	gitDir := filepath.Join(baseDir, "git")
+	releasesDir := filepath.Join(baseDir, "releases")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/cache/status" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
@@ -57,7 +61,7 @@ func TestCacheStatusCmd_RendersCacheStatus(t *testing.T) {
 				Directory string              `json:"directory"`
 				Repos     []client.CacheEntry `json:"repos"`
 			}{
-				Directory: "/tmp/git",
+				Directory: gitDir,
 				Repos:     []client.CacheEntry{{Name: "keystone", Size: "4.0 MiB"}},
 			},
 			Releases: struct {
@@ -65,7 +69,7 @@ func TestCacheStatusCmd_RendersCacheStatus(t *testing.T) {
 				Entries   []dto.ReleaseCacheStatus `json:"entries"`
 				Error     string                   `json:"error,omitempty"`
 			}{
-				Directory: "/tmp/releases",
+				Directory: releasesDir,
 				Entries:   []dto.ReleaseCacheStatus{{Project: "sunbeam", Name: "snap-openstack", ArtifactType: dto.ArtifactSnap, TrackCount: 1, ChannelCount: 2}},
 			},
 		})
@@ -87,7 +91,7 @@ func TestCacheStatusCmd_RendersCacheStatus(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if !strings.Contains(out.String(), "/tmp/git") || !strings.Contains(out.String(), "keystone") || !strings.Contains(out.String(), "snap-openstack") {
+	if !strings.Contains(out.String(), gitDir) || !strings.Contains(out.String(), "keystone") || !strings.Contains(out.String(), "snap-openstack") {
 		t.Fatalf("unexpected output: %q", out.String())
 	}
 }

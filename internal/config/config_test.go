@@ -9,6 +9,7 @@ import (
 func TestLoad_FullConfig(t *testing.T) {
 	dir := t.TempDir()
 	cfgFile := filepath.Join(dir, "config.yaml")
+	artifactsDir := filepath.Join(dir, "artifacts")
 
 	yaml := `
 launchpad:
@@ -51,7 +52,7 @@ projects:
 build:
   default_prefix: sunbeam
   timeout_minutes: 45
-  artifacts_dir: /tmp/artifacts
+  artifacts_dir: ` + artifactsDir + `
 packages:
   distros:
     ubuntu:
@@ -137,8 +138,8 @@ tui:
 	if cfg.Build.TimeoutMinutes != 45 {
 		t.Errorf("Build.TimeoutMinutes = %d, want 45", cfg.Build.TimeoutMinutes)
 	}
-	if cfg.Build.ArtifactsDir != "/tmp/artifacts" {
-		t.Errorf("Build.ArtifactsDir = %q, want %q", cfg.Build.ArtifactsDir, "/tmp/artifacts")
+	if cfg.Build.ArtifactsDir != artifactsDir {
+		t.Errorf("Build.ArtifactsDir = %q, want %q", cfg.Build.ArtifactsDir, artifactsDir)
 	}
 	if cfg.TUI.DefaultPane != "packages" {
 		t.Fatalf("TUI.DefaultPane = %q, want packages", cfg.TUI.DefaultPane)

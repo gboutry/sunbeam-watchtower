@@ -5,6 +5,7 @@ package app
 
 import (
 	"log/slog"
+	"path/filepath"
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
@@ -200,12 +201,13 @@ func TestDefaultExcusesTracker(t *testing.T) {
 
 func TestResolveCacheDir(t *testing.T) {
 	t.Run("uses XDG_CACHE_HOME when set", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", "/tmp/test-xdg-cache")
+		xdgDir := t.TempDir()
+		t.Setenv("XDG_CACHE_HOME", xdgDir)
 		got, err := ResolveCacheDir()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		want := "/tmp/test-xdg-cache/sunbeam-watchtower"
+		want := filepath.Join(xdgDir, "sunbeam-watchtower")
 		if got != want {
 			t.Errorf("ResolveCacheDir() = %q, want %q", got, want)
 		}

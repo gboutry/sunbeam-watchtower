@@ -16,6 +16,7 @@ import (
 
 type fakeStore struct {
 	record   *dto.StoreCredentialRecord
+	savePath string
 	loadErr  error
 	saveErr  error
 	saveCall struct {
@@ -47,7 +48,7 @@ func (s *fakeStore) Save(_ context.Context, bundle, macaroon string) (*dto.Store
 		Macaroon:         macaroon,
 		DischargedBundle: bundle,
 		Source:           "file",
-		Path:             "/tmp/c.json",
+		Path:             s.savePath,
 	}
 	return s.record, nil
 }

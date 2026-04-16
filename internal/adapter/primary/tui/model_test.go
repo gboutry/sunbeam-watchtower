@@ -474,7 +474,7 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 			Authenticated:   true,
 			DisplayName:     "Tester",
 			Source:          "file",
-			CredentialsPath: "/tmp/creds",
+			CredentialsPath: filepath.Join(t.TempDir(), "creds"),
 		},
 	}
 	model.dashboard.ops = []dto.OperationJob{{
@@ -552,7 +552,7 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 			Error     string
 		}{Entries: []dto.ReleaseCacheStatus{{Project: "demo", Name: "artifact-a"}}},
 	}
-	model.server.local = &runtimeadapter.LocalServerStatus{Running: true, PID: 42, LogFile: "/tmp/watchtower.log"}
+	model.server.local = &runtimeadapter.LocalServerStatus{Running: true, PID: 42, LogFile: filepath.Join(t.TempDir(), "watchtower.log")}
 	model.logsModal = logsModalModel{
 		sessionLines: []string{"time=... level=INFO msg=\"session\""},
 		daemonLines:  []string{"time=... level=INFO msg=\"daemon\""},
@@ -907,7 +907,9 @@ func TestLoadLogsCmdIncludesDaemonTail(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	setSessionTarget(t, session, runtimeadapter.TargetInfo{
-		Kind:    runtimeadapter.TargetKindDaemon,
+		Kind: runtimeadapter.TargetKindDaemon,
+		// Display-only address fixture used to verify TargetInfo wiring; the
+		// socket is never dialled in this test.
 		Address: "unix:///tmp/watchtower.sock",
 		LogFile: logFile,
 	})

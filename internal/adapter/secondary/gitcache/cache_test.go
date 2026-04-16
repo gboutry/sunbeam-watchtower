@@ -392,7 +392,8 @@ func TestCache_ListMRCommits(t *testing.T) {
 
 func TestCache_repoPath(t *testing.T) {
 	t.Parallel()
-	cache := NewCache("/tmp/cache/repos", nil)
+	base := filepath.Join(t.TempDir(), "cache", "repos")
+	cache := NewCache(base, nil)
 
 	tests := []struct {
 		url     string
@@ -401,19 +402,19 @@ func TestCache_repoPath(t *testing.T) {
 	}{
 		{
 			url:  "https://github.com/org/repo.git",
-			want: "/tmp/cache/repos/github.com/org/repo.git",
+			want: filepath.Join(base, "github.com/org/repo.git"),
 		},
 		{
 			url:  "https://github.com/org/repo",
-			want: "/tmp/cache/repos/github.com/org/repo.git",
+			want: filepath.Join(base, "github.com/org/repo.git"),
 		},
 		{
 			url:  "https://review.opendev.org/openstack/nova",
-			want: "/tmp/cache/repos/review.opendev.org/openstack/nova.git",
+			want: filepath.Join(base, "review.opendev.org/openstack/nova.git"),
 		},
 		{
 			url:  "https://git.launchpad.net/sunbeam",
-			want: "/tmp/cache/repos/git.launchpad.net/sunbeam.git",
+			want: filepath.Join(base, "git.launchpad.net/sunbeam.git"),
 		},
 		{
 			url:     "not-a-url",

@@ -26,6 +26,7 @@ func TestNewClient_TCP(t *testing.T) {
 }
 
 func TestNewClient_Unix(t *testing.T) {
+	// URL fixture exercising the unix:// scheme parser — the socket is never dialled.
 	c := NewClient("unix:///tmp/test.sock")
 	if c.baseURL != "http://localhost" {
 		t.Errorf("baseURL = %q, want %q", c.baseURL, "http://localhost")
@@ -385,6 +386,7 @@ func TestNewClientWithToken_AllowsHTTPS(t *testing.T) {
 }
 
 func TestNewClientWithToken_AllowsUnixSocket(t *testing.T) {
+	// URL fixture exercising the unix:// scheme parser — the socket is never dialled.
 	c, err := NewClientWithToken("unix:///tmp/test.sock", "secret")
 	if err != nil {
 		t.Fatalf("expected no error for unix socket, got %v", err)

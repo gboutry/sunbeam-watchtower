@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -50,6 +51,7 @@ func TestAuthStatusCmd_PrintsAuthenticatedUser(t *testing.T) {
 }
 
 func TestAuthLoginCmd_CompletesFlow(t *testing.T) {
+	credsPath := filepath.Join(t.TempDir(), "launchpad-creds")
 	var finalizePayload map[string]string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -67,7 +69,7 @@ func TestAuthLoginCmd_CompletesFlow(t *testing.T) {
 					Authenticated:   true,
 					Username:        "jdoe",
 					DisplayName:     "Jane Doe",
-					CredentialsPath: "/tmp/launchpad-creds",
+					CredentialsPath: credsPath,
 				},
 			})
 		default:
@@ -98,19 +100,20 @@ func TestAuthLoginCmd_CompletesFlow(t *testing.T) {
 	if !strings.Contains(output, "Starting Launchpad OAuth flow") ||
 		!strings.Contains(output, "https://launchpad.net/+authorize-token?oauth_token=req-token") ||
 		!strings.Contains(output, "Authenticated as: Jane Doe (jdoe)") ||
-		!strings.Contains(output, "Credentials saved to /tmp/launchpad-creds") {
+		!strings.Contains(output, "Credentials saved to "+credsPath) {
 		t.Fatalf("unexpected output: %q", output)
 	}
 }
 
 func TestAuthLogoutCmd_PrintsRemovedPath(t *testing.T) {
+	credsPath := filepath.Join(t.TempDir(), "launchpad-creds")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/auth/launchpad/logout" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
 		}
 		_ = json.NewEncoder(w).Encode(dto.LaunchpadAuthLogoutResult{
 			Cleared:         true,
-			CredentialsPath: "/tmp/launchpad-creds",
+			CredentialsPath: credsPath,
 		})
 	}))
 	defer ts.Close()
@@ -129,12 +132,13 @@ func TestAuthLogoutCmd_PrintsRemovedPath(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if !strings.Contains(out.String(), "Removed Launchpad credentials from /tmp/launchpad-creds") {
+	if !strings.Contains(out.String(), "Removed Launchpad credentials from "+credsPath) {
 		t.Fatalf("unexpected output: %q", out.String())
 	}
 }
 
 func TestAuthGitHubLoginCmd_CompletesFlow(t *testing.T) {
+	credsPath := filepath.Join(t.TempDir(), "github-creds")
 	var finalizePayload map[string]string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -154,7 +158,7 @@ func TestAuthGitHubLoginCmd_CompletesFlow(t *testing.T) {
 					Authenticated:   true,
 					Username:        "jdoe",
 					DisplayName:     "Jane Doe",
-					CredentialsPath: "/tmp/github-creds",
+					CredentialsPath: credsPath,
 				},
 			})
 		default:
@@ -184,7 +188,7 @@ func TestAuthGitHubLoginCmd_CompletesFlow(t *testing.T) {
 	if !strings.Contains(output, "Starting GitHub device flow") ||
 		!strings.Contains(output, "ABCD-EFGH") ||
 		!strings.Contains(output, "Authenticated as: Jane Doe (jdoe)") ||
-		!strings.Contains(output, "Credentials saved to /tmp/github-creds") {
+		!strings.Contains(output, "Credentials saved to "+credsPath) {
 		t.Fatalf("unexpected output: %q", output)
 	}
 }

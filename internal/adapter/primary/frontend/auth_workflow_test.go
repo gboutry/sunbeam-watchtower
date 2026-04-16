@@ -76,7 +76,8 @@ func TestAuthWorkflowBeginFinalizeAndLogout(t *testing.T) {
 }
 
 type fakeCredentialStore struct {
-	record *lp.CredentialRecord
+	record   *lp.CredentialRecord
+	savePath string
 }
 
 func (f *fakeCredentialStore) Load(context.Context) (*lp.CredentialRecord, error) {
@@ -87,7 +88,7 @@ func (f *fakeCredentialStore) Save(_ context.Context, creds *lp.Credentials) (*l
 	f.record = &lp.CredentialRecord{
 		Credentials: creds,
 		Source:      lp.CredentialSourceFile,
-		Path:        "/tmp/launchpad-creds",
+		Path:        f.savePath,
 	}
 	return f.record, nil
 }

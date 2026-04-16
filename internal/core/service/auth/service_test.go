@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -260,7 +261,8 @@ func TestBeginLaunchpadStoresServerSideSecretState(t *testing.T) {
 }
 
 func TestFinalizeLaunchpadSavesCredentialsAndDeletesFlow(t *testing.T) {
-	store := &fakeCredentialStore{savePath: "/tmp/credentials.json"}
+	credsPath := filepath.Join(t.TempDir(), "credentials.json")
+	store := &fakeCredentialStore{savePath: credsPath}
 	flows := &fakeFlowStore{
 		flows: map[string]lp.PendingAuthFlow{
 			"flow-123": {
@@ -297,7 +299,7 @@ func TestFinalizeLaunchpadSavesCredentialsAndDeletesFlow(t *testing.T) {
 	if !result.Launchpad.Authenticated {
 		t.Fatal("expected authenticated status after finalize")
 	}
-	if result.Launchpad.CredentialsPath != "/tmp/credentials.json" {
+	if result.Launchpad.CredentialsPath != credsPath {
 		t.Fatalf("credentials path = %q", result.Launchpad.CredentialsPath)
 	}
 }
@@ -308,7 +310,7 @@ func TestStatusReportsInvalidStoredCredentialsWithoutFailing(t *testing.T) {
 			record: &lp.CredentialRecord{
 				Credentials: &lp.Credentials{AccessToken: "token", AccessTokenSecret: "secret"},
 				Source:      lp.CredentialSourceFile,
-				Path:        "/tmp/credentials.json",
+				Path:        filepath.Join(t.TempDir(), "credentials.json"),
 			},
 		},
 		&fakeFlowStore{},
@@ -419,11 +421,12 @@ func TestFinalizeLaunchpadReturnsDeleteError(t *testing.T) {
 }
 
 func TestLogoutLaunchpadClearsPersistedCredentials(t *testing.T) {
+	credsPath := filepath.Join(t.TempDir(), "credentials.json")
 	store := &fakeCredentialStore{
 		record: &lp.CredentialRecord{
 			Credentials: &lp.Credentials{AccessToken: "token", AccessTokenSecret: "secret"},
 			Source:      lp.CredentialSourceFile,
-			Path:        "/tmp/credentials.json",
+			Path:        credsPath,
 		},
 	}
 	svc := NewService(store, &fakeFlowStore{}, &fakeLaunchpadAuthenticator{}, testLogger())
@@ -432,7 +435,7 @@ func TestLogoutLaunchpadClearsPersistedCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LogoutLaunchpad() error = %v", err)
 	}
-	if !result.Cleared || result.CredentialsPath != "/tmp/credentials.json" {
+	if !result.Cleared || result.CredentialsPath != credsPath {
 		t.Fatalf("LogoutLaunchpad() = %+v, want cleared persisted credentials", result)
 	}
 	if store.record != nil {
@@ -488,7 +491,7 @@ func TestBeginGitHubStoresPendingFlow(t *testing.T) {
 }
 
 func TestFinalizeGitHubSavesCredentials(t *testing.T) {
-	store := &fakeGitHubCredentialStore{savePath: "/tmp/github-creds"}
+	store := &fakeGitHubCredentialStore{savePath: filepath.Join(t.TempDir(), "github-creds")}
 	flows := &fakeGitHubFlowStore{
 		flows: map[string]gh.PendingAuthFlow{
 			"flow-123": {ID: "flow-123", DeviceCode: "device", UserCode: "ABCD-EFGH"},
@@ -529,7 +532,7 @@ func TestStatusReportsGitHubAuthentication(t *testing.T) {
 			record: &gh.CredentialRecord{
 				Credentials: &gh.Credentials{AccessToken: "token"},
 				Source:      gh.CredentialSourceFile,
-				Path:        "/tmp/github-creds.json",
+				Path:        filepath.Join(t.TempDir(), "github-creds.json"),
 			},
 		},
 		&fakeGitHubFlowStore{},
@@ -556,7 +559,7 @@ func TestStatusReportsGitHubVerificationErrorWithoutFailing(t *testing.T) {
 			record: &gh.CredentialRecord{
 				Credentials: &gh.Credentials{AccessToken: "token"},
 				Source:      gh.CredentialSourceFile,
-				Path:        "/tmp/github-creds.json",
+				Path:        filepath.Join(t.TempDir(), "github-creds.json"),
 			},
 		},
 		&fakeGitHubFlowStore{},
@@ -768,11 +771,12 @@ func TestLogoutGitHubPaths(t *testing.T) {
 	})
 
 	t.Run("clears persisted credentials", func(t *testing.T) {
+		credsPath := filepath.Join(t.TempDir(), "github-creds.json")
 		store := &fakeGitHubCredentialStore{
 			record: &gh.CredentialRecord{
 				Credentials: &gh.Credentials{AccessToken: "token"},
 				Source:      gh.CredentialSourceFile,
-				Path:        "/tmp/github-creds.json",
+				Path:        credsPath,
 			},
 		}
 		svc := NewServiceWithGitHub(
@@ -790,7 +794,7 @@ func TestLogoutGitHubPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LogoutGitHub() error = %v", err)
 		}
-		if !result.Cleared || result.CredentialsPath != "/tmp/github-creds.json" {
+		if !result.Cleared || result.CredentialsPath != credsPath {
 			t.Fatalf("LogoutGitHub() = %+v", result)
 		}
 		if store.record != nil {
@@ -828,6 +832,7 @@ func TestFinalizeGitHubReturnsDeleteError(t *testing.T) {
 // fakeStoreCredentialStore is a test double for SnapStoreCredentialStore.
 type fakeStoreCredentialStore struct {
 	record   *dto.StoreCredentialRecord
+	savePath string
 	loadErr  error
 	saveErr  error
 	clearErr error
@@ -851,7 +856,7 @@ func (s *fakeStoreCredentialStore) Save(_ context.Context, macaroon string) (*dt
 	s.record = &dto.StoreCredentialRecord{
 		Macaroon: macaroon,
 		Source:   "file",
-		Path:     "/tmp/store-creds.json",
+		Path:     s.savePath,
 	}
 	return s.Load(context.Background())
 }
@@ -869,6 +874,7 @@ func (s *fakeStoreCredentialStore) Clear(context.Context) error {
 // can assert on the refresh-readable layout.
 type fakeCharmhubCredentialStore struct {
 	record   *dto.StoreCredentialRecord
+	savePath string
 	loadErr  error
 	saveErr  error
 	clearErr error
@@ -893,7 +899,7 @@ func (s *fakeCharmhubCredentialStore) Save(_ context.Context, dischargedBundle, 
 		Macaroon:         exchangedMacaroon,
 		DischargedBundle: dischargedBundle,
 		Source:           "file",
-		Path:             "/tmp/charmhub-creds.json",
+		Path:             s.savePath,
 	}
 	return s.Load(context.Background())
 }
@@ -1081,7 +1087,7 @@ func TestSaveSnapStoreCredentialRejectsNilStore(t *testing.T) {
 
 func TestLogoutSnapStoreClearsCredentials(t *testing.T) {
 	store := &fakeStoreCredentialStore{
-		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "file", Path: "/tmp/store-creds.json"},
+		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "file", Path: filepath.Join(t.TempDir(), "store-creds.json")},
 	}
 	svc := newServiceWithStores(store, nil)
 
@@ -1241,7 +1247,7 @@ func TestSaveCharmhubCredentialRejectsNilStore(t *testing.T) {
 
 func TestLogoutCharmhubClearsCredentials(t *testing.T) {
 	store := &fakeCharmhubCredentialStore{
-		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "file", Path: "/tmp/charmhub-creds.json"},
+		record: &dto.StoreCredentialRecord{Macaroon: "mac", Source: "file", Path: filepath.Join(t.TempDir(), "charmhub-creds.json")},
 	}
 	svc := newServiceWithStores(nil, store)
 
@@ -1284,7 +1290,7 @@ func TestLogoutCharmhubNoCredentials(t *testing.T) {
 
 func TestStatusReportsStoreAuthentication(t *testing.T) {
 	snapStore := &fakeStoreCredentialStore{
-		record: &dto.StoreCredentialRecord{Macaroon: "snap-mac", Source: "file", Path: "/tmp/snap.json"},
+		record: &dto.StoreCredentialRecord{Macaroon: "snap-mac", Source: "file", Path: filepath.Join(t.TempDir(), "snap.json")},
 	}
 	charmhubStore := &fakeCharmhubCredentialStore{
 		record: &dto.StoreCredentialRecord{Macaroon: "charm-mac", Source: "environment"},

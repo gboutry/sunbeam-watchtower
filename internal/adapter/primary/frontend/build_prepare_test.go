@@ -170,7 +170,7 @@ func TestLocalBuildPreparerPrepareTrigger(t *testing.T) {
 	got, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err != nil {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
@@ -226,7 +226,7 @@ func TestLocalBuildPreparerPrepareTriggerPreservesNestedRelPath(t *testing.T) {
 	got, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err != nil {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
@@ -273,7 +273,7 @@ func TestLocalBuildPreparerPrepareTriggerExplicitArtifactsResolvesNestedRelPath(
 		Project:   "demo",
 		Prefix:    "tmp-build",
 		Artifacts: []string{"bar"},
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err != nil {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
@@ -312,7 +312,7 @@ func TestLocalBuildPreparerPrepareTriggerRejectsUnknownArtifact(t *testing.T) {
 		Project:   "demo",
 		Prefix:    "tmp-build",
 		Artifacts: []string{"ghost"},
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err == nil {
 		t.Fatal("PrepareTrigger() error = nil, want error for unknown artifact")
 	}
@@ -352,7 +352,7 @@ func TestLocalBuildPreparerPrepareTriggerSkipsWhenBranchExists(t *testing.T) {
 	got, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err != nil {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
@@ -412,7 +412,7 @@ func TestLocalBuildPreparerPrepareTriggerWithPrepareCommand(t *testing.T) {
 	got, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err != nil {
 		t.Fatalf("PrepareTrigger() error = %v", err)
 	}
@@ -450,7 +450,7 @@ func TestLocalBuildPreparerPrepareTriggerRequiresAuth(t *testing.T) {
 	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if !errors.Is(err, app.ErrLaunchpadAuthRequired) {
 		t.Fatalf("PrepareTrigger() error = %v, want %v", err, app.ErrLaunchpadAuthRequired)
 	}
@@ -543,7 +543,7 @@ func TestLocalBuildPreparerPrepareTriggerPrepareSkipsPushWhenRefExists(t *testin
 	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err != nil {
 		t.Fatalf("PrepareTrigger: %v", err)
 	}
@@ -592,7 +592,7 @@ func TestLocalBuildPreparerPrepareTriggerNoPrepareCommandSkipsWorktree(t *testin
 	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err != nil {
 		t.Fatalf("PrepareTrigger: %v", err)
 	}
@@ -632,7 +632,7 @@ func TestLocalBuildPreparerPrepareTriggerCleanupOnPrepareFailure(t *testing.T) {
 	_, err := preparer.PrepareTrigger(context.Background(), PreparedBuildTriggerRequest{
 		Project: "demo",
 		Prefix:  "tmp-build",
-	}, "/tmp/demo")
+	}, filepath.Join(t.TempDir(), "demo"))
 	if err == nil {
 		t.Fatal("expected error from failing prepare command")
 	}

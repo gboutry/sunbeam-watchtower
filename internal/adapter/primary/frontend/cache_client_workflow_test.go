@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
@@ -148,6 +149,12 @@ func TestCacheClientWorkflowClearGitWithMultipleProjects(t *testing.T) {
 }
 
 func TestCacheClientWorkflowStatus(t *testing.T) {
+	baseDir := t.TempDir()
+	gitDir := filepath.Join(baseDir, "git")
+	packagesDir := filepath.Join(baseDir, "packages")
+	releasesDir := filepath.Join(baseDir, "releases")
+	reviewsDir := filepath.Join(baseDir, "reviews")
+
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/cache/status" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
@@ -157,7 +164,7 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 				Directory string              `json:"directory"`
 				Repos     []client.CacheEntry `json:"repos"`
 			}{
-				Directory: "/tmp/git",
+				Directory: gitDir,
 				Repos:     []client.CacheEntry{{Name: "keystone", Size: "4.0 MiB"}},
 			},
 			Packages: struct {
@@ -165,14 +172,14 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 				Sources   []dto.CacheStatus `json:"sources"`
 				Error     string            `json:"error,omitempty"`
 			}{
-				Directory: "/tmp/packages",
+				Directory: packagesDir,
 			},
 			Releases: struct {
 				Directory string                   `json:"directory"`
 				Entries   []dto.ReleaseCacheStatus `json:"entries"`
 				Error     string                   `json:"error,omitempty"`
 			}{
-				Directory: "/tmp/releases",
+				Directory: releasesDir,
 				Entries:   []dto.ReleaseCacheStatus{{Project: "sunbeam", Name: "snap-openstack", ArtifactType: dto.ArtifactSnap, TrackCount: 1, ChannelCount: 2}},
 			},
 			Reviews: struct {
@@ -180,7 +187,7 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 				Entries   []dto.ReviewCacheStatus `json:"entries"`
 				Error     string                  `json:"error,omitempty"`
 			}{
-				Directory: "/tmp/reviews",
+				Directory: reviewsDir,
 				Entries:   []dto.ReviewCacheStatus{{Project: "snap-openstack", ForgeType: "GitHub", SummaryCount: 4, DetailCount: 2}},
 			},
 		})
@@ -192,13 +199,13 @@ func TestCacheClientWorkflowStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status() error = %v", err)
 	}
-	if got.Git.Directory != "/tmp/git" || len(got.Git.Repos) != 1 || got.Git.Repos[0].Name != "keystone" {
+	if got.Git.Directory != gitDir || len(got.Git.Repos) != 1 || got.Git.Repos[0].Name != "keystone" {
 		t.Fatalf("Status() = %+v, want git cache snapshot", got)
 	}
-	if got.Releases.Directory != "/tmp/releases" || len(got.Releases.Entries) != 1 || got.Releases.Entries[0].Name != "snap-openstack" {
+	if got.Releases.Directory != releasesDir || len(got.Releases.Entries) != 1 || got.Releases.Entries[0].Name != "snap-openstack" {
 		t.Fatalf("Status() releases = %+v, want releases snapshot", got.Releases)
 	}
-	if got.Reviews.Directory != "/tmp/reviews" || len(got.Reviews.Entries) != 1 || got.Reviews.Entries[0].Project != "snap-openstack" {
+	if got.Reviews.Directory != reviewsDir || len(got.Reviews.Entries) != 1 || got.Reviews.Entries[0].Project != "snap-openstack" {
 		t.Fatalf("Status() reviews = %+v, want reviews snapshot", got.Reviews)
 	}
 }

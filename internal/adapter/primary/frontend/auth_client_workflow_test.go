@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/pkg/client"
@@ -91,13 +92,14 @@ func TestAuthClientWorkflowLoginLaunchpad(t *testing.T) {
 }
 
 func TestAuthClientWorkflowLogoutLaunchpad(t *testing.T) {
+	credsPath := filepath.Join(t.TempDir(), "launchpad-creds")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/auth/launchpad/logout" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
 		}
 		_ = json.NewEncoder(w).Encode(dto.LaunchpadAuthLogoutResult{
 			Cleared:         true,
-			CredentialsPath: "/tmp/launchpad-creds",
+			CredentialsPath: credsPath,
 		})
 	}))
 	defer ts.Close()
@@ -107,8 +109,8 @@ func TestAuthClientWorkflowLogoutLaunchpad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LogoutLaunchpad() error = %v", err)
 	}
-	if !got.Cleared || got.CredentialsPath != "/tmp/launchpad-creds" {
-		t.Fatalf("LogoutLaunchpad() = %+v, want cleared /tmp/launchpad-creds", got)
+	if !got.Cleared || got.CredentialsPath != credsPath {
+		t.Fatalf("LogoutLaunchpad() = %+v, want cleared credentials at %q", got, credsPath)
 	}
 }
 

@@ -72,7 +72,9 @@ func (m *mockCache) CacheDir() string {
 	if m.baseDir != "" {
 		return m.baseDir
 	}
-	return "/tmp/test"
+	// Tests that reach this fallback set baseDir; returning an empty path
+	// surfaces any unexpected dependency on an on-disk fixture.
+	return ""
 }
 func (m *mockCache) Close() error { return nil }
 

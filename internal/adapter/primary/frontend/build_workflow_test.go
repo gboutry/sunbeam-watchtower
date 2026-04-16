@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -44,6 +45,8 @@ func TestBuildWorkflowTriggerAsync(t *testing.T) {
 }
 
 func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
+	localPath := filepath.Join(t.TempDir(), "demo")
+	artifactsDir := filepath.Join(t.TempDir(), "artifacts")
 	var triggerBody client.BuildsTriggerOptions
 	var downloadBody client.BuildsDownloadOptions
 
@@ -98,9 +101,9 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 	workflow := NewBuildWorkflow(NewClientTransport(client.NewClient(ts.URL)), preparer)
 	got, err := workflow.Trigger(context.Background(), BuildTriggerRequest{
 		Source:       "local",
-		LocalPath:    "/tmp/demo",
+		LocalPath:    localPath,
 		Download:     true,
-		ArtifactsDir: "/tmp/artifacts",
+		ArtifactsDir: artifactsDir,
 		Project:      "demo",
 		Prefix:       "tmp-build",
 	})
@@ -116,8 +119,8 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 	if len(downloadBody.Artifacts) != 1 || !strings.HasPrefix(downloadBody.Artifacts[0], "tmp-build-01234567-") {
 		t.Fatalf("download artifacts = %+v", downloadBody.Artifacts)
 	}
-	if downloadBody.ArtifactsDir != "/tmp/artifacts" {
-		t.Fatalf("ArtifactsDir = %q, want /tmp/artifacts", downloadBody.ArtifactsDir)
+	if downloadBody.ArtifactsDir != artifactsDir {
+		t.Fatalf("ArtifactsDir = %q, want %q", downloadBody.ArtifactsDir, artifactsDir)
 	}
 }
 
