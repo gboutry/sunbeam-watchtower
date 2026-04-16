@@ -304,6 +304,46 @@ func TestRunMainFailsWhenCoverageBelowThreshold(t *testing.T) {
 	}
 }
 
+func TestRunResolvesWorkdirAndDelegates(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	policyPath := filepath.Join(tmpDir, "coverage-policy.yaml")
+	if err := os.WriteFile(policyPath, []byte("default_threshold: 40\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(policy) error = %v", err)
+	}
+
+	shell := &fakeRunner{
+		outputs: map[string][]byte{
+			"go list -json ./...": []byte(""),
+		},
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := run(context.Background(), shell, func() (string, error) { return tmpDir, nil }, &stdout, &stderr, []string{"--config", policyPath, "README.md"})
+	if exit != 0 {
+		t.Fatalf("run() exit = %d, want 0; stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "no changed Go packages to evaluate") {
+		t.Fatalf("run() stdout = %q", stdout.String())
+	}
+}
+
+func TestRunReportsGetwdError(t *testing.T) {
+	t.Parallel()
+
+	var stdout, stderr bytes.Buffer
+	exit := run(context.Background(), &fakeRunner{}, func() (string, error) {
+		return "", errors.New("boom")
+	}, &stdout, &stderr, nil)
+	if exit != 1 {
+		t.Fatalf("run() exit = %d, want 1", exit)
+	}
+	if !strings.Contains(stderr.String(), "coverageguard: resolve working directory: boom") {
+		t.Fatalf("run() stderr = %q", stderr.String())
+	}
+}
+
 func TestRunMainReportsPolicyLoadError(t *testing.T) {
 	t.Parallel()
 

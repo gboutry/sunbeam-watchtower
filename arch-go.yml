@@ -75,6 +75,11 @@ dependenciesRules:
         - "**.internal.**"
         - "**.cmd.**"
 
+  - package: "**.internal.testsupport"
+    shouldOnlyDependsOn:
+      internal:
+        - "**.pkg.**"
+
 contentsRules:
   - package: "**.internal.core.port.**"
     shouldOnlyContainInterfaces: true

@@ -57,12 +57,16 @@ func (execRunner) run(ctx context.Context, name string, args ...string) ([]byte,
 }
 
 func main() {
-	wd, err := os.Getwd()
+	os.Exit(run(context.Background(), execRunner{}, os.Getwd, os.Stdout, os.Stderr, os.Args[1:]))
+}
+
+func run(ctx context.Context, shell runner, getwd func() (string, error), stdout, stderr io.Writer, args []string) int {
+	wd, err := getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "coverageguard: resolve working directory: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "coverageguard: resolve working directory: %v\n", err)
+		return 1
 	}
-	os.Exit(runMain(context.Background(), execRunner{}, wd, os.Stdout, os.Stderr, os.Args[1:]))
+	return runMain(ctx, shell, wd, stdout, stderr, args)
 }
 
 func runMain(ctx context.Context, shell runner, workdir string, stdout, stderr io.Writer, args []string) int {
