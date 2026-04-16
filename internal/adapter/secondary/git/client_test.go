@@ -17,6 +17,14 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
+// requireGit skips the test if the git binary is not on PATH.
+func requireGit(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary required")
+	}
+}
+
 // initTestRepo creates a temporary git repo with one commit.
 func initTestRepo(t *testing.T) string {
 	t.Helper()
@@ -298,6 +306,7 @@ func TestResetHard(t *testing.T) {
 
 func TestClient_Commit_LinkedWorktree(t *testing.T) {
 	t.Parallel()
+	requireGit(t)
 	// Arrange: create a source repo with one commit.
 	srcDir := t.TempDir()
 	runGit(t, srcDir, "init", "-q", "-b", "main")
@@ -373,6 +382,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 
 func TestClient_CreateDetachedWorktree_RoundTrip(t *testing.T) {
 	t.Parallel()
+	requireGit(t)
 	srcDir := t.TempDir()
 	runGit(t, srcDir, "init", "-q", "-b", "main")
 	runGit(t, srcDir, "config", "user.email", "test@example.com")
@@ -423,6 +433,7 @@ func TestClient_CreateDetachedWorktree_RoundTrip(t *testing.T) {
 
 func TestClient_CreateDetachedWorktree_FixedArgv(t *testing.T) {
 	t.Parallel()
+	requireGit(t)
 	// Proof that we don't route through `sh -c`: a branch name with
 	// shell metacharacters must reach git as literal argv. git itself
 	// rejects it as an invalid ref, which is the signal we want.
@@ -449,6 +460,7 @@ func TestClient_CreateDetachedWorktree_FixedArgv(t *testing.T) {
 
 func TestClient_ForceAddAll_StagesIgnoredFiles(t *testing.T) {
 	t.Parallel()
+	requireGit(t)
 	srcDir := t.TempDir()
 	runGit(t, srcDir, "init", "-q", "-b", "main")
 	runGit(t, srcDir, "config", "user.email", "test@example.com")

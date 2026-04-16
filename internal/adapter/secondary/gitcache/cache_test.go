@@ -29,6 +29,10 @@ var (
 func setupTestRepo(t *testing.T) string {
 	t.Helper()
 
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary required")
+	}
+
 	testRepoOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "watchtower-gitcache-fixture-*")
 		if err != nil {
