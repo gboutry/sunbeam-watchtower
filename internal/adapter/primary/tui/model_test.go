@@ -902,7 +902,8 @@ func TestLoadLogsCmdIncludesDaemonTail(t *testing.T) {
 	session := newEmbeddedTestSession(t)
 	defer session.Close()
 
-	logFile := filepath.Join(t.TempDir(), "watchtower.log")
+	runtimeDir := t.TempDir()
+	logFile := filepath.Join(runtimeDir, "watchtower.log")
 	if err := os.WriteFile(logFile, []byte("daemon-one\ndaemon-two\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -910,7 +911,7 @@ func TestLoadLogsCmdIncludesDaemonTail(t *testing.T) {
 		Kind: runtimeadapter.TargetKindDaemon,
 		// Display-only address fixture used to verify TargetInfo wiring; the
 		// socket is never dialled in this test.
-		Address: "unix:///tmp/watchtower.sock",
+		Address: "unix://" + filepath.Join(runtimeDir, "watchtower.sock"),
 		LogFile: logFile,
 	})
 

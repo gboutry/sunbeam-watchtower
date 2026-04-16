@@ -22,6 +22,16 @@ import (
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
+// skipIfNoUnixSockets skips a test when running on a platform without
+// unix-domain socket support. Centralising the check keeps the skip message
+// identical across call sites.
+func skipIfNoUnixSockets(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("daemon integration tests require unix sockets")
+	}
+}
+
 func TestCLIHelperProcess(t *testing.T) {
 	if os.Getenv("WATCHTOWER_CLI_HELPER_PROCESS") != "1" {
 		return
@@ -57,9 +67,7 @@ func helperProcessArgs(args []string) []string {
 }
 
 func TestLocalDaemonLifecycleCommands(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("daemon integration tests require unix sockets")
-	}
+	skipIfNoUnixSockets(t)
 
 	wrapper := writeCLIHelperWrapper(t)
 	env := append(daemonTestEnv(t, wrapper), "WATCHTOWER_TEST_FAKE_LAUNCHPAD=1")
@@ -84,9 +92,7 @@ func TestLocalDaemonLifecycleCommands(t *testing.T) {
 }
 
 func TestLocalDaemonStatePersistsAcrossInvocations(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("daemon integration tests require unix sockets")
-	}
+	skipIfNoUnixSockets(t)
 
 	wrapper := writeCLIHelperWrapper(t)
 	env := append(daemonTestEnv(t, wrapper), "WATCHTOWER_TEST_FAKE_LAUNCHPAD=1")
