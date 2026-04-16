@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
@@ -187,11 +188,19 @@ func writeCLIHelperWrapper(t *testing.T) string {
 func daemonTestEnv(t *testing.T, wrapper string) []string {
 	t.Helper()
 
-	return []string{
+	env := []string{
 		"HOME=" + t.TempDir(),
 		"XDG_RUNTIME_DIR=" + t.TempDir(),
 		"WATCHTOWER_TEST_EXECUTABLE_PATH=" + wrapper,
 	}
+	// The CLI helper subprocess inherits os.Environ() in runCLIHelperNoFail;
+	// blank entries appended later override any forge credentials the
+	// developer may have exported, so the spawned daemon and CLI start from
+	// a deterministic, unauthenticated state.
+	for _, name := range testsupport.ForgeCredentialEnvVars {
+		env = append(env, name+"=")
+	}
+	return env
 }
 
 func runCLIHelper(t *testing.T, wrapper string, env []string, stdin string, args ...string) helperCommandResult {

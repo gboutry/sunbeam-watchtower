@@ -18,6 +18,7 @@ import (
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
@@ -39,6 +40,7 @@ func startTestServer(t *testing.T) (*Server, string) {
 
 func newEphemeralTestApp(t *testing.T, cfg *config.Config) *app.App {
 	t.Helper()
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	application := app.NewAppWithOptions(cfg, discardLogger(), app.Options{
 		RuntimeMode: app.RuntimeModeEphemeral,

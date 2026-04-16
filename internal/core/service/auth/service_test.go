@@ -9,17 +9,29 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 	sa "github.com/gboutry/sunbeam-watchtower/pkg/storeauth/v1"
 )
+
+// TestMain unsets every forge credential env var for the whole test binary
+// so the developer's shell environment cannot influence outcomes — even
+// though the tests below use fake stores that never read env vars today.
+func TestMain(m *testing.M) {
+	for _, name := range testsupport.ForgeCredentialEnvVars {
+		_ = os.Unsetenv(name)
+	}
+	os.Exit(m.Run())
+}
 
 type fakeCredentialStore struct {
 	record   *lp.CredentialRecord

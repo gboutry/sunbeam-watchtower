@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 	gh "github.com/gboutry/sunbeam-watchtower/pkg/github/v1"
 )
 
 func TestNewGitHubStore_DefaultPath(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -25,6 +27,7 @@ func TestNewGitHubStore_DefaultPath(t *testing.T) {
 }
 
 func TestGitHubStoreLoad_PrefersEnvironment(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	if err := gh.SaveCredentialsFile(path, &gh.Credentials{AccessToken: "file-token"}); err != nil {
@@ -49,6 +52,7 @@ func TestGitHubStoreLoad_PrefersEnvironment(t *testing.T) {
 }
 
 func TestGitHubStoreLoad_FromFile(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	if err := gh.SaveCredentialsFile(path, &gh.Credentials{AccessToken: "file-token"}); err != nil {
@@ -74,6 +78,7 @@ func TestGitHubStoreLoad_FromFile(t *testing.T) {
 }
 
 func TestGitHubStoreSaveAndClear(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "nested", "credentials.json")
 	store := NewGitHubStore(path)

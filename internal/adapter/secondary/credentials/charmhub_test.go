@@ -8,9 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 )
 
 func TestNewCharmhubStore_DefaultPath(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -23,6 +26,7 @@ func TestNewCharmhubStore_DefaultPath(t *testing.T) {
 }
 
 func TestCharmhubStoreLoad_PrefersEnvironment(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
@@ -48,6 +52,7 @@ func TestCharmhubStoreLoad_PrefersEnvironment(t *testing.T) {
 }
 
 func TestCharmhubStoreLoad_FromFile(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
@@ -77,6 +82,7 @@ func TestCharmhubStoreLoad_FromFile(t *testing.T) {
 // b2793 era only carried `macaroon`. The new loader must still accept
 // them; the missing bundle surfaces later as a re-login-required error.
 func TestCharmhubStoreLoad_LegacyFileWithoutBundle(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
@@ -101,6 +107,7 @@ func TestCharmhubStoreLoad_LegacyFileWithoutBundle(t *testing.T) {
 }
 
 func TestCharmhubStoreLoad_Missing(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
@@ -115,6 +122,7 @@ func TestCharmhubStoreLoad_Missing(t *testing.T) {
 }
 
 func TestCharmhubStoreSaveAndClear(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)

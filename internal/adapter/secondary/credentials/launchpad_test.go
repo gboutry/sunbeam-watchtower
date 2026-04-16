@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 	lp "github.com/gboutry/sunbeam-watchtower/pkg/launchpad/v1"
 )
 
 func TestNewLaunchpadStore_DefaultPath(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -25,6 +27,7 @@ func TestNewLaunchpadStore_DefaultPath(t *testing.T) {
 }
 
 func TestLaunchpadStoreLoad_PrefersEnvironment(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	if err := lp.SaveCredentialsFile(path, &lp.Credentials{
@@ -57,6 +60,7 @@ func TestLaunchpadStoreLoad_PrefersEnvironment(t *testing.T) {
 }
 
 func TestLaunchpadStoreLoad_FromFile(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	if err := lp.SaveCredentialsFile(path, &lp.Credentials{
@@ -89,6 +93,7 @@ func TestLaunchpadStoreLoad_FromFile(t *testing.T) {
 }
 
 func TestLaunchpadStoreLoad_InvalidFile(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
@@ -105,6 +110,7 @@ func TestLaunchpadStoreLoad_InvalidFile(t *testing.T) {
 }
 
 func TestLaunchpadStoreSaveAndClear(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "nested", "credentials.json")
 	store := NewLaunchpadStore(path)
@@ -157,6 +163,7 @@ func TestLaunchpadStoreSaveAndClear(t *testing.T) {
 }
 
 func TestLaunchpadStoreSave_WithEmptyPath(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	store := &LaunchpadStore{}
 

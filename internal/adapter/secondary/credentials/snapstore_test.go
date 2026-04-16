@@ -8,9 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 )
 
 func TestNewSnapStoreStore_DefaultPath(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -23,6 +26,7 @@ func TestNewSnapStoreStore_DefaultPath(t *testing.T) {
 }
 
 func TestSnapStoreStoreLoad_PrefersEnvironment(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewSnapStoreStore(dir)
@@ -48,6 +52,7 @@ func TestSnapStoreStoreLoad_PrefersEnvironment(t *testing.T) {
 }
 
 func TestSnapStoreStoreLoad_FromFile(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewSnapStoreStore(dir)
@@ -71,6 +76,7 @@ func TestSnapStoreStoreLoad_FromFile(t *testing.T) {
 }
 
 func TestSnapStoreStoreLoad_Missing(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewSnapStoreStore(dir)
@@ -85,6 +91,7 @@ func TestSnapStoreStoreLoad_Missing(t *testing.T) {
 }
 
 func TestSnapStoreStoreSaveAndClear(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewSnapStoreStore(dir)

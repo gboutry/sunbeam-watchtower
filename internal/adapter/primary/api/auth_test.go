@@ -15,6 +15,7 @@ import (
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
@@ -72,6 +73,7 @@ func postJSON(t *testing.T, baseURL, path string, body any) *http.Response {
 }
 
 func TestAuthStatusEndpoint_NotAuthenticated(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 
 	srv, base := startTestServer(t)
@@ -105,6 +107,7 @@ func TestAuthStatusEndpoint_NotAuthenticated(t *testing.T) {
 }
 
 func TestAuthLaunchpadBeginAndFinalizeEndpoints(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 
 	origTransport := http.DefaultTransport
@@ -173,6 +176,7 @@ func TestAuthLaunchpadBeginAndFinalizeEndpoints(t *testing.T) {
 }
 
 func TestAuthLaunchpadFinalizeEndpoint_UnknownFlow(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 
 	srv, base := startTestServer(t)
@@ -195,6 +199,7 @@ func TestAuthLaunchpadFinalizeEndpoint_UnknownFlow(t *testing.T) {
 }
 
 func TestAuthLaunchpadLogoutEndpoint_EnvironmentCredentials(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LP_ACCESS_TOKEN", "env-token")
 	t.Setenv("LP_ACCESS_TOKEN_SECRET", "env-secret")
@@ -219,6 +224,7 @@ func TestAuthLaunchpadLogoutEndpoint_EnvironmentCredentials(t *testing.T) {
 }
 
 func TestAuthGitHubBeginAndFinalizeEndpoints(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("WATCHTOWER_GITHUB_CLIENT_ID", "client-id")
 

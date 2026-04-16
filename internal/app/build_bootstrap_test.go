@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
+	"github.com/gboutry/sunbeam-watchtower/internal/testsupport"
 )
 
 func TestBuildRecipeBuildersUsesProjectAndGlobalDefaults(t *testing.T) {
+	testsupport.ClearForgeCredentials(t)
 	t.Setenv("LP_ACCESS_TOKEN", "token")
 	t.Setenv("LP_ACCESS_TOKEN_SECRET", "secret")
 
