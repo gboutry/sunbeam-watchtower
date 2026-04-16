@@ -14,6 +14,14 @@ import (
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
 
+// TeamCollaboratorSyncer reconciles the members of a Launchpad team against
+// the collaborator lists of a set of store artifacts. It is the consumption
+// contract primary adapters depend on; *Service is the canonical
+// implementation.
+type TeamCollaboratorSyncer interface {
+	Sync(ctx context.Context, teamName string, targets []dto.SyncTarget, dryRun bool) (*dto.TeamSyncResult, error)
+}
+
 // Service coordinates team collaborator synchronization.
 type Service struct {
 	teamProvider port.LaunchpadTeamProvider

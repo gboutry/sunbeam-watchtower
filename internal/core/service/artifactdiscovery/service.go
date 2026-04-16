@@ -44,6 +44,13 @@ type DiscoveredArtifact struct {
 	Resources    []string
 }
 
+// ArtifactDiscoverer enumerates artifacts of a given type in a cached
+// repository. It is the consumption contract primary adapters depend on;
+// *Service is the canonical implementation.
+type ArtifactDiscoverer interface {
+	Discover(ctx context.Context, repoPath string, artifactType dto.ArtifactType) ([]DiscoveredArtifact, error)
+}
+
 // Service enumerates artifacts in a cached git repository.
 type Service struct {
 	reader TreeReader

@@ -11,24 +11,11 @@ import (
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/artifactdiscovery"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/teamsync"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 )
-
-// teamSyncRepoCache resolves a project's bare-repo path for discovery.
-type teamSyncRepoCache interface {
-	EnsureRepo(ctx context.Context, cloneURL string, opts *dto.SyncOptions) (string, error)
-}
-
-// teamSyncDiscoverer enumerates artifacts in a cached repository.
-type teamSyncDiscoverer interface {
-	Discover(ctx context.Context, repoPath string, at dto.ArtifactType) ([]artifactdiscovery.DiscoveredArtifact, error)
-}
-
-// teamSyncer performs the team collaborator diff/invite for a set of targets.
-type teamSyncer interface {
-	Sync(ctx context.Context, teamName string, targets []dto.SyncTarget, dryRun bool) (*dto.TeamSyncResult, error)
-}
 
 // TeamServerWorkflow exposes reusable server-side team workflows for the HTTP API.
 type TeamServerWorkflow struct {
@@ -37,9 +24,9 @@ type TeamServerWorkflow struct {
 
 	// Injected for tests. When nil, each is resolved from application.
 	cfg        *config.Config
-	cache      teamSyncRepoCache
-	discoverer teamSyncDiscoverer
-	syncer     teamSyncer
+	cache      port.RepoEnsurer
+	discoverer artifactdiscovery.ArtifactDiscoverer
+	syncer     teamsync.TeamCollaboratorSyncer
 }
 
 // NewTeamServerWorkflow creates a server-side team workflow.
@@ -144,21 +131,21 @@ func (w *TeamServerWorkflow) getConfig() *config.Config {
 	return w.application.GetConfig()
 }
 
-func (w *TeamServerWorkflow) resolveSyncer() (teamSyncer, error) {
+func (w *TeamServerWorkflow) resolveSyncer() (teamsync.TeamCollaboratorSyncer, error) {
 	if w.syncer != nil {
 		return w.syncer, nil
 	}
 	return w.application.TeamSyncService()
 }
 
-func (w *TeamServerWorkflow) resolveCache() (teamSyncRepoCache, error) {
+func (w *TeamServerWorkflow) resolveCache() (port.RepoEnsurer, error) {
 	if w.cache != nil {
 		return w.cache, nil
 	}
 	return w.application.GitCache()
 }
 
-func (w *TeamServerWorkflow) resolveDiscoverer() (teamSyncDiscoverer, error) {
+func (w *TeamServerWorkflow) resolveDiscoverer() (artifactdiscovery.ArtifactDiscoverer, error) {
 	if w.discoverer != nil {
 		return w.discoverer, nil
 	}

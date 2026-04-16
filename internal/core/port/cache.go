@@ -10,9 +10,16 @@ import (
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
+// RepoEnsurer materialises a local bare clone of a remote repository.
+// Consumers that only need a repo path (e.g. to read a worktree snapshot)
+// should depend on this narrow role interface rather than on GitRepoCache.
+type RepoEnsurer interface {
+	EnsureRepo(ctx context.Context, cloneURL string, opts *dto.SyncOptions) (path string, err error)
+}
+
 // GitRepoCache manages local bare git clones used for reading commit history.
 type GitRepoCache interface {
-	EnsureRepo(ctx context.Context, cloneURL string, opts *dto.SyncOptions) (path string, err error)
+	RepoEnsurer
 	Fetch(ctx context.Context, cloneURL string, opts *dto.SyncOptions) error
 	ListCommits(ctx context.Context, cloneURL string, opts forge.ListCommitsOpts) ([]forge.Commit, error)
 	StoreMRMetadata(cloneURL string, mrs []dto.MRMetadata) error
