@@ -23,6 +23,7 @@ func TestNewCharmhubStore_DefaultPath(t *testing.T) {
 }
 
 func TestCharmhubStoreLoad_PrefersEnvironment(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
 	if _, err := store.Save(context.Background(), "bundle", "file-macaroon"); err != nil {
@@ -47,6 +48,7 @@ func TestCharmhubStoreLoad_PrefersEnvironment(t *testing.T) {
 }
 
 func TestCharmhubStoreLoad_FromFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
 	if _, err := store.Save(context.Background(), "saved-bundle", "file-macaroon"); err != nil {
@@ -75,6 +77,7 @@ func TestCharmhubStoreLoad_FromFile(t *testing.T) {
 // b2793 era only carried `macaroon`. The new loader must still accept
 // them; the missing bundle surfaces later as a re-login-required error.
 func TestCharmhubStoreLoad_LegacyFileWithoutBundle(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
 	legacyPath := filepath.Join(dir, charmhubCredentialFile)
@@ -98,6 +101,7 @@ func TestCharmhubStoreLoad_LegacyFileWithoutBundle(t *testing.T) {
 }
 
 func TestCharmhubStoreLoad_Missing(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
 
@@ -111,6 +115,7 @@ func TestCharmhubStoreLoad_Missing(t *testing.T) {
 }
 
 func TestCharmhubStoreSaveAndClear(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewCharmhubStore(dir)
 	path := filepath.Join(dir, charmhubCredentialFile)

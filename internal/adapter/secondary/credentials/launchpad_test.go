@@ -25,6 +25,7 @@ func TestNewLaunchpadStore_DefaultPath(t *testing.T) {
 }
 
 func TestLaunchpadStoreLoad_PrefersEnvironment(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	if err := lp.SaveCredentialsFile(path, &lp.Credentials{
 		ConsumerKey:       "ignored",
@@ -56,6 +57,7 @@ func TestLaunchpadStoreLoad_PrefersEnvironment(t *testing.T) {
 }
 
 func TestLaunchpadStoreLoad_FromFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	if err := lp.SaveCredentialsFile(path, &lp.Credentials{
 		ConsumerKey:       "ignored",
@@ -87,6 +89,7 @@ func TestLaunchpadStoreLoad_FromFile(t *testing.T) {
 }
 
 func TestLaunchpadStoreLoad_InvalidFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -102,6 +105,7 @@ func TestLaunchpadStoreLoad_InvalidFile(t *testing.T) {
 }
 
 func TestLaunchpadStoreSaveAndClear(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "nested", "credentials.json")
 	store := NewLaunchpadStore(path)
 
@@ -153,6 +157,7 @@ func TestLaunchpadStoreSaveAndClear(t *testing.T) {
 }
 
 func TestLaunchpadStoreSave_WithEmptyPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	store := &LaunchpadStore{}
 
 	if _, err := store.Save(context.Background(), &lp.Credentials{}); err == nil {

@@ -23,6 +23,7 @@ func TestNewSnapStoreStore_DefaultPath(t *testing.T) {
 }
 
 func TestSnapStoreStoreLoad_PrefersEnvironment(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewSnapStoreStore(dir)
 	if _, err := store.Save(context.Background(), "file-macaroon"); err != nil {
@@ -47,6 +48,7 @@ func TestSnapStoreStoreLoad_PrefersEnvironment(t *testing.T) {
 }
 
 func TestSnapStoreStoreLoad_FromFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewSnapStoreStore(dir)
 	if _, err := store.Save(context.Background(), "file-macaroon"); err != nil {
@@ -69,6 +71,7 @@ func TestSnapStoreStoreLoad_FromFile(t *testing.T) {
 }
 
 func TestSnapStoreStoreLoad_Missing(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewSnapStoreStore(dir)
 
@@ -82,6 +85,7 @@ func TestSnapStoreStoreLoad_Missing(t *testing.T) {
 }
 
 func TestSnapStoreStoreSaveAndClear(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	store := NewSnapStoreStore(dir)
 	path := filepath.Join(dir, snapStoreCredentialFile)
