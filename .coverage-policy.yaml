@@ -17,5 +17,6 @@ package_thresholds:
 
 exclude_packages:
   - cmd/watchtower
+  - cmd/watchtower-tui
   - internal/core/port
   - pkg/storeauth/v1
