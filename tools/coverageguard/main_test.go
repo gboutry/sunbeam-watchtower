@@ -11,11 +11,15 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 )
 
 func TestParseCoveragePercent(t *testing.T) {
+	t.Parallel()
+
 	t.Run("parses coverage percentage", func(t *testing.T) {
+		t.Parallel()
 		got, err := parseCoveragePercent("ok\tpkg\t0.123s\tcoverage: 46.5% of statements\n")
 		if err != nil {
 			t.Fatalf("parseCoveragePercent() error = %v", err)
@@ -26,6 +30,7 @@ func TestParseCoveragePercent(t *testing.T) {
 	})
 
 	t.Run("treats no test files as zero coverage", func(t *testing.T) {
+		t.Parallel()
 		got, err := parseCoveragePercent("?   \tpkg\t[no test files]\n")
 		if err != nil {
 			t.Fatalf("parseCoveragePercent() error = %v", err)
@@ -36,6 +41,7 @@ func TestParseCoveragePercent(t *testing.T) {
 	})
 
 	t.Run("fails on missing coverage marker", func(t *testing.T) {
+		t.Parallel()
 		if _, err := parseCoveragePercent("ok\tpkg\t0.123s\n"); err == nil {
 			t.Fatal("parseCoveragePercent() error = nil, want error")
 		}
@@ -43,6 +49,8 @@ func TestParseCoveragePercent(t *testing.T) {
 }
 
 func TestChangedPackagesForFiles(t *testing.T) {
+	t.Parallel()
+
 	root := filepath.Join(string(filepath.Separator), "repo")
 	packages := map[string]string{
 		"internal/app": "example/internal/app",
@@ -67,6 +75,8 @@ func TestChangedPackagesForFiles(t *testing.T) {
 }
 
 func TestPolicyThresholdFor(t *testing.T) {
+	t.Parallel()
+
 	p := &policy{
 		DefaultThreshold: 40,
 		PackageThreshold: map[string]float64{
@@ -92,6 +102,8 @@ func TestPolicyThresholdFor(t *testing.T) {
 }
 
 func TestSplitLinesAndPackageMatchesPattern(t *testing.T) {
+	t.Parallel()
+
 	got := splitLines(" internal/app/app.go \n\npkg/client/client.go\n")
 	want := []string{"internal/app/app.go", "pkg/client/client.go"}
 	if !reflect.DeepEqual(got, want) {
@@ -107,8 +119,9 @@ func TestSplitLinesAndPackageMatchesPattern(t *testing.T) {
 }
 
 func TestRunMainUsesProvidedChangedFiles(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
-	withWorkingDir(t, tmpDir)
 	packageDir := filepath.Join(tmpDir, "internal/adapter/primary/cli")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(packageDir) error = %v", err)
@@ -131,7 +144,7 @@ package_thresholds:
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	exitCode := runMain(context.Background(), shell, &stdout, &stderr, []string{
+	exitCode := runMain(context.Background(), shell, tmpDir, &stdout, &stderr, []string{
 		"--config", policyPath,
 		"internal/adapter/primary/cli/runtime.go",
 	})
@@ -143,14 +156,15 @@ package_thresholds:
 	if !strings.Contains(output, "PASS internal/adapter/primary/cli coverage 46.5% (threshold 45.0%)") {
 		t.Fatalf("runMain() stdout = %q", output)
 	}
-	if len(shell.calls) != 2 {
-		t.Fatalf("shell.calls = %v, want 2 calls", shell.calls)
+	if len(shell.callsSnapshot()) != 2 {
+		t.Fatalf("shell.calls = %v, want 2 calls", shell.callsSnapshot())
 	}
 }
 
 func TestEvaluateChangedPackagesRespectsExclusions(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
-	withWorkingDir(t, tmpDir)
 
 	cliDir := filepath.Join(tmpDir, "internal/adapter/primary/cli")
 	cmdDir := filepath.Join(tmpDir, "cmd/watchtower")
@@ -170,7 +184,7 @@ func TestEvaluateChangedPackagesRespectsExclusions(t *testing.T) {
 		},
 	}
 
-	results, err := evaluateChangedPackages(context.Background(), shell, &policy{
+	results, err := evaluateChangedPackages(context.Background(), shell, tmpDir, &policy{
 		DefaultThreshold: 40,
 		ExcludePackages:  []string{"cmd/watchtower"},
 	}, []string{
@@ -189,6 +203,8 @@ func TestEvaluateChangedPackagesRespectsExclusions(t *testing.T) {
 }
 
 func TestStagedGoFiles(t *testing.T) {
+	t.Parallel()
+
 	shell := &fakeRunner{
 		outputs: map[string][]byte{
 			"git diff --cached --name-only --diff-filter=ACMR -- *.go": []byte("internal/app/app.go\npkg/client/client.go\n"),
@@ -206,6 +222,8 @@ func TestStagedGoFiles(t *testing.T) {
 }
 
 func TestPackageCoveragePercent(t *testing.T) {
+	t.Parallel()
+
 	shell := &fakeRunner{
 		outputs: map[string][]byte{
 			"go test -cover ./internal/app":   []byte("ok\texample/internal/app\t0.1s\tcoverage: 33.6% of statements\n"),
@@ -231,6 +249,8 @@ func TestPackageCoveragePercent(t *testing.T) {
 }
 
 func TestLoadPolicy(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	policyPath := filepath.Join(tmpDir, "coverage-policy.yaml")
 	if err := os.WriteFile(policyPath, []byte("default_threshold: 50\n"), 0o600); err != nil {
@@ -250,8 +270,9 @@ func TestLoadPolicy(t *testing.T) {
 }
 
 func TestRunMainFailsWhenCoverageBelowThreshold(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
-	withWorkingDir(t, tmpDir)
 	packageDir := filepath.Join(tmpDir, "internal/app")
 	if err := os.MkdirAll(packageDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(packageDir) error = %v", err)
@@ -271,7 +292,7 @@ func TestRunMainFailsWhenCoverageBelowThreshold(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	exitCode := runMain(context.Background(), shell, &stdout, &stderr, []string{
+	exitCode := runMain(context.Background(), shell, tmpDir, &stdout, &stderr, []string{
 		"--config", policyPath,
 		"internal/app/app.go",
 	})
@@ -284,10 +305,12 @@ func TestRunMainFailsWhenCoverageBelowThreshold(t *testing.T) {
 }
 
 func TestRunMainReportsPolicyLoadError(t *testing.T) {
+	t.Parallel()
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := runMain(context.Background(), &fakeRunner{}, &stdout, &stderr, []string{"--config", "missing.yaml"})
+	exitCode := runMain(context.Background(), &fakeRunner{}, t.TempDir(), &stdout, &stderr, []string{"--config", "missing.yaml"})
 	if exitCode != 1 {
 		t.Fatalf("runMain() exitCode = %d, want 1", exitCode)
 	}
@@ -296,34 +319,29 @@ func TestRunMainReportsPolicyLoadError(t *testing.T) {
 	}
 }
 
-func withWorkingDir(t *testing.T, dir string) {
-	t.Helper()
-
-	original, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir(%s) error = %v", dir, err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(original); err != nil {
-			t.Fatalf("restore Chdir(%s) error = %v", original, err)
-		}
-	})
-}
-
 type fakeRunner struct {
 	outputs map[string][]byte
-	calls   []string
+
+	mu    sync.Mutex
+	calls []string
 }
 
 func (f *fakeRunner) run(_ context.Context, name string, args ...string) ([]byte, error) {
 	key := name + " " + strings.Join(args, " ")
+	f.mu.Lock()
 	f.calls = append(f.calls, key)
+	f.mu.Unlock()
 	output, ok := f.outputs[key]
 	if !ok {
 		return nil, errors.New("unexpected command: " + key)
 	}
 	return output, nil
+}
+
+func (f *fakeRunner) callsSnapshot() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, len(f.calls))
+	copy(out, f.calls)
+	return out
 }

@@ -57,10 +57,15 @@ func (execRunner) run(ctx context.Context, name string, args ...string) ([]byte,
 }
 
 func main() {
-	os.Exit(runMain(context.Background(), execRunner{}, os.Stdout, os.Stderr, os.Args[1:]))
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "coverageguard: resolve working directory: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(runMain(context.Background(), execRunner{}, wd, os.Stdout, os.Stderr, os.Args[1:]))
 }
 
-func runMain(ctx context.Context, shell runner, stdout, stderr io.Writer, args []string) int {
+func runMain(ctx context.Context, shell runner, workdir string, stdout, stderr io.Writer, args []string) int {
 	configPath := flag.NewFlagSet("coverageguard", flag.ContinueOnError)
 	configPath.SetOutput(stderr)
 
@@ -84,7 +89,7 @@ func runMain(ctx context.Context, shell runner, stdout, stderr io.Writer, args [
 		}
 	}
 
-	results, err := evaluateChangedPackages(ctx, shell, p, changedFiles)
+	results, err := evaluateChangedPackages(ctx, shell, workdir, p, changedFiles)
 	if err != nil {
 		fmt.Fprintf(stderr, "coverageguard: %v\n", err)
 		return 1
@@ -134,18 +139,13 @@ func stagedGoFiles(ctx context.Context, shell runner) ([]string, error) {
 	return splitLines(string(output)), nil
 }
 
-func evaluateChangedPackages(ctx context.Context, shell runner, p *policy, files []string) ([]packageCoverage, error) {
-	root, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("resolve working directory: %w", err)
-	}
-
-	packages, err := listPackages(ctx, shell, root)
+func evaluateChangedPackages(ctx context.Context, shell runner, workdir string, p *policy, files []string) ([]packageCoverage, error) {
+	packages, err := listPackages(ctx, shell, workdir)
 	if err != nil {
 		return nil, err
 	}
 
-	changedPackages, err := changedPackagesForFiles(root, packages, files)
+	changedPackages, err := changedPackagesForFiles(workdir, packages, files)
 	if err != nil {
 		return nil, err
 	}
