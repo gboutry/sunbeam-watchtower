@@ -4,9 +4,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
@@ -147,5 +149,68 @@ func TestPackagesRdepends_NoConfiguredSourcesReturns400(t *testing.T) {
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestPackagesCacheSync_RejectsBackportAsRelease(t *testing.T) {
+	srv, base := startTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	application := newEphemeralTestApp(t, packageSyncFilterTestConfig())
+	RegisterPackagesAPI(srv.API(), application)
+
+	resp, err := http.Post(
+		base+"/api/v1/packages/cache/sync",
+		"application/json",
+		bytes.NewBufferString(`{"distros":["ubuntu"],"releases":["gazpacho"]}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Detail string `json:"detail"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body.Detail, `unknown distro release "gazpacho"`) || !strings.Contains(body.Detail, "--backport") {
+		t.Fatalf("detail = %q, want release/backport guidance", body.Detail)
+	}
+}
+
+func packageSyncFilterTestConfig() *config.Config {
+	return &config.Config{
+		Packages: config.PackagesConfig{
+			Distros: map[string]config.DistroConfig{
+				"ubuntu": {
+					Mirror:     "http://archive.ubuntu.com/ubuntu",
+					Components: []string{"main"},
+					Releases: map[string]config.ReleaseConfig{
+						"noble": {
+							Suites: []string{"release"},
+							Backports: map[string]config.BackportConfig{
+								"gazpacho": {
+									ParentRelease: "resolute",
+									Sources: []config.DistroSourceConfig{{
+										Mirror:     "http://ppa.example.com",
+										Suites:     []string{"updates"},
+										Components: []string{"main"},
+									}},
+								},
+							},
+						},
+						"resolute": {
+							Suites: []string{"release"},
+						},
+					},
+				},
+			},
+		},
 	}
 }

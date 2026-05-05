@@ -160,8 +160,8 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 
 	cmd.Flags().StringSliceVar(&projects, "project", nil, "sync only these projects (repeat flag; git/bugs/reviews only)")
 	cmd.Flags().StringSliceVar(&distros, "distro", nil, "distros to update (packages-index only, default: all configured)")
-	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro releases to sync (packages-index only, default: all configured)")
-	cmd.Flags().StringSliceVar(&backports, "backport", nil, "backports to sync (packages-index only, default: all)")
+	cmd.Flags().StringSliceVar(&releases, "release", nil, "distro release names to sync (packages-index only, default: all configured)")
+	cmd.Flags().StringSliceVar(&backports, "backport", nil, "configured backport sources to sync (packages-index only, default: all)")
 	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "excuses trackers to sync (excuses only, default: all configured trackers)")
 	cmd.Flags().StringVar(&since, "since", "", "sync full review detail for closed reviews updated since this time (reviews only)")
 

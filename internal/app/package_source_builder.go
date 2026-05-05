@@ -4,6 +4,7 @@
 package app
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
@@ -156,4 +157,97 @@ func buildPackageSources(cfg config.PackagesConfig, distros, releases, suites, b
 	}
 
 	return sources
+}
+
+func buildPackageCacheSyncSources(cfg config.PackagesConfig, distros, releases, suites, backports []string, logger *slog.Logger) ([]dto.PackageSource, error) {
+	if err := validatePackageCacheSyncFilters(cfg, distros, releases, backports); err != nil {
+		return nil, err
+	}
+
+	syncBackports := backports
+	if len(backports) == 0 {
+		syncBackports = nil
+	}
+	sources := buildPackageSources(cfg, distros, releases, suites, syncBackports, logger)
+	if len(sources) == 0 && (len(distros) > 0 || len(releases) > 0 || len(suites) > 0 || len(backports) > 0) {
+		return nil, fmt.Errorf("no package sources matched cache sync filters")
+	}
+	return sources, nil
+}
+
+func validatePackageCacheSyncFilters(cfg config.PackagesConfig, distros, releases, backports []string) error {
+	selectedDistros, err := packageCacheSyncDistroNames(cfg, distros)
+	if err != nil {
+		return err
+	}
+
+	for _, release := range releases {
+		if release == "none" {
+			continue
+		}
+		if !packageReleaseConfigured(cfg, selectedDistros, release) {
+			return fmt.Errorf("unknown distro release %q; use --release for distro releases and --backport for configured backport sources", release)
+		}
+	}
+
+	for _, backport := range backports {
+		if backport == "none" {
+			continue
+		}
+		if !packageBackportConfigured(cfg, selectedDistros, backport) {
+			return fmt.Errorf("unknown backport %q", backport)
+		}
+	}
+
+	return nil
+}
+
+func packageCacheSyncDistroNames(cfg config.PackagesConfig, distros []string) ([]string, error) {
+	if len(distros) == 0 {
+		names := make([]string, 0, len(cfg.Distros))
+		for name := range cfg.Distros {
+			names = append(names, name)
+		}
+		return names, nil
+	}
+
+	names := make([]string, 0, len(distros))
+	for _, distro := range distros {
+		if distro == "none" {
+			continue
+		}
+		if _, ok := cfg.Distros[distro]; !ok {
+			return nil, fmt.Errorf("unknown distro %q", distro)
+		}
+		names = append(names, distro)
+	}
+	return names, nil
+}
+
+func packageReleaseConfigured(cfg config.PackagesConfig, distroNames []string, release string) bool {
+	for _, distroName := range distroNames {
+		distro, ok := cfg.Distros[distroName]
+		if !ok {
+			continue
+		}
+		if _, ok := distro.Releases[release]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func packageBackportConfigured(cfg config.PackagesConfig, distroNames []string, backport string) bool {
+	for _, distroName := range distroNames {
+		distro, ok := cfg.Distros[distroName]
+		if !ok {
+			continue
+		}
+		for _, release := range distro.Releases {
+			if _, ok := release.Backports[backport]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }

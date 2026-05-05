@@ -553,8 +553,11 @@ watchtower cache sync
 # Sync only git repos
 watchtower cache sync git
 
-# Sync only package indexes for selected distros/releases
+# Sync only package indexes for selected distros/distro releases
 watchtower cache sync packages-index --distro ubuntu --release noble
+
+# Sync only configured package backport sources
+watchtower cache sync packages-index --distro ubuntu --backport gazpacho
 
 # Sync only configured upstream repos
 watchtower cache sync upstream-repos
@@ -591,6 +594,10 @@ watchtower cache clear excuses --tracker debian
 ```
 
 Valid cache types are `git`, `packages-index`, `upstream-repos`, `bugs`, `excuses`, `releases`, and `reviews`.
+
+For `packages-index`, `--release` matches distro release names such as `noble`.
+Use `--backport` for configured package backport sources such as UCA or OSBPO
+targets.
 
 Review cache data is stored at `$XDG_CACHE_HOME/sunbeam-watchtower/reviews/` (defaults to `~/.cache/sunbeam-watchtower/reviews/`). It stores cached review summaries for all synced items plus full comments/files/diff detail for open reviews and recently updated closed reviews.
 

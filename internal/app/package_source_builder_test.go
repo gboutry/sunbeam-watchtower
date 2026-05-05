@@ -4,6 +4,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/config"
@@ -209,4 +210,90 @@ func TestBuildPackageSources_DistroAndSuiteFilters(t *testing.T) {
 			t.Error("expected 'noble-updates' entry when suite filter includes 'updates'")
 		}
 	})
+}
+
+func TestBuildPackageCacheSyncSourcesRejectsBackportAsRelease(t *testing.T) {
+	a := NewApp(standardTestConfig(), nil)
+
+	_, err := a.BuildPackageCacheSyncSources([]string{"ubuntu"}, []string{"gazpacho"}, nil, nil)
+	if err == nil {
+		t.Fatal("expected error for backport name passed as release")
+	}
+	if got := err.Error(); !strings.Contains(got, `unknown distro release "gazpacho"`) || !strings.Contains(got, "--backport") {
+		t.Fatalf("error = %q, want release/backport guidance", got)
+	}
+}
+
+func TestBuildPackageCacheSyncSourcesAcceptsNamedBackport(t *testing.T) {
+	a := NewApp(standardTestConfig(), nil)
+
+	sources, err := a.BuildPackageCacheSyncSources([]string{"ubuntu"}, nil, nil, []string{"gazpacho"})
+	if err != nil {
+		t.Fatalf("BuildPackageCacheSyncSources() error = %v", err)
+	}
+	if src := findSource(sources, "ubuntu/gazpacho"); src == nil {
+		t.Fatal("expected 'ubuntu/gazpacho' backport source")
+	}
+	if src := findSource(sources, "ubuntu"); src == nil {
+		t.Fatal("expected 'ubuntu' parent release source")
+	}
+}
+
+func TestBuildPackageCacheSyncSourcesAcceptsDistroRelease(t *testing.T) {
+	a := NewApp(standardTestConfig(), nil)
+
+	sources, err := a.BuildPackageCacheSyncSources([]string{"ubuntu"}, []string{"noble"}, nil, []string{"none"})
+	if err != nil {
+		t.Fatalf("BuildPackageCacheSyncSources() error = %v", err)
+	}
+	ubuntuSrc := findSource(sources, "ubuntu")
+	if ubuntuSrc == nil {
+		t.Fatal("expected 'ubuntu' source")
+	}
+	if !hasEntry(ubuntuSrc.Entries, "http://archive.ubuntu.com/ubuntu", "noble", "main") {
+		t.Fatal("expected noble release entry")
+	}
+	if src := findSource(sources, "ubuntu/gazpacho"); src != nil {
+		t.Fatal("did not expect backport source when backports are explicitly disabled")
+	}
+}
+
+func TestBuildPackageCacheSyncSourcesRejectsUnknownFilters(t *testing.T) {
+	a := NewApp(standardTestConfig(), nil)
+
+	tests := []struct {
+		name      string
+		distros   []string
+		releases  []string
+		backports []string
+		want      string
+	}{
+		{
+			name:    "unknown distro",
+			distros: []string{"notubuntu"},
+			want:    `unknown distro "notubuntu"`,
+		},
+		{
+			name:     "unknown release",
+			releases: []string{"notnoble"},
+			want:     `unknown distro release "notnoble"`,
+		},
+		{
+			name:      "unknown backport",
+			backports: []string{"notgazpacho"},
+			want:      `unknown backport "notgazpacho"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := a.BuildPackageCacheSyncSources(tt.distros, tt.releases, nil, tt.backports)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want %q", err.Error(), tt.want)
+			}
+		})
+	}
 }

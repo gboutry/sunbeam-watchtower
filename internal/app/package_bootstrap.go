@@ -131,3 +131,10 @@ func (a *App) SyncBugCache(ctx context.Context, projects []string) (int, error) 
 func (a *App) BuildPackageSources(distros, releases, suites, backports []string) []dto.PackageSource {
 	return buildPackageSources(a.GetConfig().Packages, distros, releases, suites, backports, a.Logger)
 }
+
+// BuildPackageCacheSyncSources resolves package cache sync filters against config.
+// Unlike query paths, explicit cache sync filters are validated and return
+// actionable errors instead of silently selecting no sources.
+func (a *App) BuildPackageCacheSyncSources(distros, releases, suites, backports []string) ([]dto.PackageSource, error) {
+	return buildPackageCacheSyncSources(a.GetConfig().Packages, distros, releases, suites, backports, a.Logger)
+}

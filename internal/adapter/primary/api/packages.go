@@ -499,18 +499,20 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 		Summary:     "Sync the package cache",
 		Tags:        []string{"packages"},
 	}, func(ctx context.Context, input *PackagesCacheSyncInput) (*PackagesCacheSyncOutput, error) {
+		sources, err := application.BuildPackageCacheSyncSources(
+			input.Body.Distros,
+			input.Body.Releases,
+			nil,
+			input.Body.Backports,
+		)
+		if err != nil {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
+
 		cache, err := application.DistroCache()
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to open distro cache: %v", err))
 		}
-
-		// nil backports means include all (sync everything).
-		var backports []string
-		if len(input.Body.Backports) > 0 {
-			backports = input.Body.Backports
-		}
-		sources := application.BuildPackageSources(input.Body.Distros, input.Body.Releases, nil, backports)
-
 		svc := pkg.NewService(cache, application.Logger)
 		if err := svc.UpdateCache(ctx, sources); err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("cache sync failed: %v", err))
