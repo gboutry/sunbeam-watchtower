@@ -56,6 +56,7 @@ type Options struct {
 	ConfigPath     string
 	ServerAddr     string
 	Verbose        bool
+	Insecure       bool
 	Logger         *slog.Logger
 	LogWriter      io.Writer
 	ExecutablePath string
@@ -505,7 +506,7 @@ func NewSession(ctx context.Context, opts Options) (*Session, error) {
 	// Fast path: explicit remote target — skip App and LocalServerManager.
 	if opts.ServerAddr != "" {
 		if token != "" {
-			c, err := client.NewClientWithToken(opts.ServerAddr, token)
+			c, err := client.NewClientWithToken(opts.ServerAddr, token, opts.Insecure)
 			if err != nil {
 				return nil, err
 			}

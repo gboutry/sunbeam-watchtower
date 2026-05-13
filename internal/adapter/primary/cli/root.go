@@ -19,6 +19,7 @@ type Options struct {
 	Verbose        bool
 	Output         string // "table", "json", "yaml"
 	NoColor        bool
+	Insecure       bool
 	AccessMode     runtimeadapter.AccessMode
 	Logger         *slog.Logger
 	Out            io.Writer
@@ -112,6 +113,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 					ConfigPath:     opts.ConfigPath,
 					ServerAddr:     opts.ServerAddr,
 					Verbose:        opts.Verbose,
+					Insecure:       opts.Insecure,
 					Logger:         opts.Logger,
 					LogWriter:      opts.ErrOut,
 					ExecutablePath: opts.ExecutablePath,
@@ -164,6 +166,7 @@ func NewRootCmd(opts *Options) *cobra.Command {
 	root.PersistentFlags().BoolVar(&opts.Verbose, "verbose", false, "enable debug logging")
 	root.PersistentFlags().StringVarP(&opts.Output, "output", "o", "table", "output format: table, json, yaml")
 	root.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "disable colored output")
+	root.PersistentFlags().BoolVar(&opts.Insecure, "insecure", false, "allow sending bearer tokens over cleartext HTTP to remote servers")
 	root.PersistentFlags().StringVar(&opts.ServerAddr, "server", "", "server address (http://host:port or unix:///path)")
 
 	root.AddGroup(

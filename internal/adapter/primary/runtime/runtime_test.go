@@ -126,6 +126,31 @@ func TestNewSession_RemoteTargetUsesTokenFromEnv(t *testing.T) {
 	}
 }
 
+func TestNewSession_RemoteHTTPWithTokenRequiresInsecure(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	t.Setenv("WATCHTOWER_TOKEN", "test-token-123")
+
+	_, err := NewSession(context.Background(), Options{
+		ServerAddr:   "http://10.191.33.1:8080",
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: TargetPolicyPreferExistingDaemon,
+	})
+	if err == nil {
+		t.Fatal("expected cleartext remote token error")
+	}
+
+	session, err := NewSession(context.Background(), Options{
+		ServerAddr:   "http://10.191.33.1:8080",
+		Insecure:     true,
+		LogWriter:    &bytes.Buffer{},
+		TargetPolicy: TargetPolicyPreferExistingDaemon,
+	})
+	if err != nil {
+		t.Fatalf("NewSession() with Insecure error = %v", err)
+	}
+	defer session.Close()
+}
+
 func TestNewSession_PreferEmbeddedFallsBackToEmbedded(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 
