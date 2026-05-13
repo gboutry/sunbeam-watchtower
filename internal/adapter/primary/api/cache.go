@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -266,14 +267,16 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		for label, repoURL := range repos {
 			localPath := app.UpstreamRepoPath(upDir, repoURL)
 			if _, err := os.Stat(localPath); err == nil {
-				gitCmd := exec.CommandContext(ctx, "git", "-C", localPath, "fetch", "--all")
-				if err := gitCmd.Run(); err != nil {
-					application.Logger.Warn("fetch upstream failed", "repo", label, "error", err)
+				gitCmd := exec.CommandContext(ctx, "git", "-C", localPath, "fetch", "origin", "+refs/heads/*:refs/heads/*")
+				if out, err := gitCmd.CombinedOutput(); err != nil {
+					return nil, huma.Error500InternalServerError(
+						fmt.Sprintf("fetch upstream %s failed: %v: %s", label, err, strings.TrimSpace(string(out))))
 				}
 			} else {
 				gitCmd := exec.CommandContext(ctx, "git", "clone", "--bare", repoURL, localPath)
-				if err := gitCmd.Run(); err != nil {
-					application.Logger.Warn("clone upstream failed", "repo", label, "error", err)
+				if out, err := gitCmd.CombinedOutput(); err != nil {
+					return nil, huma.Error500InternalServerError(
+						fmt.Sprintf("clone upstream %s failed: %v: %s", label, err, strings.TrimSpace(string(out))))
 				}
 			}
 		}

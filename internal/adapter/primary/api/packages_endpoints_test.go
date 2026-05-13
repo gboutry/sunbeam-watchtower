@@ -39,6 +39,32 @@ func TestPackagesDiff_UnknownSetReturns404(t *testing.T) {
 	}
 }
 
+func TestEffectivePackagesUpstreamReleaseUsesProviderDefault(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	application := app.NewApp(&config.Config{
+		Launchpad: config.LaunchpadConfig{DevelopmentFocus: "2025.1"},
+		Packages: config.PackagesConfig{
+			Upstream: &config.UpstreamConfig{Provider: "openstack"},
+		},
+	}, nil)
+
+	got := effectivePackagesUpstreamRelease(context.Background(), application, "", "")
+	if got != "" {
+		t.Fatalf("effectivePackagesUpstreamRelease() = %q, want provider default", got)
+	}
+}
+
+func TestEffectivePackagesUpstreamReleaseNeedsUpstreamProvider(t *testing.T) {
+	application := app.NewApp(&config.Config{
+		Launchpad: config.LaunchpadConfig{DevelopmentFocus: "2025.1"},
+	}, nil)
+
+	got := effectivePackagesUpstreamRelease(context.Background(), application, "", "")
+	if got != "" {
+		t.Fatalf("effectivePackagesUpstreamRelease() = %q, want empty", got)
+	}
+}
+
 func TestPackagesList_NoConfiguredSourcesReturns400(t *testing.T) {
 	srv, base := startTestServer(t)
 	defer srv.Shutdown(context.Background())

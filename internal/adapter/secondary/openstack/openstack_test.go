@@ -4,6 +4,10 @@
 package openstack
 
 import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
@@ -84,6 +88,85 @@ func TestParseConstraintsEmpty(t *testing.T) {
 	}
 }
 
+func TestParseSeriesStatus(t *testing.T) {
+	input := []byte(`---
+- name: hibiscus
+  release-id: 2026.2
+  status: development
+- name: gazpacho
+  release-id: 2026.1
+  status: maintained
+- name: epoxy
+  release-id: 2025.1
+  status: maintained
+`)
+
+	got, err := parseSeriesStatus(input)
+	if err != nil {
+		t.Fatalf("parseSeriesStatus() error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("parseSeriesStatus() returned %d entries, want 3", len(got))
+	}
+	if got[1].Name != "gazpacho" || got[1].ReleaseID != "2026.1" || got[1].Status != "maintained" {
+		t.Fatalf("second series = %+v, want gazpacho/2026.1/maintained", got[1])
+	}
+}
+
+func TestListDeliverablesDefaultUsesLatestAvailablePerPackage(t *testing.T) {
+	repo := initTestGitRepo(t)
+	writeTestFile(t, repo, "data/series_status.yaml", `---
+- name: hibiscus
+  release-id: 2026.2
+  status: development
+- name: gazpacho
+  release-id: 2026.1
+  status: maintained
+- name: flamingo
+  release-id: 2025.2
+  status: maintained
+`)
+	writeTestFile(t, repo, "deliverables/gazpacho/nova.yaml", `---
+team: nova
+type: service
+releases:
+  - version: 32.0.0
+`)
+	writeTestFile(t, repo, "deliverables/flamingo/nova.yaml", `---
+team: nova
+type: service
+releases:
+  - version: 31.0.0
+`)
+	writeTestFile(t, repo, "deliverables/flamingo/vitrage.yaml", `---
+team: vitrage
+type: service
+releases:
+  - version: 15.0.1
+`)
+	commitTestRepo(t, repo)
+
+	provider := NewProvider(repo, "")
+	got, err := provider.ListDeliverables(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ListDeliverables() error: %v", err)
+	}
+
+	versions := map[string]string{}
+	for _, d := range got {
+		versions[d.Name] = d.Version
+	}
+	if versions["nova"] != "32.0.0" {
+		t.Fatalf("nova version = %q, want latest gazpacho version 32.0.0", versions["nova"])
+	}
+	if versions["vitrage"] != "15.0.1" {
+		t.Fatalf("vitrage version = %q, want latest available flamingo version 15.0.1", versions["vitrage"])
+	}
+	if len(versions) != 2 {
+		t.Fatalf("versions = %+v, want only nova and vitrage", versions)
+	}
+}
+
 func TestParseDeliverable(t *testing.T) {
 	yamlContent := []byte(`---
 launchpad: nova
@@ -116,6 +199,42 @@ releases:
 	}
 	if d.Team != "Nova" {
 		t.Errorf("Team = %q, want %q", d.Team, "Nova")
+	}
+}
+
+func initTestGitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	runTestGit(t, dir, "init")
+	runTestGit(t, dir, "config", "user.email", "watchtower@example.invalid")
+	runTestGit(t, dir, "config", "user.name", "Watchtower Test")
+	runTestGit(t, dir, "config", "commit.gpgsign", "false")
+	return dir
+}
+
+func writeTestFile(t *testing.T, repo, name, content string) {
+	t.Helper()
+	path := filepath.Join(repo, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("creating parent directory for %s: %v", name, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("writing %s: %v", name, err)
+	}
+}
+
+func commitTestRepo(t *testing.T, repo string) {
+	t.Helper()
+	runTestGit(t, repo, "add", ".")
+	runTestGit(t, repo, "commit", "-m", "test data")
+}
+
+func runTestGit(t *testing.T, repo string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
 	}
 }
 

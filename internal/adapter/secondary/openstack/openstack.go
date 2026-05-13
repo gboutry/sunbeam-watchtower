@@ -49,9 +49,101 @@ type deliverableRelease struct {
 	Version string `yaml:"version"`
 }
 
+type seriesStatus struct {
+	Name      string `yaml:"name"`
+	ReleaseID string `yaml:"release-id"`
+	Status    string `yaml:"status"`
+}
+
+// DefaultRelease returns the newest non-development OpenStack release series.
+func (p *Provider) DefaultRelease(ctx context.Context) (string, error) {
+	series, err := p.seriesStatus(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, s := range series {
+		if strings.EqualFold(s.Status, "development") {
+			continue
+		}
+		if s.Name != "" {
+			return s.Name, nil
+		}
+	}
+	return "", fmt.Errorf("no default upstream release found")
+}
+
+// ResolveRelease maps either an OpenStack series name or release-id to the
+// deliverables directory name used by openstack/releases.
+func (p *Provider) ResolveRelease(ctx context.Context, release string) (string, error) {
+	if release == "" {
+		return p.DefaultRelease(ctx)
+	}
+	series, err := p.seriesStatus(ctx)
+	if err != nil {
+		return release, err
+	}
+	for _, s := range series {
+		if s.Name == release || s.ReleaseID == release {
+			return s.Name, nil
+		}
+	}
+	return release, nil
+}
+
+func (p *Provider) seriesStatus(ctx context.Context) ([]seriesStatus, error) {
+	content, err := gitShow(ctx, p.releasesDir, "HEAD:data/series_status.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("reading series status: %w", err)
+	}
+	return parseSeriesStatus([]byte(content))
+}
+
+func parseSeriesStatus(data []byte) ([]seriesStatus, error) {
+	var series []seriesStatus
+	if err := yaml.Unmarshal(data, &series); err != nil {
+		return nil, fmt.Errorf("parsing series status: %w", err)
+	}
+	return series, nil
+}
+
 // ListDeliverables returns known deliverables for the given release by reading
 // YAML files from deliverables/<release>/ in the releases repo.
 func (p *Provider) ListDeliverables(ctx context.Context, release string) ([]dto.Deliverable, error) {
+	if release == "" {
+		return p.listLatestDeliverables(ctx)
+	}
+	return p.listDeliverablesForRelease(ctx, release)
+}
+
+func (p *Provider) listLatestDeliverables(ctx context.Context) ([]dto.Deliverable, error) {
+	series, err := p.seriesStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[string]bool{}
+	var result []dto.Deliverable
+	for _, s := range series {
+		if strings.EqualFold(s.Status, "development") || s.Name == "" {
+			continue
+		}
+		deliverables, err := p.listDeliverablesForRelease(ctx, s.Name)
+		if err != nil {
+			continue
+		}
+		for _, d := range deliverables {
+			pkgName := p.MapPackageName(d.Name, d.Type)
+			if seen[pkgName] || d.Version == "" {
+				continue
+			}
+			seen[pkgName] = true
+			result = append(result, d)
+		}
+	}
+	return result, nil
+}
+
+func (p *Provider) listDeliverablesForRelease(ctx context.Context, release string) ([]dto.Deliverable, error) {
 	treePath := fmt.Sprintf("HEAD:deliverables/%s/", release)
 	listing, err := gitShow(ctx, p.releasesDir, treePath)
 	if err != nil {
@@ -139,9 +231,13 @@ func mapDeliverableType(t string) dto.DeliverableType {
 // the requirements repo. It tries the stable/<release> branch first, then
 // falls back to HEAD.
 func (p *Provider) GetConstraints(ctx context.Context, release string) (map[string]string, error) {
-	ref := fmt.Sprintf("origin/stable/%s:upper-constraints.txt", release)
-	content, err := gitShow(ctx, p.requirementsDir, ref)
-	if err != nil {
+	content := ""
+	var err error
+	if release != "" {
+		ref := fmt.Sprintf("origin/stable/%s:upper-constraints.txt", release)
+		content, err = gitShow(ctx, p.requirementsDir, ref)
+	}
+	if release == "" || err != nil {
 		// Fallback to HEAD (e.g. for master/main).
 		content, err = gitShow(ctx, p.requirementsDir, "HEAD:upper-constraints.txt")
 		if err != nil {

@@ -135,6 +135,7 @@ func (w *PackagesClientWorkflow) Diff(ctx context.Context, req PackagesDiffReque
 		return nil, err
 	}
 
+	effectiveUpstreamRelease := w.effectiveUpstreamRelease(ctx, req.UpstreamRelease, req.Constraints)
 	results, err := apiClient.PackagesDiff(ctx, client.PackagesDiffOptions{
 		Set:             req.Set,
 		Distros:         req.Distros,
@@ -142,7 +143,7 @@ func (w *PackagesClientWorkflow) Diff(ctx context.Context, req PackagesDiffReque
 		Suites:          req.Suites,
 		Backports:       req.Backports,
 		Merge:           req.Merge,
-		UpstreamRelease: req.UpstreamRelease,
+		UpstreamRelease: effectiveUpstreamRelease,
 		BehindUpstream:  req.BehindUpstream,
 		OnlyIn:          req.OnlyIn,
 		Constraints:     req.Constraints,
@@ -155,7 +156,7 @@ func (w *PackagesClientWorkflow) Diff(ctx context.Context, req PackagesDiffReque
 		Results:     results,
 		Sources:     w.buildSources(req.Distros, req.Releases, req.Suites, req.Backports),
 		Merge:       req.Merge,
-		HasUpstream: req.UpstreamRelease != "" || req.Constraints != "",
+		HasUpstream: effectiveUpstreamRelease != "" || hasUpstreamResults(results),
 	}, nil
 }
 
@@ -166,12 +167,13 @@ func (w *PackagesClientWorkflow) ShowVersion(ctx context.Context, req PackagesSh
 		return nil, err
 	}
 
+	effectiveUpstreamRelease := w.effectiveUpstreamRelease(ctx, req.UpstreamRelease, "")
 	result, err := apiClient.PackagesShow(ctx, req.Package, client.PackagesShowOptions{
 		Distros:         req.Distros,
 		Releases:        req.Releases,
 		Backports:       req.Backports,
 		Merge:           req.Merge,
-		UpstreamRelease: req.UpstreamRelease,
+		UpstreamRelease: effectiveUpstreamRelease,
 	})
 	if err != nil {
 		return nil, err
@@ -181,8 +183,49 @@ func (w *PackagesClientWorkflow) ShowVersion(ctx context.Context, req PackagesSh
 		Result:      *result,
 		Sources:     w.buildSources(req.Distros, req.Releases, nil, req.Backports),
 		Merge:       req.Merge,
-		HasUpstream: req.UpstreamRelease != "",
+		HasUpstream: effectiveUpstreamRelease != "" || result.Upstream != "",
 	}, nil
+}
+
+func (w *PackagesClientWorkflow) effectiveUpstreamRelease(ctx context.Context, requested, constraints string) string {
+	if w == nil || w.application == nil || w.application.GetConfig() == nil {
+		return ""
+	}
+	cfg := w.application.GetConfig()
+	if cfg.Packages.Upstream == nil {
+		return ""
+	}
+
+	provider, err := w.application.BuildUpstreamProvider()
+	if err == nil && provider != nil {
+		switch {
+		case requested != "":
+			if release, rErr := provider.ResolveRelease(ctx, requested); rErr == nil {
+				return release
+			}
+		case constraints != "":
+			if release, rErr := provider.ResolveRelease(ctx, constraints); rErr == nil {
+				return release
+			}
+		}
+	}
+
+	if requested != "" {
+		return requested
+	}
+	if constraints != "" {
+		return constraints
+	}
+	return ""
+}
+
+func hasUpstreamResults(results []dto.PackageDiffResult) bool {
+	for _, result := range results {
+		if result.Upstream != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Detail returns full package metadata.

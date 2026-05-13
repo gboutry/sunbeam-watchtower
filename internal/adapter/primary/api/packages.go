@@ -237,11 +237,8 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 		}
 
 		// Annotate upstream versions when requested.
-		effectiveRelease := input.UpstreamRelease
-		if effectiveRelease == "" && input.Constraints != "" {
-			effectiveRelease = input.Constraints
-		}
-		if effectiveRelease != "" {
+		effectiveRelease := effectivePackagesUpstreamRelease(ctx, application, input.UpstreamRelease, input.Constraints)
+		if effectiveRelease != "" || hasPackagesUpstreamProvider(application) {
 			_ = annotateUpstreamResults(ctx, application, results, effectiveRelease)
 		}
 
@@ -290,9 +287,10 @@ func RegisterPackagesAPI(api huma.API, application *app.App) {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("show failed: %v", err))
 		}
 
-		if input.UpstreamRelease != "" {
+		effectiveRelease := effectivePackagesUpstreamRelease(ctx, application, input.UpstreamRelease, "")
+		if effectiveRelease != "" || hasPackagesUpstreamProvider(application) {
 			results := []dto.PackageDiffResult{*result}
-			_ = annotateUpstreamResults(ctx, application, results, input.UpstreamRelease)
+			_ = annotateUpstreamResults(ctx, application, results, effectiveRelease)
 			result = &results[0]
 		}
 
@@ -575,6 +573,44 @@ func annotateUpstreamResults(ctx context.Context, application *app.App, results 
 		}
 	}
 	return nil
+}
+
+func effectivePackagesUpstreamRelease(ctx context.Context, application *app.App, requested, constraints string) string {
+	if application == nil || application.GetConfig() == nil {
+		return ""
+	}
+	cfg := application.GetConfig()
+	if cfg.Packages.Upstream == nil {
+		return ""
+	}
+
+	provider, err := application.BuildUpstreamProvider()
+	if err == nil && provider != nil {
+		switch {
+		case requested != "":
+			if release, rErr := provider.ResolveRelease(ctx, requested); rErr == nil {
+				return release
+			}
+		case constraints != "":
+			if release, rErr := provider.ResolveRelease(ctx, constraints); rErr == nil {
+				return release
+			}
+		}
+	}
+
+	if requested != "" {
+		return requested
+	}
+	if constraints != "" {
+		return constraints
+	}
+	return ""
+}
+
+func hasPackagesUpstreamProvider(application *app.App) bool {
+	return application != nil &&
+		application.GetConfig() != nil &&
+		application.GetConfig().Packages.Upstream != nil
 }
 
 // filterBehindUpstreamResults keeps only results where distro version < upstream.

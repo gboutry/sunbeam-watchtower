@@ -71,6 +71,16 @@ func TestPackagesClientWorkflowDiff(t *testing.T) {
 	}
 }
 
+func TestPackagesClientWorkflowEffectiveUpstreamReleaseDefaultsFromConfig(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	workflow := NewPackagesClientWorkflow(nil, testPackagesAppWithUpstream())
+
+	got := workflow.effectiveUpstreamRelease(context.Background(), "", "")
+	if got != "" {
+		t.Fatalf("effectiveUpstreamRelease() = %q, want provider default", got)
+	}
+}
+
 func TestPackagesClientWorkflowShowVersion(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/packages/show/keystone" {
@@ -109,6 +119,26 @@ func TestPackagesClientWorkflowShowVersion(t *testing.T) {
 	}
 	if len(got.Sources) != 1 || got.Sources[0].Name != "ubuntu" {
 		t.Fatalf("Sources = %+v, want ubuntu source", got.Sources)
+	}
+}
+
+func TestPackagesClientWorkflowEffectiveUpstreamReleaseNeedsUpstreamProvider(t *testing.T) {
+	workflow := NewPackagesClientWorkflow(nil, testPackagesApp())
+
+	got := workflow.effectiveUpstreamRelease(context.Background(), "", "")
+	if got != "" {
+		t.Fatalf("effectiveUpstreamRelease() = %q, want empty", got)
+	}
+}
+
+func TestHasUpstreamResults(t *testing.T) {
+	results := []dto.PackageDiffResult{
+		{Package: "nova"},
+		{Package: "keystone", Upstream: "27.0.0"},
+	}
+
+	if !hasUpstreamResults(results) {
+		t.Fatal("hasUpstreamResults() = false, want true")
 	}
 }
 
@@ -160,4 +190,14 @@ func testPackagesApp() *app.App {
 			},
 		},
 	}, discardFrontendLogger())
+}
+
+func testPackagesAppWithUpstream() *app.App {
+	cfg := testPackagesApp().GetConfig()
+	cfg.Launchpad.DevelopmentFocus = "2025.1"
+	cfg.Packages.Upstream = &config.UpstreamConfig{
+		Provider:     "openstack",
+		ReleasesRepo: "https://opendev.org/openstack/releases",
+	}
+	return app.NewApp(cfg, discardFrontendLogger())
 }
