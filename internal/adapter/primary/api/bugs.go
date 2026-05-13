@@ -24,6 +24,7 @@ type BugsListInput struct {
 	Tags       []string `query:"tag" required:"false" doc:"Filter by tag"`
 	Since      string   `query:"since" doc:"Return bugs created/modified since this date (ISO 8601)"`
 	Merge      bool     `query:"merge" required:"false" doc:"Collapse grouped duplicate bug rows"`
+	Limit      int      `query:"limit" required:"false" doc:"Maximum number of bug rows to return"`
 }
 
 type BugsListOutput struct {
@@ -75,6 +76,7 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 			Tags:       input.Tags,
 			Since:      input.Since,
 			Merge:      input.Merge,
+			Limit:      input.Limit,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to list bugs: %v", err))

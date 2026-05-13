@@ -145,6 +145,7 @@ type TUIBugsFiltersConfig struct {
 	Tag        string `json:"tag,omitempty" yaml:"tag,omitempty"`
 	Since      string `json:"since,omitempty" yaml:"since,omitempty"`
 	Merge      *bool  `json:"merge,omitempty" yaml:"merge,omitempty"`
+	Limit      string `json:"limit,omitempty" yaml:"limit,omitempty"`
 }
 
 type TUIBugsPaneConfig struct {
@@ -312,14 +313,14 @@ type OTelConfig struct {
 }
 
 type Config struct {
-	Launchpad LaunchpadConfig           `json:"launchpad" yaml:"launchpad"`
-	GitHub    GitHubConfig              `json:"github" yaml:"github"`
-	Gerrit    GerritConfig              `json:"gerrit" yaml:"gerrit"`
-	BugGroups map[string]BugGroupConfig `json:"bug_groups,omitempty" yaml:"bug_groups,omitempty"`
-	Projects  []ProjectConfig           `json:"projects" yaml:"projects"`
-	Build     BuildConfig               `json:"build" yaml:"build"`
-	Releases  ReleasesConfig            `json:"releases,omitempty" yaml:"releases,omitempty"`
-	Packages  PackagesConfig            `json:"packages,omitempty" yaml:"packages,omitempty"`
+	Launchpad     LaunchpadConfig           `json:"launchpad" yaml:"launchpad"`
+	GitHub        GitHubConfig              `json:"github" yaml:"github"`
+	Gerrit        GerritConfig              `json:"gerrit" yaml:"gerrit"`
+	BugGroups     map[string]BugGroupConfig `json:"bug_groups,omitempty" yaml:"bug_groups,omitempty"`
+	Projects      []ProjectConfig           `json:"projects" yaml:"projects"`
+	Build         BuildConfig               `json:"build" yaml:"build"`
+	Releases      ReleasesConfig            `json:"releases,omitempty" yaml:"releases,omitempty"`
+	Packages      PackagesConfig            `json:"packages,omitempty" yaml:"packages,omitempty"`
 	TUI           TUIConfig                 `json:"tui,omitempty" yaml:"tui,omitempty"`
 	OTel          OTelConfig                `json:"otel,omitempty" yaml:"otel,omitempty"`
 	ServerAddress string                    `json:"server_address,omitempty" yaml:"server_address,omitempty"`

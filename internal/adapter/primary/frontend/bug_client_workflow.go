@@ -21,6 +21,7 @@ type BugListRequest struct {
 	Tags       []string
 	Since      string
 	Merge      bool
+	Limit      int
 }
 
 // BugListResponse contains listed bug tasks plus non-fatal warnings.
@@ -81,6 +82,7 @@ func (w *BugClientWorkflow) List(ctx context.Context, req BugListRequest) (*BugL
 		Tags:       req.Tags,
 		Since:      resolvedSince,
 		Merge:      req.Merge,
+		Limit:      req.Limit,
 	})
 	if err != nil {
 		return nil, err

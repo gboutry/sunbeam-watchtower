@@ -6,6 +6,7 @@ package client
 import (
 	"context"
 	"net/url"
+	"strconv"
 
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
@@ -20,6 +21,7 @@ type BugsListOptions struct {
 	Tags       []string
 	Since      string // ISO 8601 date — return bugs created/modified since this date
 	Merge      bool
+	Limit      int
 }
 
 // BugsListResult is the response returned by BugsList.
@@ -51,6 +53,9 @@ func (c *Client) BugsList(ctx context.Context, opts BugsListOptions) (*BugsListR
 	}
 	if opts.Merge {
 		q.Set("merge", "true")
+	}
+	if opts.Limit > 0 {
+		q.Set("limit", strconv.Itoa(opts.Limit))
 	}
 
 	var result BugsListResult

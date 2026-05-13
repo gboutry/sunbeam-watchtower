@@ -33,6 +33,7 @@ type ListOptions struct {
 	Tags       []string
 	Since      string // ISO 8601 date — filter tasks created/modified since this date
 	Merge      bool
+	Limit      int
 }
 
 // ProjectResult holds bug tasks from one query, or an error.
@@ -184,6 +185,10 @@ func (s *Service) List(ctx context.Context, opts ListOptions) ([]forge.BugTask, 
 	sort.Slice(all, func(i, j int) bool {
 		return all[i].UpdatedAt.After(all[j].UpdatedAt)
 	})
+
+	if opts.Limit > 0 && len(all) > opts.Limit {
+		all = all[:opts.Limit]
+	}
 
 	s.logger.Debug("bugs aggregated", "total_count", len(all))
 

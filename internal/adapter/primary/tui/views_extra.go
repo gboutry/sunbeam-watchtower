@@ -87,6 +87,7 @@ type bugsFilters struct {
 	tag        string
 	since      string
 	merge      bool
+	limit      string
 }
 
 type bugsModel struct {
@@ -427,6 +428,14 @@ func loadPackageDetailCmd(session *runtimeadapter.Session, packages packagesMode
 
 func loadBugsCmd(session *runtimeadapter.Session, filters bugsFilters) tea.Cmd {
 	return guardSessionAction(session, frontend.ActionBugList, func() tea.Msg {
+		limit := 0
+		if strings.TrimSpace(filters.limit) != "" {
+			parsed, err := strconv.Atoi(strings.TrimSpace(filters.limit))
+			if err != nil || parsed < 0 {
+				return bugsLoadedMsg{err: fmt.Errorf("limit must be a non-negative integer")}
+			}
+			limit = parsed
+		}
 		result, err := session.Frontend.Bugs().List(context.Background(), frontend.BugListRequest{
 			Projects:   firstNonEmptySlice(filters.project),
 			Status:     firstNonEmptySlice(filters.status),
@@ -435,6 +444,7 @@ func loadBugsCmd(session *runtimeadapter.Session, filters bugsFilters) tea.Cmd {
 			Tags:       firstNonEmptySlice(filters.tag),
 			Since:      filters.since,
 			Merge:      filters.merge,
+			Limit:      limit,
 		})
 		if err != nil {
 			return bugsLoadedMsg{err: err}
@@ -1787,6 +1797,7 @@ func newBugFilterForm(session *runtimeadapter.Session, model bugsModel) formModa
 		{placeholder: "tag", value: model.filters.tag, resetValue: model.defaults.tag, suggestions: s.tags},
 		{placeholder: "since", value: model.filters.since, resetValue: model.defaults.since},
 		{placeholder: "merge", value: fmt.Sprintf("%t", model.filters.merge), resetValue: fmt.Sprintf("%t", model.defaults.merge), suggestions: []string{"false", "true"}, kind: fieldKindEnum},
+		{placeholder: "limit", value: model.filters.limit, resetValue: model.defaults.limit},
 	})
 }
 
@@ -1917,6 +1928,7 @@ func (m rootModel) updateBugFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			tag:        strings.TrimSpace(values[4]),
 			since:      strings.TrimSpace(values[5]),
 			merge:      merge,
+			limit:      strings.TrimSpace(values[7]),
 		}
 		m.bugs.index = 0
 		m.bugs.detail = nil

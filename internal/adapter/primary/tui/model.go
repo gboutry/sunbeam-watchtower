@@ -1829,6 +1829,9 @@ func applyTUIBugsDefaults(base bugsFilters, pane *dto.TUIBugsPaneConfig) bugsFil
 	if pane.Filters.Merge != nil {
 		base.merge = *pane.Filters.Merge
 	}
+	if pane.Filters.Limit != "" {
+		base.limit = pane.Filters.Limit
+	}
 	return base
 }
 

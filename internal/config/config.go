@@ -178,6 +178,7 @@ type TUIBugsFiltersConfig struct {
 	Tag        string `mapstructure:"tag" yaml:"tag,omitempty"`
 	Since      string `mapstructure:"since" yaml:"since,omitempty"`
 	Merge      *bool  `mapstructure:"merge" yaml:"merge,omitempty"`
+	Limit      string `mapstructure:"limit" yaml:"limit,omitempty"`
 }
 
 // TUIBugsPaneConfig holds startup state for the Bugs pane.

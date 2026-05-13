@@ -125,7 +125,7 @@ func TestBugListCmd_RendersWarningsAndTasks(t *testing.T) {
 	}
 
 	cmd := newBugCmd(opts)
-	cmd.SetArgs([]string{"list", "--merge"})
+	cmd.SetArgs([]string{"list", "--merge", "--limit", "7"})
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -135,6 +135,9 @@ func TestBugListCmd_RendersWarningsAndTasks(t *testing.T) {
 	}
 	if !strings.Contains(gotQuery, "merge=true") {
 		t.Fatalf("query = %q, want merge=true", gotQuery)
+	}
+	if !strings.Contains(gotQuery, "limit=7") {
+		t.Fatalf("query = %q, want limit=7", gotQuery)
 	}
 }
 

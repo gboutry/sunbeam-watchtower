@@ -123,6 +123,38 @@ func TestService_List_FilterByProject(t *testing.T) {
 	}
 }
 
+func TestService_List_LimitAppliesAfterSorting(t *testing.T) {
+	now := time.Now()
+	tracker := &mockBugTracker{
+		forgeType: forge.ForgeLaunchpad,
+		tasks: []forge.BugTask{
+			{BugID: "1", Title: "Oldest", UpdatedAt: now.Add(-3 * time.Hour)},
+			{BugID: "2", Title: "Newest", UpdatedAt: now},
+			{BugID: "3", Title: "Middle", UpdatedAt: now.Add(-1 * time.Hour)},
+		},
+	}
+
+	svc := NewService(
+		map[string]ProjectBugTracker{
+			"launchpad:snap-openstack": {Tracker: tracker, ProjectID: "snap-openstack"},
+		},
+		map[string][]ProjectBinding{
+			"launchpad:snap-openstack": {{ProjectName: "sunbeam"}},
+		},
+		nil)
+
+	tasks, _, err := svc.List(context.Background(), ListOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("len(tasks) = %d, want 2", len(tasks))
+	}
+	if tasks[0].BugID != "2" || tasks[1].BugID != "3" {
+		t.Fatalf("task order = %s, %s; want newest two bug IDs 2, 3", tasks[0].BugID, tasks[1].BugID)
+	}
+}
+
 func TestService_List_PassesSinceToCreatedAndModifiedFilters(t *testing.T) {
 	tracker := &mockBugTracker{
 		forgeType: forge.ForgeLaunchpad,

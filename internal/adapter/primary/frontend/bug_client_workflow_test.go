@@ -30,6 +30,9 @@ func TestBugClientWorkflowList(t *testing.T) {
 		if query.Get("merge") != "true" {
 			t.Fatalf("merge = %q, want true", query.Get("merge"))
 		}
+		if query.Get("limit") != "5" {
+			t.Fatalf("limit = %q, want 5", query.Get("limit"))
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tasks": []forge.BugTask{{
 				Project: "keystone",
@@ -47,6 +50,7 @@ func TestBugClientWorkflowList(t *testing.T) {
 		Projects: []string{"keystone"},
 		Since:    "2025-01-01",
 		Merge:    true,
+		Limit:    5,
 	})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)

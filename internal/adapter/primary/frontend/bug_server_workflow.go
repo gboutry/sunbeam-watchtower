@@ -48,6 +48,7 @@ func (w *BugServerWorkflow) List(ctx context.Context, req BugListRequest) (*BugL
 		Tags:       req.Tags,
 		Since:      req.Since,
 		Merge:      req.Merge,
+		Limit:      req.Limit,
 	})
 	if err != nil {
 		return nil, err
