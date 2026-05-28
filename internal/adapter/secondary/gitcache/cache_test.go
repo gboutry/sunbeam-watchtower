@@ -75,6 +75,10 @@ func setupTestRepo(t *testing.T) string {
 			errTestRepo = err
 			return
 		}
+		if err := run("git", "config", "commit.gpgsign", "false"); err != nil {
+			errTestRepo = err
+			return
+		}
 
 		if err := os.WriteFile(filepath.Join(workDir, "file1.txt"), []byte("hello"), 0o644); err != nil {
 			errTestRepo = err
@@ -196,6 +200,70 @@ func TestCache_EnsureRepo_FetchExisting(t *testing.T) {
 	}
 }
 
+func TestCache_EnsureRepo_FetchExistingUpdatesBareHEAD(t *testing.T) {
+	t.Parallel()
+
+	origin := createMutableRepo(t, map[string]string{
+		"snap/snapcraft.yaml": "name: old-snap\n",
+	})
+	cacheDir := t.TempDir()
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	cache := NewCache(filepath.Join(cacheDir, "repos"), logger)
+	ctx := context.Background()
+	cloneURL := "file://" + origin
+
+	path, err := cache.EnsureRepo(ctx, cloneURL, nil)
+	if err != nil {
+		t.Fatalf("initial EnsureRepo() error: %v", err)
+	}
+	initial, err := ReadHEADFile(path, "snap/snapcraft.yaml")
+	if err != nil {
+		t.Fatalf("ReadHEADFile() initial error: %v", err)
+	}
+	if string(initial) != "name: old-snap\n" {
+		t.Fatalf("initial HEAD file = %q, want old snap", initial)
+	}
+
+	commitFiles(t, origin, map[string]string{
+		"snap/snapcraft.yaml": "name: new-snap\n",
+	}, "update manifest")
+
+	if _, err := cache.EnsureRepo(ctx, cloneURL, nil); err != nil {
+		t.Fatalf("second EnsureRepo() error: %v", err)
+	}
+	updated, err := ReadHEADFile(path, "snap/snapcraft.yaml")
+	if err != nil {
+		t.Fatalf("ReadHEADFile() updated error: %v", err)
+	}
+	if string(updated) != "name: new-snap\n" {
+		t.Fatalf("updated HEAD file = %q, want new snap", updated)
+	}
+}
+
+func TestCache_EnsureRepo_FetchExistingReturnsFetchError(t *testing.T) {
+	t.Parallel()
+
+	origin := createMutableRepo(t, map[string]string{
+		"README.md": "initial\n",
+	})
+	cacheDir := t.TempDir()
+	cache := NewCache(filepath.Join(cacheDir, "repos"), nil)
+	ctx := context.Background()
+	cloneURL := "file://" + origin
+
+	path, err := cache.EnsureRepo(ctx, cloneURL, nil)
+	if err != nil {
+		t.Fatalf("initial EnsureRepo() error: %v", err)
+	}
+
+	runGitDir(t, path, "config", "remote.origin.url", "file://"+filepath.Join(t.TempDir(), "missing"))
+
+	if _, err := cache.EnsureRepo(ctx, cloneURL, nil); err == nil {
+		t.Fatal("second EnsureRepo() error = nil, want fetch error")
+	}
+}
+
 func TestCache_ListCommits_SinceFilter(t *testing.T) {
 	t.Parallel()
 	bareRepo := setupTestRepo(t)
@@ -221,6 +289,54 @@ func TestCache_ListCommits_SinceFilter(t *testing.T) {
 	}
 	if len(commits) != 0 {
 		t.Errorf("expected 0 commits with future Since, got %d", len(commits))
+	}
+}
+
+func createMutableRepo(t *testing.T, files map[string]string) string {
+	t.Helper()
+
+	dir := filepath.Join(t.TempDir(), "origin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", dir, err)
+	}
+	runGitDir(t, dir, "init", "-b", "main")
+	runGitDir(t, dir, "config", "user.email", "test@example.com")
+	runGitDir(t, dir, "config", "user.name", "Test Author")
+	runGitDir(t, dir, "config", "commit.gpgsign", "false")
+	commitFiles(t, dir, files, "initial")
+	return dir
+}
+
+func commitFiles(t *testing.T, repoDir string, files map[string]string, message string) {
+	t.Helper()
+
+	for name, content := range files {
+		fullPath := filepath.Join(repoDir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) error = %v", fullPath, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) error = %v", fullPath, err)
+		}
+		runGitDir(t, repoDir, "add", filepath.FromSlash(name))
+	}
+	runGitDir(t, repoDir, "commit", "-m", message)
+}
+
+func runGitDir(t *testing.T, dir string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=Test Author",
+		"GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=Test Author",
+		"GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
 	}
 }
 

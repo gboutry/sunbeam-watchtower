@@ -95,7 +95,7 @@ func (c *Cache) EnsureRepo(ctx context.Context, cloneURL string, opts *dto.SyncO
 		// Repo exists, fetch.
 		c.logger.Debug("fetching existing cached repo", "url", cloneURL, "path", path)
 		if fetchErr := c.fetchRepo(ctx, path, opts); fetchErr != nil {
-			c.logger.Warn("fetch failed, repo may be stale", "url", cloneURL, "error", fetchErr)
+			return "", fetchErr
 		}
 		return path, nil
 	}
@@ -116,7 +116,7 @@ func (c *Cache) EnsureRepo(ctx context.Context, cloneURL string, opts *dto.SyncO
 	if opts != nil && len(opts.ExtraRefSpecs) > 0 {
 		c.logger.Debug("fetching extra refspecs after clone", "url", cloneURL, "refspecs", opts.ExtraRefSpecs)
 		if fetchErr := c.fetchRepo(ctx, path, opts); fetchErr != nil {
-			c.logger.Warn("extra refspec fetch failed", "url", cloneURL, "error", fetchErr)
+			return "", fetchErr
 		}
 	}
 
@@ -144,6 +144,17 @@ func (c *Cache) fetchRepo(ctx context.Context, path string, opts *dto.SyncOption
 		return fmt.Errorf("fetching: %w", err)
 	}
 
+	// Metadata discovery reads the bare cache's HEAD tree. Keep local branch
+	// refs current as well as remote-tracking refs so HEAD follows upstream.
+	err = repo.FetchContext(ctx, &git.FetchOptions{
+		RefSpecs: []gitconfig.RefSpec{
+			gitconfig.RefSpec("+refs/heads/*:refs/heads/*"),
+		},
+	})
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return fmt.Errorf("fetching branch refs: %w", err)
+	}
+
 	// Fetch extra refspecs if provided.
 	if opts != nil && len(opts.ExtraRefSpecs) > 0 {
 		refSpecs := make([]gitconfig.RefSpec, len(opts.ExtraRefSpecs))
@@ -155,7 +166,7 @@ func (c *Cache) fetchRepo(ctx context.Context, path string, opts *dto.SyncOption
 			RefSpecs: refSpecs,
 		})
 		if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-			c.logger.Warn("extra refspec fetch failed", "path", path, "error", err)
+			return fmt.Errorf("fetching extra refspecs: %w", err)
 		}
 	}
 
