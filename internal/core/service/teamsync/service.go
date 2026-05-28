@@ -99,6 +99,9 @@ func (s *Service) syncTarget(ctx context.Context, target dto.SyncTarget, teamEma
 	allCollabEmails := make(map[string]bool)
 	for _, c := range collabs {
 		email := strings.ToLower(c.Email)
+		if email == "" {
+			continue
+		}
 		allCollabEmails[email] = true
 		if c.Status == "pending" {
 			collabPending[email] = true
@@ -126,7 +129,7 @@ func (s *Service) syncTarget(ctx context.Context, target dto.SyncTarget, teamEma
 	for _, c := range collabs {
 		lower := strings.ToLower(c.Email)
 		if !teamEmails[lower] {
-			art.Extra = append(art.Extra, c.Email)
+			art.Extra = append(art.Extra, collaboratorIdentity(c))
 		}
 	}
 
@@ -135,6 +138,19 @@ func (s *Service) syncTarget(ctx context.Context, target dto.SyncTarget, teamEma
 	}
 
 	return art
+}
+
+func collaboratorIdentity(c dto.StoreCollaborator) string {
+	switch {
+	case c.Email != "":
+		return c.Email
+	case c.Username != "":
+		return c.Username
+	case c.DisplayName != "":
+		return c.DisplayName
+	default:
+		return "(unknown collaborator)"
+	}
 }
 
 // reauthHint returns the operator-facing command to re-authenticate with

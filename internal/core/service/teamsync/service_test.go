@@ -175,6 +175,43 @@ func TestSync_ExtraCollaboratorsReported(t *testing.T) {
 	}
 }
 
+func TestSync_ExtraCollaboratorWithoutEmailUsesAvailableIdentity(t *testing.T) {
+	team := &fakeTeamProvider{
+		members: []dto.TeamMember{
+			{Username: "alice", Email: "alice@example.com"},
+		},
+	}
+	store := &fakeStoreManager{
+		collaborators: map[string][]dto.StoreCollaborator{
+			"my-charm": {
+				{Username: "alice", Email: "alice@example.com", Status: "accepted"},
+				{Username: "eve", DisplayName: "Eve Smith", Status: "accepted"},
+			},
+		},
+	}
+	stores := map[dto.ArtifactType]port.StoreCollaboratorManager{
+		dto.ArtifactCharm: store,
+	}
+	targets := []dto.SyncTarget{
+		{Project: "my-project", ArtifactType: dto.ArtifactCharm, StoreName: "my-charm"},
+	}
+
+	svc := NewService(team, stores, testLogger())
+	result, err := svc.Sync(context.Background(), "myteam", targets, true)
+	if err != nil {
+		t.Fatalf("Sync() error: %v", err)
+	}
+
+	if len(result.Artifacts) != 1 {
+		t.Fatalf("expected 1 artifact result, got %d", len(result.Artifacts))
+	}
+	art := result.Artifacts[0]
+
+	if len(art.Extra) != 1 || art.Extra[0] != "eve" {
+		t.Errorf("Extra = %v, want [eve]", art.Extra)
+	}
+}
+
 // TestSync_PendingNotReinvited: bob has pending invite → reported as pending, NOT re-invited.
 func TestSync_PendingNotReinvited(t *testing.T) {
 	team := &fakeTeamProvider{
