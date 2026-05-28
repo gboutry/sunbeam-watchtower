@@ -7,7 +7,8 @@ launchpad:
   series:
     - "2024.1"
     - "2025.1"
-  development_focus: "2025.1"
+    - "2026.1"
+  development_focus: "2026.1"
 github:
   use_keyring: false
   client_id: Ov23lin1xbKE8bXlFFHq
