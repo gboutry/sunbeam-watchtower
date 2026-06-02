@@ -167,6 +167,9 @@ func (c *Cache) ListBugTasks(_ context.Context, forgeType forge.ForgeType, proje
 			if err := json.Unmarshal(v, &t); err != nil {
 				return fmt.Errorf("unmarshalling task: %w", err)
 			}
+			if len(opts.Tags) > 0 && len(t.Tags) == 0 {
+				t.Tags = cachedBugTags(tx, forgeType, t.BugID)
+			}
 			if matchesOpts(&t, &opts) {
 				result = append(result, t)
 			}
@@ -174,6 +177,22 @@ func (c *Cache) ListBugTasks(_ context.Context, forgeType forge.ForgeType, proje
 		})
 	})
 	return result, err
+}
+
+func cachedBugTags(tx *bbolt.Tx, forgeType forge.ForgeType, bugID string) []string {
+	bkt := tx.Bucket(bugsBucketName(forgeType))
+	if bkt == nil {
+		return nil
+	}
+	data := bkt.Get([]byte(bugID))
+	if data == nil {
+		return nil
+	}
+	var bug forge.Bug
+	if err := json.Unmarshal(data, &bug); err != nil {
+		return nil
+	}
+	return bug.Tags
 }
 
 // SetLastSync records the last sync time for a (forge, project) pair.

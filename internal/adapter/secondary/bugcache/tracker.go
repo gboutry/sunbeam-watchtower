@@ -117,6 +117,8 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 
 	// Only fetch bug details for newly returned tasks, not the entire cache.
 	bugIDs := uniqueBugIDs(incoming)
+	bugs := c.fetchBugs(ctx, bugIDs)
+	incoming = enrichTasksWithBugTags(incoming, bugs)
 
 	// For incremental sync, merge new tasks with existing cached tasks.
 	tasks := incoming
@@ -128,7 +130,6 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 	if err := c.cache.StoreBugTasks(ctx, forgeType, c.project, tasks); err != nil {
 		return 0, fmt.Errorf("storing tasks for %s: %w", c.project, err)
 	}
-	bugs := c.fetchBugs(ctx, bugIDs)
 
 	if len(bugs) > 0 {
 		if err := c.cache.StoreBugs(ctx, bugs); err != nil {
@@ -142,6 +143,31 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 
 	c.logger.Debug("bug cache sync complete", "project", c.project, "tasks", len(tasks), "bugs", len(bugs))
 	return len(tasks), nil
+}
+
+func enrichTasksWithBugTags(tasks []forge.BugTask, bugs []*forge.Bug) []forge.BugTask {
+	if len(tasks) == 0 || len(bugs) == 0 {
+		return tasks
+	}
+	tagsByBugID := make(map[string][]string, len(bugs))
+	for _, bug := range bugs {
+		if bug == nil || len(bug.Tags) == 0 {
+			continue
+		}
+		tagsByBugID[bug.ID] = bug.Tags
+	}
+	if len(tagsByBugID) == 0 {
+		return tasks
+	}
+	enriched := make([]forge.BugTask, len(tasks))
+	copy(enriched, tasks)
+	for i := range enriched {
+		if len(enriched[i].Tags) > 0 {
+			continue
+		}
+		enriched[i].Tags = tagsByBugID[enriched[i].BugID]
+	}
+	return enriched
 }
 
 // Project returns the project ID this cached tracker operates on.

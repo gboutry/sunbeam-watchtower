@@ -182,6 +182,37 @@ func TestListBugTasksWithFilter(t *testing.T) {
 	}
 }
 
+func TestListBugTasksWithTagUsesCachedBugMetadata(t *testing.T) {
+	c := newTestCache(t)
+	ctx := context.Background()
+
+	if err := c.StoreBugs(ctx, []*forge.Bug{
+		{Forge: forge.ForgeLaunchpad, ID: "1", Tags: []string{"candidate-blocker"}},
+		{Forge: forge.ForgeLaunchpad, ID: "2", Tags: []string{"other"}},
+	}); err != nil {
+		t.Fatalf("StoreBugs: %v", err)
+	}
+	if err := c.StoreBugTasks(ctx, forge.ForgeLaunchpad, "snap-openstack", []forge.BugTask{
+		{Forge: forge.ForgeLaunchpad, BugID: "1", TargetName: "snap-openstack", Status: "Triaged"},
+		{Forge: forge.ForgeLaunchpad, BugID: "2", TargetName: "snap-openstack", Status: "Triaged"},
+	}); err != nil {
+		t.Fatalf("StoreBugTasks: %v", err)
+	}
+
+	got, err := c.ListBugTasks(ctx, forge.ForgeLaunchpad, "snap-openstack", forge.ListBugTasksOpts{
+		Tags: []string{"candidate-blocker"},
+	})
+	if err != nil {
+		t.Fatalf("ListBugTasks with tag: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(got) = %d, want 1", len(got))
+	}
+	if got[0].BugID != "1" {
+		t.Fatalf("got bug ID %q, want 1", got[0].BugID)
+	}
+}
+
 func TestListBugTasksWithSinceUsesCreatedOrModifiedUnion(t *testing.T) {
 	c := newTestCache(t)
 	ctx := context.Background()

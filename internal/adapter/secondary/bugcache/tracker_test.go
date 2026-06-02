@@ -157,6 +157,36 @@ func TestCachedTrackerServesFromCacheAfterSync(t *testing.T) {
 	}
 }
 
+func TestCachedTrackerSyncStoresBugTagsOnTasks(t *testing.T) {
+	mock := newMockBugTracker()
+	mock.bugs["1"] = &forge.Bug{
+		Forge: forge.ForgeLaunchpad,
+		ID:    "1",
+		Title: "Bug 1",
+		Tags:  []string{"candidate-blocker"},
+	}
+	mock.tasks["proj"] = []forge.BugTask{
+		{Forge: forge.ForgeLaunchpad, BugID: "1", TargetName: "proj", Status: "Triaged", SelfLink: "/task/1"},
+	}
+
+	ct := newTestCachedTracker(t, mock, "proj")
+	ctx := context.Background()
+	if _, err := ct.Sync(ctx); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	tasks, err := ct.ListBugTasks(ctx, "proj", forge.ListBugTasksOpts{Tags: []string{"candidate-blocker"}})
+	if err != nil {
+		t.Fatalf("ListBugTasks after sync: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("len(tasks) = %d, want 1", len(tasks))
+	}
+	if len(tasks[0].Tags) != 1 || tasks[0].Tags[0] != "candidate-blocker" {
+		t.Fatalf("task tags = %v, want [candidate-blocker]", tasks[0].Tags)
+	}
+}
+
 func TestCachedTrackerWriteThrough(t *testing.T) {
 	mock := newMockBugTracker()
 	mock.bugs["5"] = &forge.Bug{Forge: forge.ForgeLaunchpad, ID: "5", Title: "Bug 5"}
