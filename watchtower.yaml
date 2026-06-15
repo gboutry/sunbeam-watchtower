@@ -58,7 +58,17 @@ projects:
       # pre-existing ignored files from the live tree (.env, IDE caches,
       # credentials). It does NOT sandbox the command — it runs as your
       # user with normal filesystem and environment access.
-      prepare_command: "./repository.py prepare --clean"
+      prepare_command: |-
+        rev="$(git rev-parse --short HEAD)"
+
+        echo "Setting charms versions to $rev"
+        for charmcraft_yaml in $(find . -name "charmcraft.yaml"); do
+            dir_name="$(dirname "$charmcraft_yaml")"
+            echo "$rev" > "$dir_name/version"
+        done
+
+        echo "Running prepare script"
+        python3 ./repository.py prepare --clean
       channels:
         charmcraft: latest/stable
       skip_artifacts:
