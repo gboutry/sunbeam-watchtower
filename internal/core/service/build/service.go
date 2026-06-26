@@ -5,6 +5,7 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -822,6 +823,7 @@ type DownloadOpts struct {
 	Owner         string   // override LP owner
 	TargetRef     string   // override backend target reference
 	OutputDir     string   // output directory
+	RetryCount    int      // max attempts per artifact file; <=1 means no retry
 }
 
 // Download retrieves build artifacts for succeeded builds of the given recipes.
@@ -893,7 +895,7 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 					continue
 				}
 				for _, u := range urls {
-					if err := downloadFile(u, opts.OutputDir, recipeName); err != nil {
+					if err := downloadFile(ctx, http.DefaultClient, u, opts.OutputDir, recipeName, opts.RetryCount); err != nil {
 						return fmt.Errorf("downloading %s: %w", u, err)
 					}
 				}
@@ -904,8 +906,15 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 }
 
 // downloadFile downloads a file from fileURL into outputDir/artifactName/,
-// with path traversal protection.
-func downloadFile(fileURL, outputDir, artifactName string) error {
+// with path traversal protection and retries for transient transfer failures.
+func downloadFile(ctx context.Context, client *http.Client, fileURL, outputDir, artifactName string, attempts int) error {
+	if attempts < 1 {
+		attempts = 1
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+
 	// Extract filename from URL (last path segment).
 	filename := path.Base(fileURL)
 	if filename == "" || filename == "." || filename == "/" {
@@ -934,27 +943,106 @@ func downloadFile(fileURL, outputDir, artifactName string) error {
 		return fmt.Errorf("path traversal detected: %q is outside %q", absDest, absOutput)
 	}
 
-	resp, err := http.Get(fileURL) //nolint:gosec // URL comes from LP API
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := downloadFileOnce(ctx, client, fileURL, destDir, destPath)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if attempt == attempts || !isTransientDownloadError(err) {
+			break
+		}
+	}
+
+	return lastErr
+}
+
+type downloadStatusError struct {
+	url        string
+	statusCode int
+}
+
+func (e *downloadStatusError) Error() string {
+	return fmt.Sprintf("HTTP GET %q: status %d", e.url, e.statusCode)
+}
+
+type transientDownloadError struct {
+	err error
+}
+
+func (e *transientDownloadError) Error() string {
+	return e.err.Error()
+}
+
+func (e *transientDownloadError) Unwrap() error {
+	return e.err
+}
+
+func downloadFileOnce(ctx context.Context, client *http.Client, fileURL, destDir, destPath string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
 	if err != nil {
-		return fmt.Errorf("HTTP GET %q: %w", fileURL, err)
+		return fmt.Errorf("creating HTTP GET %q: %w", fileURL, err)
+	}
+
+	resp, err := client.Do(req) //nolint:gosec // URL comes from LP API
+	if err != nil {
+		return &transientDownloadError{err: fmt.Errorf("HTTP GET %q: %w", fileURL, err)}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP GET %q: status %d", fileURL, resp.StatusCode)
+		return &downloadStatusError{url: fileURL, statusCode: resp.StatusCode}
 	}
 
-	f, err := os.Create(destPath)
+	tmp, err := createDownloadTempFile(destDir, filepath.Base(destPath))
 	if err != nil {
-		return fmt.Errorf("creating file %q: %w", destPath, err)
+		return fmt.Errorf("creating temp file for %q: %w", destPath, err)
 	}
-	defer f.Close()
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
 
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		return fmt.Errorf("writing file %q: %w", destPath, err)
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		_ = tmp.Close()
+		return &transientDownloadError{err: fmt.Errorf("writing file %q: %w", destPath, err)}
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing file %q: %w", destPath, err)
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil { //nolint:gosec // destPath is validated to stay under outputDir before download.
+		return fmt.Errorf("renaming file %q: %w", destPath, err)
 	}
 
 	return nil
+}
+
+func createDownloadTempFile(destDir, filename string) (*os.File, error) {
+	prefix := "." + filename + "."
+	for i := range 100 {
+		tmpPath := filepath.Join(destDir, fmt.Sprintf("%s%d-%d.tmp", prefix, time.Now().UnixNano(), i))
+		f, err := os.OpenFile(tmpPath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666) //nolint:gosec // artifacts intentionally use normal umask-controlled permissions.
+		if err == nil {
+			return f, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("could not create unique temp file in %q", destDir)
+}
+
+func isTransientDownloadError(err error) bool {
+	var statusErr *downloadStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.statusCode == http.StatusTooManyRequests || statusErr.statusCode >= http.StatusInternalServerError
+	}
+	var transferErr *transientDownloadError
+	return errors.As(err, &transferErr)
 }
 
 // Cleanup removes temporary recipes matching the given prefix and cleans up

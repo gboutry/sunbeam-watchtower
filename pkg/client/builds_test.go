@@ -75,6 +75,28 @@ func TestBuildsDownloadUsesTargetRef(t *testing.T) {
 	}
 }
 
+func TestBuildsDownloadUsesRetryCount(t *testing.T) {
+	var body map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	err := NewClient(ts.URL).BuildsDownload(context.Background(), BuildsDownloadOptions{
+		Project:    "demo",
+		RetryCount: 2,
+	})
+	if err != nil {
+		t.Fatalf("BuildsDownload() error = %v", err)
+	}
+	if body["retry_count"] != float64(2) {
+		t.Fatalf("retry_count = %v, want 2", body["retry_count"])
+	}
+}
+
 func TestBuildsTriggerAsyncUsesTargetRef(t *testing.T) {
 	var body map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

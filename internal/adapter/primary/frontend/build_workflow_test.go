@@ -106,6 +106,7 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 		ArtifactsDir: artifactsDir,
 		Project:      "demo",
 		Prefix:       "tmp-build",
+		RetryCount:   2,
 	})
 	if err != nil {
 		t.Fatalf("Trigger() error = %v", err)
@@ -121,6 +122,37 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 	}
 	if downloadBody.ArtifactsDir != artifactsDir {
 		t.Fatalf("ArtifactsDir = %q, want %q", downloadBody.ArtifactsDir, artifactsDir)
+	}
+	if downloadBody.RetryCount != 2 {
+		t.Fatalf("download RetryCount = %d, want 2", downloadBody.RetryCount)
+	}
+}
+
+func TestBuildWorkflowDownloadPassesRetryCount(t *testing.T) {
+	var downloadBody client.BuildsDownloadOptions
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/builds/download" {
+			t.Fatalf("path = %q, want download path", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&downloadBody); err != nil {
+			t.Fatalf("Decode(download) error = %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	workflow := NewBuildWorkflow(NewClientTransport(client.NewClient(ts.URL)), nil)
+	err := workflow.Download(context.Background(), BuildDownloadRequest{
+		Project:    "demo",
+		Artifacts:  []string{"keystone"},
+		RetryCount: 3,
+	})
+	if err != nil {
+		t.Fatalf("Download() error = %v", err)
+	}
+	if downloadBody.RetryCount != 3 {
+		t.Fatalf("download RetryCount = %d, want 3", downloadBody.RetryCount)
 	}
 }
 

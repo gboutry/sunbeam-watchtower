@@ -91,6 +91,7 @@ type BuildsDownloadOptions struct {
 	Owner        string   `json:"owner,omitempty"`
 	TargetRef    string   `json:"target_ref,omitempty"`
 	ArtifactsDir string   `json:"artifacts_dir,omitempty"`
+	RetryCount   int      `json:"retry_count,omitempty"`
 }
 
 // BuildsDownload downloads build artifacts.

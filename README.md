@@ -507,8 +507,8 @@ watchtower build trigger --source remote ubuntu-openstack-rocks nova-consolidate
 # Trigger and wait for completion
 watchtower build trigger my-project --wait --timeout 2h
 
-# Trigger and wait, then download artifacts
-watchtower build trigger my-project --wait --download
+# Trigger and wait, then download artifacts with one retry for transient failures
+watchtower build trigger my-project --wait --download --retry 2
 
 # List builds
 watchtower build list my-project
@@ -517,7 +517,7 @@ watchtower build list my-project
 watchtower build list --source local ubuntu-openstack-rocks --prefix tmp-build-
 
 # Download build artifacts
-watchtower build download my-project --artifacts-dir ./output
+watchtower build download my-project --artifacts-dir ./output --retry 2
 
 # Download specific artifacts from a local build
 watchtower build download --source local ubuntu-openstack-rocks keystone nova-consolidated

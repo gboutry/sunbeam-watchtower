@@ -67,6 +67,7 @@ type BuildsDownloadInput struct {
 		Owner        string   `json:"owner,omitempty" required:"false" doc:"Override backend owner"`
 		TargetRef    string   `json:"target_ref,omitempty" required:"false" doc:"Override backend target reference"`
 		ArtifactsDir string   `json:"artifacts_dir,omitempty" required:"false" doc:"Output directory (default from config)"`
+		RetryCount   int      `json:"retry_count,omitempty" required:"false" doc:"Max download attempts per artifact file (>= 1, default 1)"`
 	}
 }
 
@@ -190,6 +191,9 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 		Description: "Download build artifacts for succeeded builds of the given artifacts.",
 		Tags:        []string{"builds"},
 	}, func(ctx context.Context, input *BuildsDownloadInput) (*BuildsDownloadOutput, error) {
+		if input.Body.RetryCount < 0 {
+			return nil, huma.Error422UnprocessableEntity("retry_count must be >= 0")
+		}
 		artifactsDir := input.Body.ArtifactsDir
 		if artifactsDir == "" {
 			var err error
@@ -206,6 +210,7 @@ func RegisterBuildsAPI(api huma.API, application *app.App) {
 			Owner:         input.Body.Owner,
 			TargetRef:     input.Body.TargetRef,
 			OutputDir:     artifactsDir,
+			RetryCount:    input.Body.RetryCount,
 		}); err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("download failed: %v", err))
 		}

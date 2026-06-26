@@ -105,6 +105,38 @@ func TestBuildsTriggerAsyncEndpoint_RetryRejected422(t *testing.T) {
 	}
 }
 
+func TestBuildsDownloadEndpoint_RetryCountOptional(t *testing.T) {
+	srv, base := startBuildsTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	resp := postJSON(t, base, "/api/v1/builds/download", map[string]any{
+		"project": "nonexistent",
+	})
+	body := readBodyString(t, resp)
+
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		t.Fatalf("retry_count should be optional; got 422 validation error: %s", body)
+	}
+}
+
+func TestBuildsDownloadEndpoint_RetryNegative422(t *testing.T) {
+	srv, base := startBuildsTestServer(t)
+	defer srv.Shutdown(context.Background())
+
+	resp := postJSON(t, base, "/api/v1/builds/download", map[string]any{
+		"project":     "nonexistent",
+		"retry_count": -1,
+	})
+	body := readBodyString(t, resp)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", resp.StatusCode, body)
+	}
+	if !bytes.Contains([]byte(body), []byte("retry_count must be >= 0")) {
+		t.Errorf("expected retry_count must be >= 0 error, got: %s", body)
+	}
+}
+
 func TestBuildTriggerOptionsFromInput_PreparedSource(t *testing.T) {
 	input := &BuildsTriggerInput{}
 	input.Body.Project = "demo"

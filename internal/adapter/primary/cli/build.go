@@ -113,7 +113,7 @@ func newBuildTriggerCmd(opts *Options) *cobra.Command {
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build", "temp recipe name prefix (local mode)")
 	cmd.Flags().StringVar(&localPath, "local-path", "", "path to local git repo (enables local mode)")
 	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory for downloaded artifacts (default from config)")
-	cmd.Flags().IntVar(&retryCount, "retry", 1, "max attempts per individual build when --wait is set (1 = no retry)")
+	cmd.Flags().IntVar(&retryCount, "retry", 1, "max attempts per individual build when --wait is set, and per artifact download when --download is set (1 = no retry)")
 
 	return cmd
 }
@@ -172,6 +172,7 @@ func newBuildListCmd(opts *Options) *cobra.Command {
 
 func newBuildDownloadCmd(opts *Options) *cobra.Command {
 	var artifactsDir, sha, prefix, owner string
+	var retryCount int
 
 	cmd := withActionID(&cobra.Command{
 		Use:   "download <project> [artifacts...]",
@@ -180,6 +181,9 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectName := args[0]
 			artifactNames := args[1:]
+			if retryCount < 1 {
+				return fmt.Errorf("--retry must be >= 1")
+			}
 
 			// Determine source mode: local when --prefix or --sha are set.
 			source := ""
@@ -201,11 +205,13 @@ func newBuildDownloadCmd(opts *Options) *cobra.Command {
 				Artifacts:    artifactNames,
 				ArtifactsDir: artifactsDir,
 				Owner:        owner,
+				RetryCount:   retryCount,
 			})
 		},
 	}, frontend.ActionBuildDownload)
 
 	cmd.Flags().StringVar(&artifactsDir, "artifacts-dir", "", "output directory (default from config)")
+	cmd.Flags().IntVar(&retryCount, "retry", 1, "max download attempts per artifact file (1 = no retry)")
 	cmd.Flags().StringVar(&sha, "sha", "", "git commit SHA (narrows prefix in local mode)")
 	cmd.Flags().StringVar(&prefix, "prefix", "tmp-build-", "temp recipe name prefix (local mode)")
 	cmd.Flags().StringVar(&owner, "owner", "", "override LP owner")

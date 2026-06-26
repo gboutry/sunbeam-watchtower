@@ -69,6 +69,7 @@ type BuildDownloadRequest struct {
 	ArtifactsDir string
 	Owner        string
 	TargetRef    string
+	RetryCount   int
 }
 
 // BuildCleanupRequest describes a frontend build-cleanup workflow.
@@ -180,6 +181,7 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 			Artifacts:    downloadArtifacts,
 			ArtifactsDir: req.ArtifactsDir,
 			Owner:        preparedTrigger.Owner,
+			RetryCount:   req.RetryCount,
 		}
 		if preparedTrigger.Prepared != nil {
 			downloadOpts.TargetRef = preparedTrigger.Prepared.TargetRef
@@ -268,6 +270,7 @@ func (w *BuildWorkflow) Download(ctx context.Context, req BuildDownloadRequest) 
 		Owner:        preparedDownload.Owner,
 		TargetRef:    preparedDownload.TargetRef,
 		ArtifactsDir: preparedDownload.ArtifactsDir,
+		RetryCount:   req.RetryCount,
 	}
 
 	return w.client.BuildsDownload(ctx, downloadOpts)

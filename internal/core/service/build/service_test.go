@@ -5,9 +5,15 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -125,6 +131,123 @@ func (m *mockRecipeBuilder) ListRecipesByOwner(_ context.Context, _ string) ([]*
 		return nil, m.ownerListErr
 	}
 	return m.ownerRecipes, nil
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func responseWithBody(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(http.Header),
+	}
+}
+
+func TestDownloadFileRetriesTransientTransportError(t *testing.T) {
+	attempts := 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return nil, errors.New("connection reset by peer")
+		}
+		return responseWithBody(http.StatusOK, "artifact"), nil
+	})}
+
+	outputDir := t.TempDir()
+	err := downloadFile(context.Background(), client, "https://launchpad.test/build/+files/pkg.charm", outputDir, "keystone", 2)
+	if err != nil {
+		t.Fatalf("downloadFile() error = %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	got, err := os.ReadFile(filepath.Join(outputDir, "keystone", "pkg.charm"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(got) != "artifact" {
+		t.Fatalf("file content = %q, want artifact", got)
+	}
+}
+
+func TestDownloadFilePreservesUmaskControlledPermissions(t *testing.T) {
+	oldUmask := syscall.Umask(0o022)
+	defer syscall.Umask(oldUmask)
+
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return responseWithBody(http.StatusOK, "artifact"), nil
+	})}
+
+	outputDir := t.TempDir()
+	err := downloadFile(context.Background(), client, "https://launchpad.test/build/+files/pkg.charm", outputDir, "keystone", 1)
+	if err != nil {
+		t.Fatalf("downloadFile() error = %v", err)
+	}
+	info, err := os.Stat(filepath.Join(outputDir, "keystone", "pkg.charm"))
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("file mode = %o, want 644", got)
+	}
+}
+
+func TestDownloadFileRetriesTransientHTTPStatus(t *testing.T) {
+	attempts := 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return responseWithBody(http.StatusInternalServerError, "temporary"), nil
+		}
+		return responseWithBody(http.StatusOK, "artifact"), nil
+	})}
+
+	err := downloadFile(context.Background(), client, "https://launchpad.test/build/+files/pkg.charm", t.TempDir(), "keystone", 2)
+	if err != nil {
+		t.Fatalf("downloadFile() error = %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+}
+
+func TestDownloadFileDoesNotRetryPermanentHTTPStatus(t *testing.T) {
+	attempts := 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		return responseWithBody(http.StatusNotFound, "missing"), nil
+	})}
+
+	err := downloadFile(context.Background(), client, "https://launchpad.test/build/+files/pkg.charm", t.TempDir(), "keystone", 3)
+	if err == nil {
+		t.Fatal("downloadFile() error = nil, want status error")
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+}
+
+func TestDownloadFileReturnsFinalErrorAfterRetryExhaustion(t *testing.T) {
+	attempts := 0
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		return nil, errors.New("connection reset by peer")
+	})}
+
+	err := downloadFile(context.Background(), client, "https://launchpad.test/build/+files/pkg.charm", t.TempDir(), "keystone", 2)
+	if err == nil {
+		t.Fatal("downloadFile() error = nil, want retry exhaustion error")
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	if !strings.Contains(err.Error(), "connection reset by peer") {
+		t.Fatalf("error = %v, want final transport error", err)
+	}
 }
 
 // mockRepoManager implements port.RepoManager for testing.
