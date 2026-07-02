@@ -225,6 +225,7 @@ const (
 type BuildTriggerResult struct {
 	Project       string              `json:"project" yaml:"project"`
 	RecipeResults []BuildRecipeResult `json:"recipe_results" yaml:"recipe_results"`
+	WaitTimeout   *BuildWaitTimeout   `json:"wait_timeout,omitempty" yaml:"wait_timeout,omitempty"`
 }
 
 // BuildRecipeResult holds the result of a single recipe action.
@@ -236,4 +237,21 @@ type BuildRecipeResult struct {
 	Builds       []Build           `json:"builds,omitempty" yaml:"builds,omitempty"`
 	ErrorMessage string            `json:"error,omitempty" yaml:"error,omitempty"`
 	Error        error             `json:"-" yaml:"-"`
+}
+
+// BuildWaitTimeout describes builds that were still active when a wait
+// deadline expired.
+type BuildWaitTimeout struct {
+	Timeout string                  `json:"timeout" yaml:"timeout"`
+	Builds  []BuildWaitTimeoutBuild `json:"builds" yaml:"builds"`
+}
+
+// BuildWaitTimeoutBuild identifies one active build at wait timeout.
+type BuildWaitTimeoutBuild struct {
+	Project  string `json:"project,omitempty" yaml:"project,omitempty"`
+	Recipe   string `json:"recipe" yaml:"recipe"`
+	Arch     string `json:"arch" yaml:"arch"`
+	State    string `json:"state" yaml:"state"`
+	URL      string `json:"url,omitempty" yaml:"url,omitempty"`
+	SelfLink string `json:"self_link,omitempty" yaml:"self_link,omitempty"`
 }

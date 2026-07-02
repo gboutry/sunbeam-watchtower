@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
@@ -170,6 +171,9 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 			response.Errors = append(response.Errors, fmt.Errorf("recipe %s: %s", recipe.Name, recipe.ErrorMessage))
 		}
 	}
+	if result.WaitTimeout != nil {
+		response.Errors = append(response.Errors, buildWaitTimeoutError{timeout: result.WaitTimeout})
+	}
 
 	if req.Download && len(response.Builds) > 0 {
 		downloadArtifacts := triggerOpts.Artifacts
@@ -192,6 +196,24 @@ func (w *BuildWorkflow) Trigger(ctx context.Context, req BuildTriggerRequest) (*
 	}
 
 	return response, nil
+}
+
+type buildWaitTimeoutError struct {
+	timeout *dto.BuildWaitTimeout
+}
+
+func (e buildWaitTimeoutError) Error() string {
+	if e.timeout == nil {
+		return ""
+	}
+	if len(e.timeout.Builds) == 0 {
+		return fmt.Sprintf("timeout waiting for builds after %s", e.timeout.Timeout)
+	}
+	details := make([]string, 0, len(e.timeout.Builds))
+	for _, b := range e.timeout.Builds {
+		details = append(details, fmt.Sprintf("recipe=%s arch=%s state=%s url=%s", b.Recipe, b.Arch, b.State, b.URL))
+	}
+	return fmt.Sprintf("timeout waiting for builds after %s: %s", e.timeout.Timeout, strings.Join(details, "; "))
 }
 
 // List resolves any local-build prefix state and lists builds.

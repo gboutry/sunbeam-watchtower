@@ -6,6 +6,7 @@ package frontend
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -125,6 +126,65 @@ func TestBuildWorkflowTriggerLocalDownload(t *testing.T) {
 	}
 	if downloadBody.RetryCount != 2 {
 		t.Fatalf("download RetryCount = %d, want 2", downloadBody.RetryCount)
+	}
+}
+
+func TestBuildWorkflowTriggerReportsWaitTimeoutAndDownloadFailure(t *testing.T) {
+	downloadCalled := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/builds/trigger":
+			_ = json.NewEncoder(w).Encode(dto.BuildTriggerResult{
+				Project: "demo",
+				RecipeResults: []dto.BuildRecipeResult{{
+					Name: "keystone",
+					Builds: []dto.Build{{
+						Project:  "demo",
+						Recipe:   "keystone",
+						State:    dto.BuildSucceeded,
+						SelfLink: "/build/amd64",
+					}},
+				}},
+				WaitTimeout: &dto.BuildWaitTimeout{
+					Timeout: "2h0m0s",
+					Builds: []dto.BuildWaitTimeoutBuild{{
+						Recipe:   "keystone",
+						Arch:     "arm64",
+						State:    "pending",
+						URL:      "https://launchpad.test/build/arm64",
+						SelfLink: "/build/arm64",
+					}},
+				},
+			})
+		case "/api/v1/builds/download":
+			downloadCalled = true
+			http.Error(w, "download failed", http.StatusInternalServerError)
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer ts.Close()
+
+	workflow := NewBuildWorkflow(NewClientTransport(client.NewClient(ts.URL)), nil)
+	response, err := workflow.Trigger(context.Background(), BuildTriggerRequest{
+		Download: true,
+		Project:  "demo",
+		Wait:     true,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error = %v", err)
+	}
+	if !downloadCalled {
+		t.Fatal("download follow-up was not attempted")
+	}
+	if len(response.Errors) != 2 {
+		t.Fatalf("response.Errors len = %d, want 2: %+v", len(response.Errors), response.Errors)
+	}
+	joined := errors.Join(response.Errors...).Error()
+	for _, want := range []string{"timeout waiting for builds after 2h0m0s", "keystone", "arm64", "download: HTTP 500"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("joined error = %q, want to contain %q", joined, want)
+		}
 	}
 }
 

@@ -114,6 +114,7 @@ type Service struct {
 	// these to short durations to avoid slow runs.
 	pollInterval   time.Duration
 	postRetryDelay time.Duration
+	downloadClient *http.Client
 }
 
 const (
@@ -148,6 +149,13 @@ func (s *Service) waitPostRetryDelay() time.Duration {
 		return s.postRetryDelay
 	}
 	return defaultWaitPostRetryDelay
+}
+
+func (s *Service) artifactDownloadClient() *http.Client {
+	if s.downloadClient != nil {
+		return s.downloadClient
+	}
+	return http.DefaultClient
 }
 
 // Trigger orchestrates the build pipeline for a project. It is re-entrant:
@@ -377,6 +385,10 @@ func (s *Service) Trigger(ctx context.Context, projectName string, artifactNames
 		builds, err := s.waitForBuilds(ctx, pb, recipePtrs, timeout, opts.RetryCount)
 		if err != nil {
 			s.logger.Warn("wait for builds completed with error", "error", err)
+			var timeoutErr *BuildWaitTimeoutError
+			if errors.As(err, &timeoutErr) {
+				result.WaitTimeout = buildWaitTimeoutDTO(timeoutErr)
+			}
 		}
 		// Replace results with final build states from the wait loop.
 		for i := range result.RecipeResults {
@@ -687,7 +699,7 @@ func (s *Service) waitForBuilds(
 		}
 
 		if time.Now().After(deadline) {
-			return allBuilds, fmt.Errorf("timeout waiting for builds after %v", timeout)
+			return allBuilds, &BuildWaitTimeoutError{Timeout: timeout, Builds: activeBuilds(allBuilds)}
 		}
 
 		select {
@@ -696,6 +708,59 @@ func (s *Service) waitForBuilds(
 		case <-time.After(pollInterval):
 		}
 	}
+}
+
+// BuildWaitTimeoutError reports the active build snapshot captured when a
+// wait deadline expires.
+type BuildWaitTimeoutError struct {
+	Timeout time.Duration
+	Builds  []dto.Build
+}
+
+func (e *BuildWaitTimeoutError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return buildWaitTimeoutMessage(buildWaitTimeoutDTO(e))
+}
+
+func activeBuilds(builds []dto.Build) []dto.Build {
+	active := make([]dto.Build, 0, len(builds))
+	for _, b := range builds {
+		if b.State.IsActive() {
+			active = append(active, b)
+		}
+	}
+	return active
+}
+
+func buildWaitTimeoutDTO(err *BuildWaitTimeoutError) *dto.BuildWaitTimeout {
+	out := &dto.BuildWaitTimeout{Timeout: err.Timeout.String()}
+	for _, b := range err.Builds {
+		out.Builds = append(out.Builds, dto.BuildWaitTimeoutBuild{
+			Project:  b.Project,
+			Recipe:   b.Recipe,
+			Arch:     b.Arch,
+			State:    b.State.String(),
+			URL:      b.WebLink,
+			SelfLink: b.SelfLink,
+		})
+	}
+	return out
+}
+
+func buildWaitTimeoutMessage(timeout *dto.BuildWaitTimeout) string {
+	if timeout == nil {
+		return ""
+	}
+	if len(timeout.Builds) == 0 {
+		return fmt.Sprintf("timeout waiting for builds after %s", timeout.Timeout)
+	}
+	details := make([]string, 0, len(timeout.Builds))
+	for _, b := range timeout.Builds {
+		details = append(details, fmt.Sprintf("recipe=%s arch=%s state=%s url=%s", b.Recipe, b.Arch, b.State, b.URL))
+	}
+	return fmt.Sprintf("timeout waiting for builds after %s: %s", timeout.Timeout, strings.Join(details, "; "))
 }
 
 // List returns builds across configured projects, applying filters.
@@ -832,6 +897,7 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 	for _, p := range opts.Projects {
 		projFilter[p] = true
 	}
+	var failures []DownloadFileError
 
 	for name, pb := range s.projects {
 		if len(projFilter) > 0 && !projFilter[name] {
@@ -895,14 +961,70 @@ func (s *Service) Download(ctx context.Context, opts DownloadOpts) error {
 					continue
 				}
 				for _, u := range urls {
-					if err := downloadFile(ctx, http.DefaultClient, u, opts.OutputDir, recipeName, opts.RetryCount); err != nil {
-						return fmt.Errorf("downloading %s: %w", u, err)
+					if err := downloadFile(ctx, s.artifactDownloadClient(), u, opts.OutputDir, recipeName, opts.RetryCount); err != nil {
+						failures = append(failures, DownloadFileError{
+							Project:       name,
+							Recipe:        recipeName,
+							Arch:          b.Arch,
+							BuildURL:      b.WebLink,
+							BuildSelfLink: b.SelfLink,
+							FileURL:       u,
+							Err:           err,
+						})
 					}
 				}
 			}
 		}
 	}
+	if len(failures) > 0 {
+		return &DownloadError{Failures: failures}
+	}
 	return nil
+}
+
+// DownloadFileError describes one artifact file that could not be fetched.
+type DownloadFileError struct {
+	Project       string
+	Recipe        string
+	Arch          string
+	BuildURL      string
+	BuildSelfLink string
+	FileURL       string
+	Err           error
+}
+
+func (f DownloadFileError) Error() string {
+	return fmt.Sprintf(
+		"project=%s recipe=%s arch=%s build_url=%s build_self_link=%s file_url=%s: %v",
+		f.Project,
+		f.Recipe,
+		f.Arch,
+		f.BuildURL,
+		f.BuildSelfLink,
+		f.FileURL,
+		f.Err,
+	)
+}
+
+func (f DownloadFileError) Unwrap() error {
+	return f.Err
+}
+
+// DownloadError aggregates artifact file download failures after all eligible
+// downloads have been attempted.
+type DownloadError struct {
+	Failures []DownloadFileError
+}
+
+func (e *DownloadError) Error() string {
+	if e == nil || len(e.Failures) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(e.Failures))
+	for _, failure := range e.Failures {
+		parts = append(parts, failure.Error())
+	}
+	return fmt.Sprintf("download failed for %d artifact file(s): %s", len(e.Failures), strings.Join(parts, "; "))
 }
 
 // downloadFile downloads a file from fileURL into outputDir/artifactName/,

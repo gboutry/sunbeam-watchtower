@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -247,6 +248,157 @@ func TestDownloadFileReturnsFinalErrorAfterRetryExhaustion(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "connection reset by peer") {
 		t.Fatalf("error = %v, want final transport error", err)
+	}
+}
+
+func TestDownloadAttemptsRemainingFilesAfterFailure(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Project: "sunbeam", Recipe: "keystone", State: dto.BuildSucceeded, Arch: "amd64", SelfLink: "/build/amd64", WebLink: "https://launchpad.test/build/amd64"},
+			},
+		},
+	}
+
+	attempts := map[string]int{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts[r.URL.Path]++
+		switch r.URL.Path {
+		case "/bad.charm":
+			http.Error(w, "temporary", http.StatusInternalServerError)
+		case "/good.charm":
+			_, _ = w.Write([]byte("artifact"))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	builder.fileURLs = map[string][]string{
+		"/build/amd64": {ts.URL + "/bad.charm", ts.URL + "/good.charm"},
+	}
+
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
+		},
+		nil, testLogger(),
+	)
+
+	outputDir := t.TempDir()
+	err := svc.Download(context.Background(), DownloadOpts{
+		Projects:      []string{"sunbeam"},
+		ArtifactNames: []string{"keystone"},
+		OutputDir:     outputDir,
+		RetryCount:    2,
+	})
+	if err == nil {
+		t.Fatal("Download() error = nil, want aggregate download error")
+	}
+	if attempts["/bad.charm"] != 2 {
+		t.Fatalf("bad.charm attempts = %d, want 2", attempts["/bad.charm"])
+	}
+	if attempts["/good.charm"] != 1 {
+		t.Fatalf("good.charm attempts = %d, want 1", attempts["/good.charm"])
+	}
+	if _, readErr := os.ReadFile(filepath.Join(outputDir, "keystone", "good.charm")); readErr != nil {
+		t.Fatalf("good artifact was not downloaded: %v", readErr)
+	}
+	for _, want := range []string{"keystone", "amd64", "bad.charm", "https://launchpad.test/build/amd64"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Download() error = %q, want to contain %q", err.Error(), want)
+		}
+	}
+}
+
+func TestDownloadAggregatesMultipleFailedFiles(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Project: "sunbeam", Recipe: "keystone", State: dto.BuildSucceeded, Arch: "amd64", SelfLink: "/build/amd64", WebLink: "https://launchpad.test/build/amd64"},
+			},
+		},
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "temporary", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+	builder.fileURLs = map[string][]string{
+		"/build/amd64": {ts.URL + "/first.charm", ts.URL + "/second.charm"},
+	}
+
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
+		},
+		nil, testLogger(),
+	)
+
+	err := svc.Download(context.Background(), DownloadOpts{
+		Projects:      []string{"sunbeam"},
+		ArtifactNames: []string{"keystone"},
+		OutputDir:     t.TempDir(),
+		RetryCount:    1,
+	})
+	if err == nil {
+		t.Fatal("Download() error = nil, want aggregate download error")
+	}
+	for _, want := range []string{"first.charm", "second.charm"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Download() error = %q, want to contain %q", err.Error(), want)
+		}
+	}
+}
+
+func TestDownloadRetryCountAppliesPerFile(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Project: "sunbeam", Recipe: "keystone", State: dto.BuildSucceeded, Arch: "amd64", SelfLink: "/build/amd64", WebLink: "https://launchpad.test/build/amd64"},
+			},
+		},
+	}
+
+	attempts := map[string]int{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts[r.URL.Path]++
+		if attempts[r.URL.Path] == 1 {
+			http.Error(w, "temporary", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte("artifact"))
+	}))
+	defer ts.Close()
+	builder.fileURLs = map[string][]string{
+		"/build/amd64": {ts.URL + "/first.charm", ts.URL + "/second.charm"},
+	}
+
+	svc := NewService(
+		map[string]ProjectBuilder{
+			"sunbeam": {Builder: builder, Owner: "team", Project: "sunbeam", Artifacts: []string{"keystone"}, Strategy: &mockStrategy{}},
+		},
+		nil, testLogger(),
+	)
+
+	err := svc.Download(context.Background(), DownloadOpts{
+		Projects:      []string{"sunbeam"},
+		ArtifactNames: []string{"keystone"},
+		OutputDir:     t.TempDir(),
+		RetryCount:    2,
+	})
+	if err != nil {
+		t.Fatalf("Download() error = %v", err)
+	}
+	for _, path := range []string{"/first.charm", "/second.charm"} {
+		if attempts[path] != 2 {
+			t.Fatalf("%s attempts = %d, want 2", path, attempts[path])
+		}
 	}
 }
 
@@ -1425,6 +1577,55 @@ func TestTrigger_Wait_RetryCount3_CancelAfterRetryReturnsFreshSnapshot(t *testin
 	// Key assertion: state is Pending (fresh snapshot), NOT Failed (stale).
 	if rr.Builds[0].State != dto.BuildPending {
 		t.Errorf("post-cancel build state = %v, want BuildPending (fresh post-retry snapshot)", rr.Builds[0].State)
+	}
+}
+
+func TestTrigger_Wait_TimeoutIncludesActiveBuildDetails(t *testing.T) {
+	recipe := &dto.Recipe{Name: "keystone", SelfLink: "/recipe/keystone"}
+	builder := &mockRecipeBuilder{
+		recipes: map[string]*dto.Recipe{"keystone": recipe},
+		builds: map[string][]dto.Build{
+			"/recipe/keystone": {
+				{Recipe: "keystone", State: dto.BuildPending, Arch: "arm64", SelfLink: "/build/arm64", WebLink: "https://launchpad.test/build/arm64"},
+				{Recipe: "keystone", State: dto.BuildBuilding, Arch: "s390x", SelfLink: "/build/s390x", WebLink: "https://launchpad.test/build/s390x"},
+				{Recipe: "keystone", State: dto.BuildSucceeded, Arch: "amd64", SelfLink: "/build/amd64", WebLink: "https://launchpad.test/build/amd64"},
+			},
+		},
+	}
+	svc := newRetryService(t, builder)
+
+	result, err := svc.Trigger(context.Background(), "sunbeam", nil, TriggerOpts{
+		Wait:       true,
+		Timeout:    1 * time.Millisecond,
+		RetryCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("Trigger() error: %v", err)
+	}
+	if result.WaitTimeout == nil {
+		t.Fatal("WaitTimeout = nil, want timeout details")
+	}
+	if result.WaitTimeout.Timeout != "1ms" {
+		t.Fatalf("WaitTimeout.Timeout = %q, want 1ms", result.WaitTimeout.Timeout)
+	}
+	if len(result.WaitTimeout.Builds) != 2 {
+		t.Fatalf("WaitTimeout.Builds len = %d, want 2: %+v", len(result.WaitTimeout.Builds), result.WaitTimeout.Builds)
+	}
+	got := map[string]dto.BuildWaitTimeoutBuild{}
+	for _, b := range result.WaitTimeout.Builds {
+		got[b.Arch] = b
+	}
+	for arch, state := range map[string]string{"arm64": "pending", "s390x": "building"} {
+		b, ok := got[arch]
+		if !ok {
+			t.Fatalf("missing timeout build for arch %s: %+v", arch, result.WaitTimeout.Builds)
+		}
+		if b.Recipe != "keystone" || b.State != state || b.URL == "" || b.SelfLink == "" {
+			t.Fatalf("timeout build for %s = %+v, want recipe/state/url/self_link", arch, b)
+		}
+	}
+	if _, ok := got["amd64"]; ok {
+		t.Fatalf("succeeded build included in timeout details: %+v", result.WaitTimeout.Builds)
 	}
 }
 
