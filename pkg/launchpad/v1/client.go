@@ -11,6 +11,7 @@ package v1
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +24,10 @@ import (
 const (
 	// APIBaseURL is the Launchpad API service root.
 	APIBaseURL = "https://api.launchpad.net/devel"
+
+	defaultReadAttempts     = 4
+	defaultReadInitialDelay = 1 * time.Second
+	defaultReadMaxDelay     = 5 * time.Second
 )
 
 // Client is an authenticated Launchpad API client.
@@ -90,8 +95,54 @@ func Login(consumerKey string, promptFn func(authorizeURL string) error, logger 
 	return NewClient(creds, logger), creds, nil
 }
 
-// do executes a signed HTTP request and returns the response body.
+// HTTPError reports a non-2xx response from Launchpad.
+type HTTPError struct {
+	Method     string
+	URL        string
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("%s %s: HTTP %d: %s", e.Method, e.URL, e.StatusCode, e.Body)
+}
+
+// do executes a signed HTTP request and returns the response body. Safe
+// read-only requests are retried automatically for transient LP failures.
 func (c *Client) do(ctx context.Context, method, rawURL string, body io.Reader, contentType string) ([]byte, error) {
+	if method != http.MethodGet {
+		return c.doOnce(ctx, method, rawURL, body, contentType)
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= defaultReadAttempts; attempt++ {
+		data, err := c.doOnce(ctx, method, rawURL, nil, contentType)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+		if attempt == defaultReadAttempts || !isRetryableReadError(err) {
+			return nil, err
+		}
+		delay := readRetryDelay(attempt)
+		c.logger.Debug("retrying transient Launchpad read failure",
+			"method", method,
+			"url", rawURL,
+			"attempt", attempt+1,
+			"max_attempts", defaultReadAttempts,
+			"retry_in", delay,
+			"error", err,
+		)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	return nil, lastErr
+}
+
+func (c *Client) doOnce(ctx context.Context, method, rawURL string, body io.Reader, contentType string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, rawURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
@@ -116,14 +167,41 @@ func (c *Client) do(ctx context.Context, method, rawURL string, body io.Reader, 
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return nil, fmt.Errorf("%s %s: reading response: %w", method, rawURL, err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%s %s: HTTP %d: %s", method, rawURL, resp.StatusCode, respBody)
+		return nil, &HTTPError{
+			Method:     method,
+			URL:        rawURL,
+			StatusCode: resp.StatusCode,
+			Body:       string(respBody),
+		}
 	}
 
 	return respBody, nil
+}
+
+func isRetryableReadError(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode == http.StatusTooManyRequests || httpErr.StatusCode >= http.StatusInternalServerError
+	}
+	return true
+}
+
+func readRetryDelay(attempt int) time.Duration {
+	delay := defaultReadInitialDelay
+	for range max(attempt-1, 0) {
+		delay *= 2
+		if delay >= defaultReadMaxDelay {
+			return defaultReadMaxDelay
+		}
+	}
+	return delay
 }
 
 // Get performs a signed GET request to the Launchpad API.

@@ -507,7 +507,7 @@ watchtower build trigger --source remote ubuntu-openstack-rocks nova-consolidate
 # Trigger and wait for completion
 watchtower build trigger my-project --wait --timeout 2h
 
-# Trigger and wait, then download artifacts with one retry for transient failures
+# Trigger and wait, then download artifacts with one build/artifact retry
 watchtower build trigger my-project --wait --download --retry 2
 
 # List builds
@@ -529,6 +529,10 @@ watchtower build cleanup my-project --dry-run
 In remote mode with series configured, each artifact expands into per-series
 recipes: `<artifact>` for the dev-focus series (default branch) and
 `<artifact>-<series>` for other series (`stable/<series>` branch).
+
+Launchpad API reads are retried automatically for transient service failures
+such as HTTP 429, 502, 503, and 504. This is independent of `--retry`, which
+controls build retries while waiting and artifact file transfer retries.
 
 ### `watchtower project`
 

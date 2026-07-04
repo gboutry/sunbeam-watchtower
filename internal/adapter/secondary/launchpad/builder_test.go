@@ -110,6 +110,36 @@ func TestSnapBuilderWorkflow(t *testing.T) {
 	}
 }
 
+func TestCharmBuilderListBuildsRetriesTransientLaunchpadRead(t *testing.T) {
+	builder := NewCharmBuilder(newBuilderClientForTest())
+	attempts := 0
+
+	withLaunchpadTransport(t, repoRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet || req.URL.Path != "/devel/~owner/project/+charm/my-charm/builds" {
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+		}
+		attempts++
+		if attempts == 1 {
+			return launchpadResponse(http.StatusServiceUnavailable, "temporary"), nil
+		}
+		return launchpadResponse(http.StatusOK, `{"total_size":1,"entries":[{"self_link":"https://api.launchpad.net/devel/~owner/project/+charm/my-charm/+build/1","web_link":"https://launchpad.net/~owner/project/+charm/my-charm/+build/1","title":"my-charm amd64 build","buildstate":"Successfully built","arch_tag":"amd64","can_be_retried":true,"can_be_cancelled":false}]}`), nil
+	}))
+
+	builds, err := builder.ListBuilds(context.Background(), &dto.Recipe{
+		Name:     "my-charm",
+		SelfLink: "https://api.launchpad.net/devel/~owner/project/+charm/my-charm",
+	})
+	if err != nil {
+		t.Fatalf("ListBuilds() error = %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	if len(builds) != 1 || builds[0].State != dto.BuildSucceeded {
+		t.Fatalf("builds = %+v, want one succeeded build", builds)
+	}
+}
+
 func TestSnapBuilderProcessors(t *testing.T) {
 	builder := NewSnapBuilder(newBuilderClientForTest(), "", "")
 

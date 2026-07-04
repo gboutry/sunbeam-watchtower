@@ -6,10 +6,12 @@ package v1
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testClient(handler http.Handler) (*Client, *httptest.Server) {
@@ -81,6 +83,134 @@ func TestClient_Get_HTTPError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "404") {
 		t.Errorf("error should mention 404: %v", err)
+	}
+	var statusErr *HTTPError
+	if !errors.As(err, &statusErr) {
+		t.Fatalf("error type = %T, want HTTPError", err)
+	}
+	if statusErr.StatusCode != http.StatusNotFound {
+		t.Fatalf("status code = %d, want 404", statusErr.StatusCode)
+	}
+}
+
+func TestClient_GetRetriesTransientStatusThenSucceeds(t *testing.T) {
+	attempts := 0
+	c, server := testClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Write([]byte(`{"name": "test-user"}`))
+	}))
+	defer server.Close()
+
+	data, err := c.Get(context.Background(), server.URL+"/~test-user")
+	if err != nil {
+		t.Fatalf("Get() error: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	if !strings.Contains(string(data), "test-user") {
+		t.Fatalf("unexpected response: %s", data)
+	}
+}
+
+func TestClient_GetRetriesTransientStatusCodes(t *testing.T) {
+	statuses := []int{http.StatusBadGateway, http.StatusGatewayTimeout, http.StatusTooManyRequests}
+
+	for _, status := range statuses {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			attempts := 0
+			c, server := testClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts++
+				if attempts == 1 {
+					http.Error(w, "temporary", status)
+					return
+				}
+				w.Write([]byte(`{"name": "test-user"}`))
+			}))
+			defer server.Close()
+
+			if _, err := c.Get(context.Background(), server.URL+"/~test-user"); err != nil {
+				t.Fatalf("Get() error: %v", err)
+			}
+			if attempts != 2 {
+				t.Fatalf("attempts = %d, want 2", attempts)
+			}
+		})
+	}
+}
+
+func TestClient_GetDoesNotRetryPermanentStatus(t *testing.T) {
+	attempts := 0
+	c, server := testClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	_, err := c.Get(context.Background(), server.URL+"/~nobody")
+	if err == nil {
+		t.Fatal("Get() error = nil, want HTTP error")
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+}
+
+func TestClient_PostDoesNotRetryTransientStatus(t *testing.T) {
+	attempts := 0
+	c, server := testClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err := c.Post(context.Background(), server.URL+"/action", nil)
+	if err == nil {
+		t.Fatal("Post() error = nil, want HTTP error")
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+}
+
+func TestClient_GetStopsRetryingWhenContextCanceled(t *testing.T) {
+	attempts := 0
+	ctx, cancel := context.WithCancel(context.Background())
+	c, server := testClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		cancel()
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err := c.Get(ctx, server.URL+"/~test-user")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Get() error = %v, want context canceled", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+}
+
+func TestReadRetryDelayUsesOperationalBackoff(t *testing.T) {
+	tests := []struct {
+		attempt int
+		want    time.Duration
+	}{
+		{attempt: 1, want: time.Second},
+		{attempt: 2, want: 2 * time.Second},
+		{attempt: 3, want: 4 * time.Second},
+		{attempt: 4, want: 5 * time.Second},
+	}
+
+	for _, tt := range tests {
+		if got := readRetryDelay(tt.attempt); got != tt.want {
+			t.Fatalf("readRetryDelay(%d) = %s, want %s", tt.attempt, got, tt.want)
+		}
 	}
 }
 
