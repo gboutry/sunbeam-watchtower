@@ -10,16 +10,27 @@ import (
 
 // Bug is a forge-agnostic bug with its associated tasks.
 type Bug struct {
-	Forge       ForgeType `json:"forge"`
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Owner       string    `json:"owner"`
-	Tags        []string  `json:"tags,omitempty"`
-	URL         string    `json:"url"`
-	Tasks       []BugTask `json:"tasks"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Forge       ForgeType    `json:"forge"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Description string       `json:"description"`
+	Owner       string       `json:"owner"`
+	Tags        []string     `json:"tags,omitempty"`
+	URL         string       `json:"url"`
+	Tasks       []BugTask    `json:"tasks"`
+	Comments    []BugComment `json:"comments,omitempty"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+}
+
+// BugComment is a forge-agnostic comment on a bug.
+type BugComment struct {
+	Author    string    `json:"author"`
+	Subject   string    `json:"subject,omitempty"`
+	Body      string    `json:"body"`
+	URL       string    `json:"url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // BugTask is a forge-agnostic bug task.

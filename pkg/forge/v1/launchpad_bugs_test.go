@@ -40,6 +40,66 @@ func TestLPBugTaskToBugTaskUsesLatestTaskActivityForUpdatedAt(t *testing.T) {
 	}
 }
 
+func TestLaunchpadBugTrackerGetBugIncludesVisibleComments(t *testing.T) {
+	created := lp.Time{Time: time.Date(2026, 7, 10, 8, 0, 0, 0, time.UTC)}
+	edited := lp.Time{Time: created.Add(time.Hour)}
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/devel/bugs/42":
+			_ = json.NewEncoder(w).Encode(lp.Bug{
+				ID:                     42,
+				Title:                  "Test bug",
+				MessagesCollectionLink: server.URL + "/bugs/42/messages",
+			})
+		case "/devel/bugs/42/bug_tasks":
+			_ = json.NewEncoder(w).Encode(lp.Collection[lp.BugTask]{})
+		case "/bugs/42/messages":
+			_ = json.NewEncoder(w).Encode(lp.Collection[lp.Message]{Entries: []lp.Message{
+				{
+					Content:        "The upgrade path still fails.",
+					OwnerLink:      "https://api.launchpad.net/devel/~alice",
+					Subject:        "Re: Test bug",
+					WebLink:        "https://bugs.launchpad.net/bugs/42/comments/1",
+					Visible:        true,
+					DateCreated:    &created,
+					DateLastEdited: &edited,
+				},
+				{Content: "deleted", Visible: false},
+			}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	targetURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("Parse(server.URL): %v", err)
+	}
+	rewriteClient := server.Client()
+	rewriteClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		req.URL.Scheme = targetURL.Scheme
+		req.URL.Host = targetURL.Host
+		return http.DefaultTransport.RoundTrip(req)
+	})
+
+	tracker := NewLaunchpadBugTracker(lp.NewClient(nil, slog.Default(), rewriteClient))
+	bug, err := tracker.GetBug(context.Background(), "42")
+	if err != nil {
+		t.Fatalf("GetBug() error = %v", err)
+	}
+	if len(bug.Comments) != 1 {
+		t.Fatalf("comments = %+v, want one visible comment", bug.Comments)
+	}
+	comment := bug.Comments[0]
+	if comment.Author != "alice" || comment.Body != "The upgrade path still fails." || !comment.UpdatedAt.Equal(edited.Time) {
+		t.Fatalf("comment = %+v, want mapped Launchpad message", comment)
+	}
+}
+
 func TestLaunchpadBugTrackerListBugTasksUsesCreatedOrModifiedSince(t *testing.T) {
 	createdTask := lp.BugTask{
 		SelfLink:      "https://api.launchpad.net/devel/sunbeam-charms/+bug/1",

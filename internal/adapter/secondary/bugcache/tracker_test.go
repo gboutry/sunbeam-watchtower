@@ -121,7 +121,15 @@ func TestCachedTrackerFallsBackWhenNotSynced(t *testing.T) {
 
 func TestCachedTrackerServesFromCacheAfterSync(t *testing.T) {
 	mock := newMockBugTracker()
-	mock.bugs["1"] = &forge.Bug{Forge: forge.ForgeLaunchpad, ID: "1", Title: "Bug 1"}
+	mock.bugs["1"] = &forge.Bug{
+		Forge: forge.ForgeLaunchpad,
+		ID:    "1",
+		Title: "Bug 1",
+		Comments: []forge.BugComment{{
+			Author: "alice",
+			Body:   "This also affects the upgrade path.",
+		}},
+	}
 	mock.tasks["proj"] = []forge.BugTask{
 		{Forge: forge.ForgeLaunchpad, BugID: "1", TargetName: "proj", Status: "New", SelfLink: "/task/1"},
 	}
@@ -144,6 +152,14 @@ func TestCachedTrackerServesFromCacheAfterSync(t *testing.T) {
 	}
 	if len(tasks) != 1 || tasks[0].BugID != "1" {
 		t.Errorf("expected cached data, got %+v", tasks)
+	}
+
+	bug, err := ct.GetBug(ctx, "1")
+	if err != nil {
+		t.Fatalf("GetBug after sync: %v", err)
+	}
+	if len(bug.Comments) != 1 || bug.Comments[0].Body != "This also affects the upgrade path." {
+		t.Fatalf("cached bug comments = %+v, want synced comment", bug.Comments)
 	}
 
 	// Clear mock data; cached tracker should still return cached data.

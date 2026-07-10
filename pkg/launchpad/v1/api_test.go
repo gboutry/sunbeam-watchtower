@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestServer creates a test server that routes based on URL path/query.
@@ -99,6 +100,29 @@ func TestGetBug(t *testing.T) {
 	}
 	if b.Title != "Test bug" {
 		t.Errorf("Title = %q", b.Title)
+	}
+}
+
+func TestGetBugMessages(t *testing.T) {
+	created := Time{Time: time.Date(2026, 7, 10, 8, 0, 0, 0, time.UTC)}
+	c, server := newTestServer(t, map[string]any{
+		"/bugs/42/messages": Collection[Message]{
+			Entries: []Message{{
+				Content:     "The reproducer still fails.",
+				OwnerLink:   "https://api.launchpad.net/devel/~alice",
+				Visible:     true,
+				DateCreated: &created,
+			}},
+		},
+	})
+	defer server.Close()
+
+	messages, err := c.GetBugMessages(context.Background(), server.URL+"/bugs/42/messages")
+	if err != nil {
+		t.Fatalf("GetBugMessages() error = %v", err)
+	}
+	if len(messages) != 1 || messages[0].Content != "The reproducer still fails." {
+		t.Fatalf("GetBugMessages() = %+v, want one message", messages)
 	}
 }
 

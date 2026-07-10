@@ -42,6 +42,11 @@ func (l *LaunchpadBugTracker) GetBug(ctx context.Context, id string) (*Bug, erro
 		return nil, fmt.Errorf("fetching tasks for bug %d: %w", bugID, err)
 	}
 
+	lpMessages, err := l.client.GetBugMessages(ctx, lpBug.MessagesCollectionLink)
+	if err != nil {
+		return nil, fmt.Errorf("fetching comments for bug %d: %w", bugID, err)
+	}
+
 	b := &Bug{
 		Forge:       ForgeLaunchpad,
 		ID:          id,
@@ -60,6 +65,25 @@ func (l *LaunchpadBugTracker) GetBug(ctx context.Context, id string) (*Bug, erro
 
 	for _, t := range lpTasks {
 		b.Tasks = append(b.Tasks, lpBugTaskToBugTask(&t))
+	}
+	for _, message := range lpMessages {
+		if !message.Visible {
+			continue
+		}
+		comment := BugComment{
+			Author:  lpExtractName(message.OwnerLink),
+			Subject: message.Subject,
+			Body:    message.Content,
+			URL:     message.WebLink,
+		}
+		if message.DateCreated != nil {
+			comment.CreatedAt = message.DateCreated.Time
+			comment.UpdatedAt = message.DateCreated.Time
+		}
+		if message.DateLastEdited != nil {
+			comment.UpdatedAt = message.DateLastEdited.Time
+		}
+		b.Comments = append(b.Comments, comment)
 	}
 
 	return b, nil

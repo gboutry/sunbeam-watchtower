@@ -136,6 +136,18 @@ type Bug struct {
 	UsersUnaffectedCollectionLink      string   `json:"users_unaffected_collection_link"`
 }
 
+// Message represents a comment in a Launchpad bug discussion.
+type Message struct {
+	SelfLink       string `json:"self_link"`
+	WebLink        string `json:"web_link"`
+	Content        string `json:"content"`
+	OwnerLink      string `json:"owner_link"`
+	Subject        string `json:"subject"`
+	Visible        bool   `json:"visible"`
+	DateCreated    *Time  `json:"date_created,omitempty"`
+	DateLastEdited *Time  `json:"date_last_edited,omitempty"`
+}
+
 // BugTask represents a bug task (a bug needing fixing in a particular product or package).
 type BugTask struct {
 	SelfLink                   string `json:"self_link"`

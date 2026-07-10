@@ -39,6 +39,11 @@ func TestStoreBugsAndGetBug(t *testing.T) {
 			URL:         "https://bugs.lp.net/100",
 			CreatedAt:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 			UpdatedAt:   time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			Comments: []forge.BugComment{{
+				Author:    "carol",
+				Body:      "Confirmed with the attached reproducer.",
+				CreatedAt: time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
+			}},
 		},
 		{
 			Forge:       forge.ForgeLaunchpad,
@@ -69,6 +74,9 @@ func TestStoreBugsAndGetBug(t *testing.T) {
 	}
 	if got.Forge != forge.ForgeLaunchpad {
 		t.Errorf("bug 100 forge: got %v, want Launchpad", got.Forge)
+	}
+	if len(got.Comments) != 1 || got.Comments[0].Author != "carol" || got.Comments[0].Body != "Confirmed with the attached reproducer." {
+		t.Errorf("bug 100 comments mismatch: %+v", got.Comments)
 	}
 
 	// Retrieve second bug.

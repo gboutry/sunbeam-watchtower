@@ -26,6 +26,18 @@ func (c *Client) GetBugTasks(ctx context.Context, bugID int) ([]BugTask, error) 
 	return GetAllPages[BugTask](ctx, c, path)
 }
 
+// GetBugMessages returns all discussion messages for a bug.
+func (c *Client) GetBugMessages(ctx context.Context, collectionLink string) ([]Message, error) {
+	if collectionLink == "" {
+		return nil, nil
+	}
+	messages, err := GetAllPages[Message](ctx, c, collectionLink)
+	if err != nil {
+		return nil, fmt.Errorf("fetching bug messages: %w", err)
+	}
+	return messages, nil
+}
+
 // SearchGlobalBugTasks searches bug tasks across all projects.
 func (c *Client) SearchGlobalBugTasks(ctx context.Context, opts BugTaskSearchOpts) ([]BugTask, error) {
 	params := opts.values()
