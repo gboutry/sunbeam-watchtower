@@ -30,6 +30,12 @@ type BugListResponse struct {
 	Warnings []string
 }
 
+// BugSearchRequest aliases the public request used by all frontends.
+type BugSearchRequest = dto.BugSearchRequest
+
+// BugSearchResponse aliases the public response used by all frontends.
+type BugSearchResponse = dto.BugSearchResponse
+
 // BugSyncRequest describes one bug-sync workflow.
 type BugSyncRequest struct {
 	Projects []string
@@ -94,6 +100,18 @@ func (w *BugClientWorkflow) List(ctx context.Context, req BugListRequest) (*BugL
 	}, nil
 }
 
+// Search returns ranked, explained bug candidates.
+func (w *BugClientWorkflow) Search(ctx context.Context, req BugSearchRequest) (*BugSearchResponse, error) {
+	apiClient, err := w.resolveClient()
+	if err != nil {
+		return nil, err
+	}
+	if err := resolveBugSearchTimes(&req); err != nil {
+		return nil, err
+	}
+	return apiClient.BugsSearch(ctx, req)
+}
+
 // Sync triggers remote bug correlation/sync work.
 func (w *BugClientWorkflow) Sync(ctx context.Context, req BugSyncRequest) (*BugSyncResponse, error) {
 	apiClient, err := w.resolveClient()
@@ -122,6 +140,28 @@ func (w *BugClientWorkflow) Sync(ctx context.Context, req BugSyncRequest) (*BugS
 		},
 		Warnings: result.Errors,
 	}, nil
+}
+
+func resolveBugSearchTimes(req *BugSearchRequest) error {
+	for _, item := range []struct {
+		value       string
+		destination *string
+	}{
+		{req.CreatedAfter, &req.CreatedAfter},
+		{req.CreatedBefore, &req.CreatedBefore},
+		{req.ModifiedAfter, &req.ModifiedAfter},
+		{req.ModifiedBefore, &req.ModifiedBefore},
+	} {
+		if item.value == "" {
+			continue
+		}
+		resolved, err := dto.ResolveSince(item.value)
+		if err != nil {
+			return err
+		}
+		*item.destination = resolved
+	}
+	return nil
 }
 
 func (w *BugClientWorkflow) resolveClient() (*ClientTransport, error) {

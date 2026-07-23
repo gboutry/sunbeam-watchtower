@@ -195,6 +195,36 @@ func renderBugDetailTable(w io.Writer, styler *outputStyler, b *forge.Bug) error
 			return err
 		}
 	}
+	if b.InformationType != "" {
+		if err := writeKeyValue(w, styler, "Information type", b.InformationType); err != nil {
+			return err
+		}
+	}
+	if b.Private {
+		if err := writeKeyValue(w, styler, "Private", "true"); err != nil {
+			return err
+		}
+	}
+	if b.SecurityRelated {
+		if err := writeKeyValue(w, styler, "Security related", "true"); err != nil {
+			return err
+		}
+	}
+	if b.Provenance != nil {
+		if err := writeKeyValue(w, styler, "Data source", b.Provenance.Source); err != nil {
+			return err
+		}
+		if !b.Provenance.SyncedAt.IsZero() {
+			if err := writeKeyValue(w, styler, "Cache synced", b.Provenance.SyncedAt.Format(time.RFC3339)); err != nil {
+				return err
+			}
+		}
+		if !b.Provenance.VerifiedAt.IsZero() {
+			if err := writeKeyValue(w, styler, "Visibility verified", b.Provenance.VerifiedAt.Format(time.RFC3339)); err != nil {
+				return err
+			}
+		}
+	}
 	if !b.CreatedAt.IsZero() {
 		if err := writeKeyValue(w, styler, "Created", b.CreatedAt.Format("2006-01-02 15:04")); err != nil {
 			return err
@@ -220,15 +250,171 @@ func renderBugDetailTable(w io.Writer, styler *outputStyler, b *forge.Bug) error
 		headers := []string{"TARGET", "STATUS", "IMPORTANCE", "ASSIGNEE", "URL"}
 		rows := make([][]string, 0, len(b.Tasks))
 		for _, t := range b.Tasks {
-			target := t.Title
-			// LP bug task titles are like "Bug #12345 in projectname: title"
-			// Use the full title as the target identifier
-			if len(target) > 50 {
-				target = target[:47] + "..."
-			}
-			rows = append(rows, []string{target, t.Status, t.Importance, t.Assignee, t.URL})
+			rows = append(rows, []string{t.Title, t.Status, t.Importance, t.Assignee, t.URL})
 		}
-		return renderStyledTable(w, styler, headers, rows)
+		if err := renderStyledTable(w, styler, headers, rows); err != nil {
+			return err
+		}
+	}
+	if len(b.Comments) > 0 {
+		fmt.Fprintln(w)
+		if err := writeSectionTitle(w, styler, "Comments:"); err != nil {
+			return err
+		}
+		for _, comment := range b.Comments {
+			fmt.Fprintf(w, "  %s  %s\n", emptyDash(comment.Author), formatTimestamp(comment.CreatedAt))
+			if comment.Subject != "" {
+				fmt.Fprintf(w, "    %s\n", comment.Subject)
+			}
+			if comment.Body != "" {
+				fmt.Fprintf(w, "    %s\n", strings.ReplaceAll(comment.Body, "\n", "\n    "))
+			}
+			if comment.URL != "" {
+				fmt.Fprintf(w, "    %s\n", comment.URL)
+			}
+		}
+	}
+	if len(b.Links) > 0 {
+		fmt.Fprintln(w)
+		if err := writeSectionTitle(w, styler, "Associated links:"); err != nil {
+			return err
+		}
+		for _, link := range b.Links {
+			fmt.Fprintf(w, "  %-24s %s\n", link.Relation, link.URL)
+		}
+	}
+	return nil
+}
+
+func renderBugSearch(
+	w io.Writer,
+	format string,
+	styler *outputStyler,
+	result *dto.BugSearchResponse,
+	showRelated bool,
+) error {
+	switch format {
+	case "json":
+		return renderJSON(w, result)
+	case "yaml":
+		return renderYAML(w, result)
+	}
+
+	fmt.Fprintf(w, "Outcome: %s\n", styler.semantic(string(result.Outcome)))
+	fmt.Fprintf(
+		w,
+		"Scope: mode=%s fields=%s fuzzy=%t closed=%s merge=%t sort=%s documents=%d\n",
+		result.Applied.Mode,
+		strings.Join(result.Applied.Fields, ","),
+		result.Applied.Fuzzy,
+		result.Applied.Closed,
+		result.Applied.Merge,
+		result.Applied.Sort,
+		result.Applied.DocumentCount,
+	)
+	for _, source := range result.Provenance {
+		synced := "not synced"
+		if !source.SyncedAt.IsZero() {
+			synced = source.SyncedAt.Format(time.RFC3339)
+		}
+		verified := ""
+		if source.Verified {
+			verified = " (visibility verified)"
+		}
+		fmt.Fprintf(w, "Source: %s/%s %s at %s%s\n", source.Forge, emptyDash(source.Project), source.Source, synced, verified)
+	}
+
+	if len(result.Results) == 0 {
+		fmt.Fprintln(w, "\nNo direct or partial matching bug was found.")
+	} else {
+		fmt.Fprintln(w)
+		if err := writeSectionTitle(w, styler, "Matches:"); err != nil {
+			return err
+		}
+		if err := renderBugSearchGroup(w, styler, result.Results); err != nil {
+			return err
+		}
+	}
+	if len(result.Related) > 0 && (showRelated || len(result.Results) == 0) {
+		fmt.Fprintln(w)
+		if err := writeSectionTitle(w, styler, "Related results:"); err != nil {
+			return err
+		}
+		if err := renderBugSearchGroup(w, styler, result.Related); err != nil {
+			return err
+		}
+	}
+	if result.Truncated {
+		fmt.Fprintf(
+			w,
+			"\nResults truncated: %d primary and %d related candidates matched the applied scope.\n",
+			result.TotalResults,
+			result.TotalRelated,
+		)
+	}
+	return nil
+}
+
+func renderBugSearchGroup(w io.Writer, styler *outputStyler, results []dto.BugSearchResult) error {
+	for i, candidate := range results {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintf(
+			w,
+			"[%s score=%.3f] %s\n",
+			styler.semantic(string(candidate.Classification)),
+			candidate.Score,
+			candidate.Reference,
+		)
+		fmt.Fprintf(w, "Title: %s\n", candidate.Title)
+		fmt.Fprintf(w, "Projects: %s\n", strings.Join(candidate.Projects, ", "))
+		fmt.Fprintf(w, "Status: %s\n", strings.Join(candidate.Status, ", "))
+		fmt.Fprintf(w, "Importance: %s\n", strings.Join(candidate.Importance, ", "))
+		fmt.Fprintf(w, "URL: %s\n", candidate.URL)
+		fmt.Fprintf(
+			w,
+			"Coverage: %.0f%% (%d/%d clauses)\n",
+			candidate.Coverage.Ratio*100,
+			candidate.Coverage.MatchedClauses,
+			candidate.Coverage.TotalClauses,
+		)
+		for _, evidence := range candidate.Evidence {
+			before, after := "", ""
+			if evidence.TruncatedBefore {
+				before = "…"
+			}
+			if evidence.TruncatedAfter {
+				after = "…"
+			}
+			if evidence.MatchTruncated {
+				after += " [match truncated]"
+			}
+			source := ""
+			if evidence.SourceReference != "" {
+				source = " " + evidence.SourceReference
+			}
+			var matches []string
+			for _, match := range evidence.Matches {
+				matches = append(matches, fmt.Sprintf(
+					"%s/%s=%q",
+					match.QueryConcept,
+					match.MatchType,
+					match.MatchedText,
+				))
+			}
+			fmt.Fprintf(w, "Why: %s%s [%s] -> %s%s%s\n",
+				evidence.Field, source, strings.Join(matches, ", "),
+				before, evidence.Excerpt, after)
+		}
+		if candidate.EvidenceTruncated {
+			fmt.Fprintf(
+				w,
+				"Evidence: showing %d of %d grouped excerpts\n",
+				len(candidate.Evidence),
+				candidate.EvidenceTotal,
+			)
+		}
 	}
 	return nil
 }
@@ -932,7 +1118,20 @@ func renderCacheFullStatusTable(w io.Writer, styler *outputStyler, status *cache
 			if !e.LastSync.IsZero() {
 				syncStr = e.LastSync.Format("2006-01-02 15:04:05")
 			}
-			fmt.Fprintf(w, "  %s/%s: %d bugs, %d tasks (synced: %s)\n", e.ForgeType, e.Project, e.BugCount, e.TaskCount, syncStr)
+			compatibility := fmt.Sprintf("schema: %d", e.SchemaVersion)
+			if e.NeedsRefresh {
+				compatibility += ", refresh required"
+			}
+			fmt.Fprintf(
+				w,
+				"  %s/%s: %d bugs, %d tasks (synced: %s; %s)\n",
+				e.ForgeType,
+				e.Project,
+				e.BugCount,
+				e.TaskCount,
+				syncStr,
+				compatibility,
+			)
 		}
 	}
 

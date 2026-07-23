@@ -63,6 +63,38 @@ func TestBugClientWorkflowList(t *testing.T) {
 	}
 }
 
+func TestBugClientWorkflowSearch(t *testing.T) {
+	var got dto.BugSearchRequest
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/bugs/search" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(dto.BugSearchResponse{
+			Outcome: dto.BugSearchOutcomeMatches,
+			Results: []dto.BugSearchResult{{Reference: "launchpad:12345"}},
+		})
+	}))
+	defer ts.Close()
+
+	workflow := NewBugClientWorkflow(NewClientTransport(client.NewClient(ts.URL)))
+	result, err := workflow.Search(context.Background(), dto.BugSearchRequest{
+		Query:         "snapshot restart",
+		ModifiedAfter: "2025-01-01",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Query != "snapshot restart" || got.ModifiedAfter != "2025-01-01T00:00:00Z" {
+		t.Fatalf("request = %+v", got)
+	}
+	if len(result.Results) != 1 || result.Results[0].Reference != "launchpad:12345" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func TestBugClientWorkflowSync(t *testing.T) {
 	var gotBody map[string]any
 

@@ -141,6 +141,71 @@ func TestBugListCmd_RendersWarningsAndTasks(t *testing.T) {
 	}
 }
 
+func TestBugSearchCmdMapsFlagsAndRendersEvidence(t *testing.T) {
+	var got dto.BugSearchRequest
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/bugs/search" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(dto.BugSearchResponse{
+			Outcome: dto.BugSearchOutcomeMatches,
+			Applied: dto.BugSearchApplied{
+				Mode: "text", Fields: []string{"title"}, Fuzzy: false,
+				Closed: "include", Merge: true, Sort: "relevance",
+				DocumentCount: 2,
+			},
+			Results: []dto.BugSearchResult{{
+				Reference:      "launchpad:12345",
+				Title:          "Complete untruncated Cinder title",
+				Classification: dto.BugSearchDirect,
+				Score:          12.5,
+				URL:            "https://bugs.launchpad.net/sunbeam/+bug/12345",
+				Evidence: []dto.BugMatchEvidence{{
+					Field:   "title",
+					Excerpt: "Complete untruncated Cinder title",
+					Matches: []dto.BugEvidenceMatch{{
+						MatchType:    "exact",
+						QueryConcept: "cinder",
+						MatchedText:  "Cinder",
+					}},
+				}},
+			}},
+		})
+	}))
+	defer ts.Close()
+
+	var out bytes.Buffer
+	opts := &Options{
+		Out:    &out,
+		ErrOut: &bytes.Buffer{},
+		Output: "table",
+		Client: client.NewClient(ts.URL),
+	}
+	cmd := newBugCmd(opts)
+	cmd.SetArgs([]string{
+		"search", "cinder", "snapshot",
+		"--field", "title",
+		"--fuzzy=false",
+		"--require", "restart",
+		"--limit", "7",
+		"--evidence-limit", "3",
+	})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got.Query != "cinder snapshot" || got.Limit != 7 || got.EvidenceLimit != 3 ||
+		got.Fuzzy == nil || *got.Fuzzy || len(got.RequiredTerms) != 1 {
+		t.Fatalf("request = %+v", got)
+	}
+	if !strings.Contains(out.String(), "Complete untruncated Cinder title") ||
+		!strings.Contains(out.String(), `Why: title [cinder/exact="Cinder"]`) {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
 func TestReviewListCmd_RendersWarningsAndMergeRequests(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/reviews" {

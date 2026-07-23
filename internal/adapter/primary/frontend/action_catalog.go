@@ -64,6 +64,7 @@ const (
 	ActionBuildCleanupApply     ActionID = "build.cleanup.apply"
 	ActionBugShow               ActionID = "bug.show"
 	ActionBugList               ActionID = "bug.list"
+	ActionBugSearch             ActionID = "bug.search"
 	ActionBugSyncDryRun         ActionID = "bug.sync.dry_run"
 	ActionBugSyncApply          ActionID = "bug.sync.apply"
 	ActionCacheStatus           ActionID = "cache.status"
@@ -152,6 +153,7 @@ var actionCatalog = map[ActionID]ActionDescriptor{
 	ActionBuildCleanupApply:     descriptor(ActionBuildCleanupApply, "build", "build", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Delete temporary build recipes."),
 	ActionBugShow:               descriptor(ActionBugShow, "bug", "bug", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Show one bug and its tasks."),
 	ActionBugList:               descriptor(ActionBugList, "bug", "bug", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "List bug tasks."),
+	ActionBugSearch:             descriptor(ActionBugSearch, "bug", "bug", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Search bugs with match explanations."),
 	ActionBugSyncDryRun:         descriptor(ActionBugSyncDryRun, "bug", "bug", MutabilityRead, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Preview bug synchronization."),
 	ActionBugSyncApply:          descriptor(ActionBugSyncApply, "bug", "bug", MutabilityWrite, LocalEffectNone, RuntimeEmbeddedOK, ExportPolicyAllowed, "Synchronize bug state from cached commits."),
 	ActionCacheStatus:           descriptor(ActionCacheStatus, "cache", "cache", MutabilityRead, LocalEffectRead, RuntimeEmbeddedOK, ExportPolicyAllowed, "Show cache status."),

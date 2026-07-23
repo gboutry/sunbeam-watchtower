@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"strings"
+
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -12,8 +15,118 @@ func newBugCmd(opts *Options) *cobra.Command {
 	}
 
 	cmd.AddCommand(newBugListCmd(opts))
+	cmd.AddCommand(newBugSearchCmd(opts))
 	cmd.AddCommand(newBugShowCmd(opts))
 	cmd.AddCommand(newBugSyncCmd(opts))
+	return cmd
+}
+
+func newBugSearchCmd(opts *Options) *cobra.Command {
+	var (
+		mode           string
+		fields         []string
+		phrases        []string
+		required       []string
+		excluded       []string
+		fuzzy          bool
+		caseSensitive  bool
+		projects       []string
+		trackers       []string
+		status         []string
+		importance     []string
+		assignee       string
+		tags           []string
+		closed         string
+		createdAfter   string
+		createdBefore  string
+		modifiedAfter  string
+		modifiedBefore string
+		noMerge        bool
+		sortBy         string
+		limit          int
+		relatedLimit   int
+		evidenceLimit  int
+		showRelated    bool
+	)
+
+	cmd := withActionID(&cobra.Command{
+		Use:   "search [query words...]",
+		Short: "Search cached bug text with match explanations",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			req := dto.BugSearchRequest{
+				Query:          strings.Join(args, " "),
+				Mode:           mode,
+				Fields:         fields,
+				Phrases:        phrases,
+				RequiredTerms:  required,
+				ExcludedTerms:  excluded,
+				CaseSensitive:  caseSensitive,
+				Projects:       projects,
+				Trackers:       trackers,
+				Status:         status,
+				Importance:     importance,
+				Assignee:       assignee,
+				Tags:           tags,
+				Closed:         closed,
+				CreatedAfter:   createdAfter,
+				CreatedBefore:  createdBefore,
+				ModifiedAfter:  modifiedAfter,
+				ModifiedBefore: modifiedBefore,
+				Sort:           sortBy,
+				Limit:          limit,
+				RelatedLimit:   &relatedLimit,
+				EvidenceLimit:  evidenceLimit,
+			}
+			merge := !noMerge
+			req.Merge = &merge
+			if cmd.Flags().Changed("fuzzy") {
+				req.Fuzzy = &fuzzy
+			}
+
+			result, err := opts.Frontend().Bugs().Search(cmd.Context(), req)
+			if err != nil {
+				return err
+			}
+			errStyler := newOutputStylerForOptions(opts, opts.ErrOut, opts.Output)
+			for _, warning := range result.Warnings {
+				if err := writeWarningLine(opts.ErrOut, errStyler, warning); err != nil {
+					return err
+				}
+			}
+			return renderBugSearch(
+				opts.Out,
+				opts.Output,
+				newOutputStylerForOptions(opts, opts.Out, opts.Output),
+				result,
+				showRelated,
+			)
+		},
+	}, frontend.ActionBugSearch)
+
+	cmd.Flags().StringVar(&mode, "mode", "text", "search mode: text or regex")
+	cmd.Flags().StringSliceVar(&fields, "field", nil, "search field (repeatable)")
+	cmd.Flags().StringSliceVar(&phrases, "phrase", nil, "required exact phrase (repeatable)")
+	cmd.Flags().StringSliceVar(&required, "require", nil, "required term (repeatable)")
+	cmd.Flags().StringSliceVar(&excluded, "exclude", nil, "excluded lexical term (repeatable)")
+	cmd.Flags().BoolVar(&fuzzy, "fuzzy", true, "enable stemming, aliases, and spelling tolerance")
+	cmd.Flags().BoolVar(&caseSensitive, "case-sensitive", false, "make regex matching case-sensitive")
+	cmd.Flags().StringSliceVar(&projects, "project", nil, "filter by Watchtower project (repeatable)")
+	cmd.Flags().StringSliceVar(&trackers, "tracker", nil, "filter by tracker type (repeatable)")
+	cmd.Flags().StringSliceVar(&status, "status", nil, "filter by task status (repeatable)")
+	cmd.Flags().StringSliceVar(&importance, "importance", nil, "filter by task importance (repeatable)")
+	cmd.Flags().StringVar(&assignee, "assignee", "", "filter by assignee username")
+	cmd.Flags().StringSliceVar(&tags, "tag", nil, "require tag (repeatable)")
+	cmd.Flags().StringVar(&closed, "closed", "include", "closed tasks: include, exclude, or only")
+	cmd.Flags().StringVar(&createdAfter, "created-after", "", "filter tasks created after a date, timestamp, or duration")
+	cmd.Flags().StringVar(&createdBefore, "created-before", "", "filter tasks created before a date, timestamp, or duration")
+	cmd.Flags().StringVar(&modifiedAfter, "modified-after", "", "filter tasks modified after a date, timestamp, or duration")
+	cmd.Flags().StringVar(&modifiedBefore, "modified-before", "", "filter tasks modified before a date, timestamp, or duration")
+	cmd.Flags().BoolVar(&noMerge, "no-merge", false, "return one result per matching task")
+	cmd.Flags().StringVar(&sortBy, "sort", "relevance", "sort by relevance, modified, created, importance, or status")
+	cmd.Flags().IntVar(&limit, "limit", 10, "maximum primary results (1-100)")
+	cmd.Flags().IntVar(&relatedLimit, "related-limit", 5, "maximum related results (0-50)")
+	cmd.Flags().IntVar(&evidenceLimit, "evidence-limit", 5, "maximum evidence excerpts per result (1-20)")
+	cmd.Flags().BoolVar(&showRelated, "show-related", false, "show related results even when primary matches exist")
 	return cmd
 }
 

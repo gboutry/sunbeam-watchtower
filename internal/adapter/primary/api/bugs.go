@@ -10,6 +10,8 @@ import (
 
 	frontend "github.com/gboutry/sunbeam-watchtower/internal/adapter/primary/frontend"
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
+	bugsvc "github.com/gboutry/sunbeam-watchtower/internal/core/service/bug"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bugsearch"
 	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
@@ -40,6 +42,14 @@ type BugGetInput struct {
 
 type BugGetOutput struct {
 	Body *forge.Bug
+}
+
+type BugsSearchInput struct {
+	Body dto.BugSearchRequest
+}
+
+type BugsSearchOutput struct {
+	Body dto.BugSearchResponse
 }
 
 type BugSyncInput struct {
@@ -89,6 +99,33 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 	})
 
 	huma.Register(api, huma.Operation{
+		OperationID: "search-bugs",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/bugs/search",
+		Summary:     "Search bugs",
+		Description: "Search complete cached bug text with deterministic ranking and match explanations.",
+		Tags:        []string{"bugs"},
+	}, func(ctx context.Context, input *BugsSearchInput) (*BugsSearchOutput, error) {
+		result, err := facade.Bugs().Search(ctx, input.Body)
+		if err != nil {
+			switch {
+			case errors.Is(err, bugsearch.ErrInvalidQuery):
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			case errors.Is(err, bugsearch.ErrCacheEmpty),
+				errors.Is(err, bugsearch.ErrCacheIncompatible):
+				return nil, huma.NewError(http.StatusConflict, err.Error())
+			case errors.Is(err, bugsvc.ErrBugNotFound):
+				return nil, huma.Error404NotFound(err.Error())
+			default:
+				return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to search bugs: %v", err))
+			}
+		}
+		out := &BugsSearchOutput{}
+		out.Body = *result
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
 		OperationID: "get-bug",
 		Method:      http.MethodGet,
 		Path:        "/api/v1/bugs/{id}",
@@ -97,6 +134,9 @@ func RegisterBugsAPI(api huma.API, application *app.App) {
 	}, func(ctx context.Context, input *BugGetInput) (*BugGetOutput, error) {
 		bug, err := facade.Bugs().Show(ctx, input.ID)
 		if err != nil {
+			if errors.Is(err, bugsvc.ErrBugNotFound) {
+				return nil, huma.Error404NotFound(err.Error())
+			}
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("failed to fetch bug %s: %v", input.ID, err))
 		}
 

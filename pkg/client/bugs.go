@@ -70,6 +70,14 @@ func (c *Client) BugsGet(ctx context.Context, id string) (*forge.Bug, error) {
 	return &result, err
 }
 
+// BugsSearch performs read-only explainable search over the Watchtower bug
+// corpus.
+func (c *Client) BugsSearch(ctx context.Context, req dto.BugSearchRequest) (*dto.BugSearchResponse, error) {
+	var result dto.BugSearchResponse
+	err := c.post(ctx, "/api/v1/bugs/search", req, &result)
+	return &result, err
+}
+
 // BugsSyncOptions holds the request body for the bug sync endpoint.
 type BugsSyncOptions struct {
 	Projects []string `json:"projects,omitempty"`

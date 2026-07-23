@@ -5,12 +5,17 @@ package frontend
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/app"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bug"
+	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bugsearch"
 	"github.com/gboutry/sunbeam-watchtower/internal/core/service/bugsync"
+	dto "github.com/gboutry/sunbeam-watchtower/pkg/dto/v1"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
@@ -26,6 +31,13 @@ func NewBugServerWorkflow(application *app.App) *BugServerWorkflow {
 
 // Show returns one bug with its associated tasks.
 func (w *BugServerWorkflow) Show(ctx context.Context, id string) (*forge.Bug, error) {
+	if reference, ok := bugsearch.DirectReference(id); ok {
+		_, parsedID, err := bugsearch.SplitReference(reference)
+		if err != nil {
+			return nil, err
+		}
+		id = parsedID
+	}
 	trackers, projectMap, err := w.application.BuildBugTrackers()
 	if err != nil {
 		return nil, err
@@ -61,6 +73,117 @@ func (w *BugServerWorkflow) List(ctx context.Context, req BugListRequest) (*BugL
 		}
 	}
 	return response, nil
+}
+
+// Search returns ranked, explained bug candidates from the complete bug cache.
+func (w *BugServerWorkflow) Search(ctx context.Context, req BugSearchRequest) (*BugSearchResponse, error) {
+	cache, err := w.application.BugCache()
+	if err != nil {
+		return nil, fmt.Errorf("opening bug cache: %w", err)
+	}
+	snapshot, err := cache.Snapshot(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading bug cache snapshot: %w", err)
+	}
+	bindings := searchProjectBindings(w.application)
+
+	statusByKey := make(map[string]dto.BugCacheStatus)
+	for _, status := range snapshot.Status {
+		if status.NeedsRefresh {
+			return nil, fmt.Errorf(
+				"%w: run `watchtower cache sync bugs` to rebuild %s/%s",
+				bugsearch.ErrCacheIncompatible,
+				status.ForgeType,
+				status.Project,
+			)
+		}
+		statusByKey[strings.ToLower(status.ForgeType)+":"+status.Project] = status
+	}
+
+	var documents []bugsearch.Document
+	var warnings []string
+	for _, cached := range snapshot.Documents {
+		if cached.Bug == nil {
+			continue
+		}
+		document := bugsearch.Document{Bug: cached.Bug}
+		for _, scoped := range cached.Tasks {
+			key := strings.ToLower(cached.Bug.Forge.String()) + ":" + scoped.TrackerProject
+			projectBindings := bindings[key]
+			if len(projectBindings) == 0 {
+				task := scoped.Task
+				task.Project = scoped.TrackerProject
+				document.Tasks = append(document.Tasks, task)
+			} else {
+				for _, projectName := range projectBindings {
+					task := scoped.Task
+					task.Project = projectName
+					document.Tasks = append(document.Tasks, task)
+				}
+			}
+			status := statusByKey[key]
+			document.Provenance = appendUniqueSearchSource(document.Provenance, dto.BugSearchSource{
+				Forge:    strings.ToLower(cached.Bug.Forge.String()),
+				Project:  scoped.TrackerProject,
+				Source:   "cache",
+				SyncedAt: status.LastSync,
+			})
+		}
+		if cached.Bug.Sensitive() {
+			warnings = append(warnings, "one or more sensitive cached bugs were omitted from offline search")
+			continue
+		}
+		documents = append(documents, document)
+	}
+
+	result, err := bugsearch.NewService(documents).Search(req)
+	if err != nil {
+		return nil, err
+	}
+	result.Warnings = append(result.Warnings, uniqueStrings(warnings)...)
+	return result, nil
+}
+
+func searchProjectBindings(application *app.App) map[string][]string {
+	bindings := make(map[string][]string)
+	cfg := application.GetConfig()
+	if cfg == nil {
+		return bindings
+	}
+	for _, project := range cfg.Projects {
+		for _, tracker := range project.Bugs {
+			key := strings.ToLower(tracker.Forge) + ":" + tracker.Project
+			bindings[key] = append(bindings[key], project.Name)
+		}
+	}
+	return bindings
+}
+
+func appendUniqueSearchSource(values []dto.BugSearchSource, candidate dto.BugSearchSource) []dto.BugSearchSource {
+	for _, value := range values {
+		if value.Forge == candidate.Forge && value.Project == candidate.Project {
+			return values
+		}
+	}
+	return append(values, candidate)
+}
+
+func uniqueStrings(values []string) []string {
+	sort.Strings(values)
+	return slicesCompact(values)
+}
+
+func slicesCompact(values []string) []string {
+	if len(values) < 2 {
+		return values
+	}
+	out := values[:1]
+	for _, value := range values[1:] {
+		if value != out[len(out)-1] {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 // Sync triggers one bug correlation/sync run.
