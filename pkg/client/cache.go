@@ -47,7 +47,8 @@ type CacheSyncBugsOptions struct {
 
 // CacheSyncBugsResult is the response returned by CacheSyncBugs.
 type CacheSyncBugsResult struct {
-	Synced int `json:"synced"`
+	Synced          int      `json:"synced"`
+	RebuiltProjects []string `json:"rebuilt_projects"`
 }
 
 // CacheSyncBugs syncs bug caches for configured projects.

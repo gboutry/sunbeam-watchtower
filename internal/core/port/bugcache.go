@@ -21,12 +21,24 @@ type BugCache interface {
 	// StoreBugTasks replaces all cached tasks for a (forge, project) pair.
 	StoreBugTasks(ctx context.Context, forgeType forge.ForgeType, project string, tasks []forge.BugTask) error
 
+	// ReplaceProject atomically stores one complete tracker-project snapshot
+	// and its cache metadata.
+	ReplaceProject(ctx context.Context, forgeType forge.ForgeType, project string, bugs []*forge.Bug, tasks []forge.BugTask, syncedAt time.Time, schemaVersion int) error
+
+	// ProjectCompatible reports whether all cached tasks for a tracker project
+	// have visibility-qualified bug details in the current schema.
+	ProjectCompatible(ctx context.Context, forgeType forge.ForgeType, project string, schemaVersion int) (bool, error)
+
 	// GetBug retrieves a bug by ID, collecting tasks from all project buckets.
 	GetBug(ctx context.Context, forgeType forge.ForgeType, id string) (*forge.Bug, error)
 
 	// ListBugTasks returns cached tasks for a (forge, project) pair.
 	// Filtering by status, importance, assignee, and tags is applied in-memory.
 	ListBugTasks(ctx context.Context, forgeType forge.ForgeType, project string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error)
+
+	// Snapshot returns complete cached bugs with their tracker-project-scoped
+	// tasks and per-project cache provenance.
+	Snapshot(ctx context.Context) (*dto.BugCacheSnapshot, error)
 
 	// SetLastSync records the last sync time for a (forge, project) pair.
 	SetLastSync(ctx context.Context, forgeType forge.ForgeType, project string, t time.Time) error

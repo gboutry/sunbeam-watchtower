@@ -41,7 +41,8 @@ type CacheSyncBugsRequest struct {
 
 // CacheSyncBugsResponse contains the outcome of one bug-cache sync.
 type CacheSyncBugsResponse struct {
-	Synced int
+	Synced          int
+	RebuiltProjects []string
 }
 
 // CacheSyncExcusesRequest describes one excuses-cache sync workflow.
@@ -189,7 +190,10 @@ func (w *CacheClientWorkflow) SyncBugs(ctx context.Context, req CacheSyncBugsReq
 	if err != nil {
 		return nil, err
 	}
-	return &CacheSyncBugsResponse{Synced: result.Synced}, nil
+	return &CacheSyncBugsResponse{
+		Synced:          result.Synced,
+		RebuiltProjects: result.RebuiltProjects,
+	}, nil
 }
 
 // SyncExcuses syncs excuses caches for the requested trackers.

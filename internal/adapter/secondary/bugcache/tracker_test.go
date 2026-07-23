@@ -59,7 +59,9 @@ func (m *mockBugTracker) GetBug(_ context.Context, id string) (*forge.Bug, error
 	if !ok {
 		return nil, fmt.Errorf("bug %s not found", id)
 	}
-	return b, nil
+	cloned := *b
+	cloned.VisibilityKnown = true
+	return &cloned, nil
 }
 
 func (m *mockBugTracker) ListBugTasks(_ context.Context, project string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error) {
@@ -116,6 +118,32 @@ func TestCachedTrackerFallsBackWhenNotSynced(t *testing.T) {
 	}
 	if len(tasks) != 1 || tasks[0].BugID != "1" {
 		t.Errorf("expected mock data before sync, got %+v", tasks)
+	}
+}
+
+func TestCachedTrackerRevalidatesSensitiveBug(t *testing.T) {
+	mock := newMockBugTracker()
+	mock.tasks["proj"] = []forge.BugTask{{
+		Forge:      forge.ForgeLaunchpad,
+		BugID:      "1",
+		TargetName: "proj",
+		Status:     "New",
+	}}
+	mock.bugs["1"] = &forge.Bug{
+		Forge:           forge.ForgeLaunchpad,
+		ID:              "1",
+		Title:           "Private bug",
+		Private:         true,
+		VisibilityKnown: true,
+	}
+	ct := newTestCachedTracker(t, mock, "proj")
+	if _, err := ct.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	mock.getBugErrs = map[string]error{"1": fmt.Errorf("forbidden")}
+	if _, err := ct.GetBug(context.Background(), "1"); err == nil {
+		t.Fatal("GetBug() returned sensitive cached content after visibility revalidation failed")
 	}
 }
 
@@ -332,29 +360,35 @@ func TestCachedTrackerSyncFetchesBugDetailsWithBoundedConcurrency(t *testing.T) 
 	}
 }
 
-func TestCachedTrackerSyncContinuesWhenConcurrentBugFetchFails(t *testing.T) {
+func TestCachedTrackerSyncPreservesPreviousSnapshotWhenBugFetchFails(t *testing.T) {
 	mock := newMockBugTracker()
-	mock.getBugErrs = map[string]error{"2": fmt.Errorf("boom")}
 	mock.bugs["1"] = &forge.Bug{Forge: forge.ForgeLaunchpad, ID: "1", Title: "Bug 1"}
 	mock.bugs["3"] = &forge.Bug{Forge: forge.ForgeLaunchpad, ID: "3", Title: "Bug 3"}
 	mock.tasks["proj"] = []forge.BugTask{
 		{Forge: forge.ForgeLaunchpad, BugID: "1", TargetName: "proj", Status: "New", SelfLink: "/task/1"},
-		{Forge: forge.ForgeLaunchpad, BugID: "2", TargetName: "proj", Status: "New", SelfLink: "/task/2"},
-		{Forge: forge.ForgeLaunchpad, BugID: "3", TargetName: "proj", Status: "New", SelfLink: "/task/3"},
 	}
 
 	ct := newTestCachedTracker(t, mock, "proj")
 	ctx := context.Background()
 	if _, err := ct.Sync(ctx); err != nil {
-		t.Fatalf("Sync: %v", err)
+		t.Fatalf("initial Sync: %v", err)
 	}
 
-	for _, id := range []string{"1", "3"} {
-		if _, err := ct.GetBug(ctx, id); err != nil {
-			t.Fatalf("GetBug(%s): %v", id, err)
-		}
+	mock.getBugErrs = map[string]error{"2": fmt.Errorf("boom")}
+	mock.tasks["proj"] = []forge.BugTask{
+		{Forge: forge.ForgeLaunchpad, BugID: "1", TargetName: "proj", Status: "Changed", SelfLink: "/task/1"},
+		{Forge: forge.ForgeLaunchpad, BugID: "2", TargetName: "proj", Status: "New", SelfLink: "/task/2"},
+		{Forge: forge.ForgeLaunchpad, BugID: "3", TargetName: "proj", Status: "New", SelfLink: "/task/3"},
 	}
-	if _, err := ct.GetBug(ctx, "2"); err == nil {
-		t.Fatal("GetBug(2) succeeded, want cached miss after fetch failure")
+	if _, err := ct.Sync(ctx); err == nil {
+		t.Fatal("Sync succeeded despite a failed bug hydration")
+	}
+
+	tasks, err := ct.ListBugTasks(ctx, "proj", forge.ListBugTasksOpts{})
+	if err != nil {
+		t.Fatalf("ListBugTasks: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].BugID != "1" || tasks[0].Status != "New" {
+		t.Fatalf("cached tasks = %+v, want unchanged initial snapshot", tasks)
 	}
 }

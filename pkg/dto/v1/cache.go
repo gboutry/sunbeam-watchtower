@@ -9,6 +9,9 @@ import (
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
 
+// BugCacheSchemaVersion is the current offline-search cache contract.
+const BugCacheSchemaVersion = 1
+
 // SyncOptions controls additional behavior when syncing a cached repository.
 type SyncOptions struct {
 	ExtraRefSpecs []string
@@ -39,11 +42,13 @@ type QueryOpts struct {
 
 // BugCacheStatus reports per-project bug cache statistics.
 type BugCacheStatus struct {
-	ForgeType string    `json:"forge_type" yaml:"forge_type"`
-	Project   string    `json:"project" yaml:"project"`
-	BugCount  int       `json:"bug_count" yaml:"bug_count"`
-	TaskCount int       `json:"task_count" yaml:"task_count"`
-	LastSync  time.Time `json:"last_sync" yaml:"last_sync"`
+	ForgeType     string    `json:"forge_type" yaml:"forge_type"`
+	Project       string    `json:"project" yaml:"project"`
+	BugCount      int       `json:"bug_count" yaml:"bug_count"`
+	TaskCount     int       `json:"task_count" yaml:"task_count"`
+	LastSync      time.Time `json:"last_sync" yaml:"last_sync"`
+	SchemaVersion int       `json:"schema_version" yaml:"schema_version"`
+	NeedsRefresh  bool      `json:"needs_refresh" yaml:"needs_refresh"`
 }
 
 // ReviewCacheStatus reports per-project review cache statistics.

@@ -2,14 +2,19 @@ package bug
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"sort"
+	"strings"
 
 	port "github.com/gboutry/sunbeam-watchtower/internal/core/port"
 	forge "github.com/gboutry/sunbeam-watchtower/pkg/forge/v1"
 )
+
+// ErrBugNotFound marks an identifier that no configured tracker could resolve.
+var ErrBugNotFound = errors.New("bug not found")
 
 // ProjectBugTracker pairs a BugTracker with the project identifier it expects.
 type ProjectBugTracker struct {
@@ -75,13 +80,32 @@ func (s *Service) Get(ctx context.Context, id string) (*forge.Bug, error) {
 
 		bug, err := pt.Tracker.GetBug(ctx, id)
 		if err == nil {
+			bug.Tasks = s.expandTaskBindings(bug.Forge, bug.Tasks)
 			return bug, nil
 		}
 	}
 	if len(seen) == 0 {
 		return nil, fmt.Errorf("no bug trackers configured")
 	}
-	return nil, fmt.Errorf("bug %s not found", id)
+	return nil, fmt.Errorf("%w: %s", ErrBugNotFound, id)
+}
+
+func (s *Service) expandTaskBindings(forgeType forge.ForgeType, tasks []forge.BugTask) []forge.BugTask {
+	expanded := make([]forge.BugTask, 0, len(tasks))
+	for _, task := range tasks {
+		key := strings.ToLower(forgeType.String()) + ":" + task.Project
+		bindings := s.bindings[key]
+		if len(bindings) == 0 {
+			expanded = append(expanded, task)
+			continue
+		}
+		for _, binding := range bindings {
+			scopedTask := task
+			scopedTask.Project = binding.ProjectName
+			expanded = append(expanded, scopedTask)
+		}
+	}
+	return expanded
 }
 
 // List returns bug tasks across all configured trackers, applying filters.

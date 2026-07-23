@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,10 +22,12 @@ import (
 )
 
 const (
-	bugsBucketPrefix  = "bugs:"
-	tasksBucketPrefix = "tasks:"
-	metaBucket        = "meta"
-	lastSyncPrefix    = "last_sync:"
+	bugsBucketPrefix     = "bugs:"
+	tasksBucketPrefix    = "tasks:"
+	metaBucket           = "meta"
+	lastSyncPrefix       = "last_sync:"
+	schemaPrefix         = "schema_version:"
+	CurrentSchemaVersion = dto.BugCacheSchemaVersion
 )
 
 // Cache implements port.BugCache using bbolt for local storage.
@@ -59,6 +63,10 @@ func tasksBucketName(forgeType forge.ForgeType, project string) []byte {
 
 func lastSyncKey(forgeType forge.ForgeType, project string) []byte {
 	return []byte(lastSyncPrefix + forgeType.String() + ":" + project)
+}
+
+func schemaKey(forgeType forge.ForgeType, project string) []byte {
+	return []byte(schemaPrefix + forgeType.String() + ":" + project)
 }
 
 // taskKey produces a unique key for a bug task within a project bucket.
@@ -110,6 +118,109 @@ func (c *Cache) StoreBugTasks(_ context.Context, forgeType forge.ForgeType, proj
 		}
 		return nil
 	})
+}
+
+// ReplaceProject atomically publishes one complete project snapshot.
+func (c *Cache) ReplaceProject(
+	_ context.Context,
+	forgeType forge.ForgeType,
+	project string,
+	bugs []*forge.Bug,
+	tasks []forge.BugTask,
+	syncedAt time.Time,
+	schemaVersion int,
+) error {
+	return c.db.Update(func(tx *bbolt.Tx) error {
+		bugsBucket, err := tx.CreateBucketIfNotExists(bugsBucketName(forgeType))
+		if err != nil {
+			return fmt.Errorf("creating bugs bucket for %s: %w", forgeType, err)
+		}
+		for _, bug := range bugs {
+			if bug == nil {
+				continue
+			}
+			stored := *bug
+			stored.Tasks = nil
+			data, err := json.Marshal(&stored)
+			if err != nil {
+				return fmt.Errorf("marshalling bug %s: %w", bug.ID, err)
+			}
+			if err := bugsBucket.Put([]byte(bug.ID), data); err != nil {
+				return fmt.Errorf("storing bug %s: %w", bug.ID, err)
+			}
+		}
+
+		taskBucketName := tasksBucketName(forgeType, project)
+		_ = tx.DeleteBucket(taskBucketName)
+		taskBucket, err := tx.CreateBucket(taskBucketName)
+		if err != nil {
+			return fmt.Errorf("creating tasks bucket for %s:%s: %w", forgeType, project, err)
+		}
+		for i := range tasks {
+			data, err := json.Marshal(&tasks[i])
+			if err != nil {
+				return fmt.Errorf("marshalling task: %w", err)
+			}
+			if err := taskBucket.Put(taskKey(&tasks[i]), data); err != nil {
+				return fmt.Errorf("storing task: %w", err)
+			}
+		}
+
+		meta, err := tx.CreateBucketIfNotExists([]byte(metaBucket))
+		if err != nil {
+			return fmt.Errorf("creating meta bucket: %w", err)
+		}
+		if err := meta.Put(lastSyncKey(forgeType, project), []byte(syncedAt.UTC().Format(time.RFC3339))); err != nil {
+			return fmt.Errorf("storing last sync: %w", err)
+		}
+		return meta.Put(schemaKey(forgeType, project), []byte(strconv.Itoa(schemaVersion)))
+	})
+}
+
+// ProjectCompatible reports whether one project is safe for offline search.
+func (c *Cache) ProjectCompatible(
+	_ context.Context,
+	forgeType forge.ForgeType,
+	project string,
+	schemaVersion int,
+) (bool, error) {
+	var compatible bool
+	err := c.db.View(func(tx *bbolt.Tx) error {
+		var err error
+		compatible, _, err = projectCompatibility(tx, forgeType, project, schemaVersion)
+		return err
+	})
+	return compatible, err
+}
+
+func projectCompatibility(
+	tx *bbolt.Tx,
+	forgeType forge.ForgeType,
+	project string,
+	currentVersion int,
+) (bool, int, error) {
+	storedVersion := 0
+	if meta := tx.Bucket([]byte(metaBucket)); meta != nil {
+		if raw := meta.Get(schemaKey(forgeType, project)); raw != nil {
+			version, err := strconv.Atoi(string(raw))
+			if err != nil {
+				return false, 0, fmt.Errorf("parsing bug cache schema version for %s:%s: %w", forgeType, project, err)
+			}
+			storedVersion = version
+		}
+	}
+	if storedVersion == currentVersion {
+		return true, storedVersion, nil
+	}
+
+	taskBucket := tx.Bucket(tasksBucketName(forgeType, project))
+	if taskBucket == nil {
+		return true, currentVersion, nil
+	}
+	// A populated project without the explicit schema marker predates the
+	// offline-search visibility contract. Field inspection cannot prove that
+	// every upstream object was hydrated under that contract.
+	return false, storedVersion, nil
 }
 
 // GetBug retrieves a bug by ID, collecting tasks from all project buckets.
@@ -177,6 +288,144 @@ func (c *Cache) ListBugTasks(_ context.Context, forgeType forge.ForgeType, proje
 		})
 	})
 	return result, err
+}
+
+// Snapshot returns complete cached bugs, task bucket provenance, and cache
+// status from one read transaction.
+func (c *Cache) Snapshot(_ context.Context) (*dto.BugCacheSnapshot, error) {
+	snapshot := &dto.BugCacheSnapshot{}
+	err := c.db.View(func(tx *bbolt.Tx) error {
+		documents := make(map[string]*dto.BugCacheDocument)
+
+		for _, forgeType := range []forge.ForgeType{
+			forge.ForgeGitHub,
+			forge.ForgeLaunchpad,
+			forge.ForgeGerrit,
+		} {
+			bkt := tx.Bucket(bugsBucketName(forgeType))
+			if bkt == nil {
+				continue
+			}
+			if err := bkt.ForEach(func(_, value []byte) error {
+				var bug forge.Bug
+				if err := json.Unmarshal(value, &bug); err != nil {
+					return fmt.Errorf("unmarshalling cached bug: %w", err)
+				}
+				key := forgeType.String() + ":" + bug.ID
+				documents[key] = &dto.BugCacheDocument{Bug: &bug}
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+
+		if err := tx.ForEach(func(name []byte, bkt *bbolt.Bucket) error {
+			nameStr := string(name)
+			if !strings.HasPrefix(nameStr, tasksBucketPrefix) {
+				return nil
+			}
+			remainder := strings.TrimPrefix(nameStr, tasksBucketPrefix)
+			parts := strings.SplitN(remainder, ":", 2)
+			if len(parts) != 2 {
+				return nil
+			}
+			forgeType, ok := forgeTypeFromString(parts[0])
+			if !ok {
+				return nil
+			}
+			trackerProject := parts[1]
+			taskCount := 0
+			bugIDs := make(map[string]struct{})
+			if err := bkt.ForEach(func(_, value []byte) error {
+				var task forge.BugTask
+				if err := json.Unmarshal(value, &task); err != nil {
+					return fmt.Errorf("unmarshalling cached task: %w", err)
+				}
+				taskCount++
+				bugIDs[task.BugID] = struct{}{}
+				key := forgeType.String() + ":" + task.BugID
+				document := documents[key]
+				if document == nil {
+					// A failed detail hydration must not make a task title
+					// searchable as if complete bug data were available.
+					return nil
+				}
+				document.Tasks = append(document.Tasks, dto.BugCacheTask{
+					TrackerProject: trackerProject,
+					Task:           task,
+				})
+				return nil
+			}); err != nil {
+				return err
+			}
+
+			var lastSync time.Time
+			if meta := tx.Bucket([]byte(metaBucket)); meta != nil {
+				if data := meta.Get(lastSyncKey(forgeType, trackerProject)); data != nil {
+					lastSync, _ = time.Parse(time.RFC3339, string(data))
+				}
+			}
+			compatible, schemaVersion, err := projectCompatibility(
+				tx,
+				forgeType,
+				trackerProject,
+				CurrentSchemaVersion,
+			)
+			if err != nil {
+				return err
+			}
+			snapshot.Status = append(snapshot.Status, dto.BugCacheStatus{
+				ForgeType:     forgeType.String(),
+				Project:       trackerProject,
+				BugCount:      len(bugIDs),
+				TaskCount:     taskCount,
+				LastSync:      lastSync,
+				SchemaVersion: schemaVersion,
+				NeedsRefresh:  !compatible,
+			})
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		for _, document := range documents {
+			if len(document.Tasks) > 0 {
+				snapshot.Documents = append(snapshot.Documents, *document)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(snapshot.Documents, func(i, j int) bool {
+		left := snapshot.Documents[i].Bug
+		right := snapshot.Documents[j].Bug
+		if left.Forge != right.Forge {
+			return left.Forge.String() < right.Forge.String()
+		}
+		return left.ID < right.ID
+	})
+	sort.Slice(snapshot.Status, func(i, j int) bool {
+		if snapshot.Status[i].ForgeType != snapshot.Status[j].ForgeType {
+			return snapshot.Status[i].ForgeType < snapshot.Status[j].ForgeType
+		}
+		return snapshot.Status[i].Project < snapshot.Status[j].Project
+	})
+	return snapshot, nil
+}
+
+func forgeTypeFromString(value string) (forge.ForgeType, bool) {
+	for _, forgeType := range []forge.ForgeType{
+		forge.ForgeGitHub,
+		forge.ForgeLaunchpad,
+		forge.ForgeGerrit,
+	} {
+		if forgeType.String() == value {
+			return forgeType, true
+		}
+	}
+	return 0, false
 }
 
 func cachedBugTags(tx *bbolt.Tx, forgeType forge.ForgeType, bugID string) []string {
@@ -296,6 +545,8 @@ func (c *Cache) Status(_ context.Context) ([]dto.BugCacheStatus, error) {
 			})
 
 			var lastSync time.Time
+			schemaVersion := 0
+			needsRefresh := false
 			metaBkt := tx.Bucket([]byte(metaBucket))
 			if metaBkt != nil {
 				data := metaBkt.Get([]byte(lastSyncPrefix + remainder))
@@ -303,13 +554,29 @@ func (c *Cache) Status(_ context.Context) ([]dto.BugCacheStatus, error) {
 					lastSync, _ = time.Parse(time.RFC3339, string(data))
 				}
 			}
+			parsedForge, ok := forgeTypeFromString(forgeType)
+			if ok {
+				compatible, effectiveVersion, err := projectCompatibility(
+					tx,
+					parsedForge,
+					project,
+					CurrentSchemaVersion,
+				)
+				if err != nil {
+					return err
+				}
+				schemaVersion = effectiveVersion
+				needsRefresh = !compatible
+			}
 
 			statuses = append(statuses, dto.BugCacheStatus{
-				ForgeType: forgeType,
-				Project:   project,
-				BugCount:  len(bugIDs),
-				TaskCount: taskCount,
-				LastSync:  lastSync,
+				ForgeType:     forgeType,
+				Project:       project,
+				BugCount:      len(bugIDs),
+				TaskCount:     taskCount,
+				LastSync:      lastSync,
+				SchemaVersion: schemaVersion,
+				NeedsRefresh:  needsRefresh,
 			})
 			return nil
 		})

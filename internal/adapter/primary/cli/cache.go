@@ -113,6 +113,9 @@ func newCacheSyncCmd(opts *Options) *cobra.Command {
 					return err
 				}
 				fmt.Fprintf(progressOut, "bug cache sync %s (%d tasks synced).\n", styler.Action("done"), result.Synced)
+				if len(result.RebuiltProjects) > 0 {
+					fmt.Fprintf(progressOut, "bug cache rebuilt for compatibility: %s\n", strings.Join(result.RebuiltProjects, ", "))
+				}
 			}
 
 			if wantCacheType(args, cacheTypeExcuses) {

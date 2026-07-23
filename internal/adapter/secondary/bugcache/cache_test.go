@@ -95,6 +95,94 @@ func TestStoreBugsAndGetBug(t *testing.T) {
 	}
 }
 
+func TestSnapshotReturnsCompleteDocumentsAndProvenance(t *testing.T) {
+	c := newTestCache(t)
+	ctx := context.Background()
+	syncedAt := time.Date(2026, 7, 23, 9, 30, 0, 0, time.UTC)
+	bug := &forge.Bug{
+		Forge:           forge.ForgeLaunchpad,
+		ID:              "100",
+		Title:           "Snapshot race",
+		Description:     "Complete cached description",
+		VisibilityKnown: true,
+	}
+	task := forge.BugTask{
+		Forge:           forge.ForgeLaunchpad,
+		BugID:           "100",
+		TargetName:      "cinder",
+		VisibilityKnown: true,
+	}
+	if err := c.ReplaceProject(
+		ctx,
+		forge.ForgeLaunchpad,
+		"cinder",
+		[]*forge.Bug{bug, {
+			Forge: forge.ForgeLaunchpad, ID: "orphan",
+			Title:           "Stale bug without a current project task",
+			VisibilityKnown: true,
+		}},
+		[]forge.BugTask{task},
+		syncedAt,
+		bugcache.CurrentSchemaVersion,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := c.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Documents) != 1 || snapshot.Documents[0].Bug.Description != bug.Description {
+		t.Fatalf("documents = %+v", snapshot.Documents)
+	}
+	if len(snapshot.Documents[0].Tasks) != 1 ||
+		snapshot.Documents[0].Tasks[0].TrackerProject != "cinder" {
+		t.Fatalf("scoped tasks = %+v", snapshot.Documents[0].Tasks)
+	}
+	if len(snapshot.Status) != 1 || !snapshot.Status[0].LastSync.Equal(syncedAt) {
+		t.Fatalf("status = %+v", snapshot.Status)
+	}
+	if snapshot.Status[0].NeedsRefresh ||
+		snapshot.Status[0].SchemaVersion != bugcache.CurrentSchemaVersion {
+		t.Fatalf("cache compatibility = %+v", snapshot.Status[0])
+	}
+}
+
+func TestLegacyProjectRequiresRefresh(t *testing.T) {
+	c := newTestCache(t)
+	ctx := context.Background()
+	if err := c.StoreBugs(ctx, []*forge.Bug{{
+		Forge: forge.ForgeLaunchpad, ID: "100", Title: "Legacy bug",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StoreBugTasks(ctx, forge.ForgeLaunchpad, "cinder", []forge.BugTask{{
+		Forge: forge.ForgeLaunchpad, BugID: "100", TargetName: "cinder",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	compatible, err := c.ProjectCompatible(
+		ctx,
+		forge.ForgeLaunchpad,
+		"cinder",
+		bugcache.CurrentSchemaVersion,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compatible {
+		t.Fatal("legacy project reported compatible without a schema marker")
+	}
+	status, err := c.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 1 || !status[0].NeedsRefresh || status[0].SchemaVersion != 0 {
+		t.Fatalf("status = %+v, want schema version 0 requiring refresh", status)
+	}
+}
+
 func TestStoreBugTasksAndList(t *testing.T) {
 	c := newTestCache(t)
 	ctx := context.Background()

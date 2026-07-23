@@ -44,24 +44,70 @@ func (c *CachedBugTracker) GetBug(ctx context.Context, id string) (*forge.Bug, e
 	if c.isSynced(ctx) {
 		b, err := c.cache.GetBug(ctx, c.inner.Type(), id)
 		if err == nil {
+			lastSync, _ := c.cache.LastSync(ctx, c.inner.Type(), c.project)
+			if b.Sensitive() {
+				fresh, freshErr := c.inner.GetBug(ctx, id)
+				if freshErr != nil {
+					return nil, fmt.Errorf("revalidating sensitive bug visibility: %w", freshErr)
+				}
+				fresh.Provenance = &forge.BugProvenance{
+					Source:     "combined",
+					SyncedAt:   lastSync,
+					VerifiedAt: time.Now().UTC(),
+				}
+				return fresh, nil
+			}
+			b.Provenance = &forge.BugProvenance{
+				Source:   "cache",
+				SyncedAt: lastSync,
+			}
 			c.logger.Debug("bug served from cache", "id", id)
 			return b, nil
 		}
 		c.logger.Debug("bug not in cache, falling back to live", "id", id, "error", err)
 	}
-	return c.inner.GetBug(ctx, id)
+	bug, err := c.inner.GetBug(ctx, id)
+	if err == nil {
+		bug.Provenance = &forge.BugProvenance{
+			Source:     "remote",
+			VerifiedAt: time.Now().UTC(),
+		}
+	}
+	return bug, err
 }
 
 func (c *CachedBugTracker) ListBugTasks(ctx context.Context, project string, opts forge.ListBugTasksOpts) ([]forge.BugTask, error) {
 	if c.isSynced(ctx) {
 		tasks, err := c.cache.ListBugTasks(ctx, c.inner.Type(), project, opts)
 		if err == nil {
+			tasks = c.filterVisibleSensitiveTasks(ctx, tasks)
 			c.logger.Debug("bug tasks served from cache", "project", project, "count", len(tasks))
 			return tasks, nil
 		}
 		c.logger.Debug("cache read failed, falling back to live", "project", project, "error", err)
 	}
 	return c.inner.ListBugTasks(ctx, project, opts)
+}
+
+func (c *CachedBugTracker) filterVisibleSensitiveTasks(ctx context.Context, tasks []forge.BugTask) []forge.BugTask {
+	result := make([]forge.BugTask, 0, len(tasks))
+	visibility := make(map[string]bool)
+	for _, task := range tasks {
+		if !task.Sensitive() {
+			result = append(result, task)
+			continue
+		}
+		visible, checked := visibility[task.BugID]
+		if !checked {
+			_, err := c.inner.GetBug(ctx, task.BugID)
+			visible = err == nil
+			visibility[task.BugID] = visible
+		}
+		if visible {
+			result = append(result, task)
+		}
+	}
+	return result
 }
 
 func (c *CachedBugTracker) UpdateBugTaskStatus(ctx context.Context, taskSelfLink, status string) error {
@@ -95,7 +141,17 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 
 	opts := forge.ListBugTasksOpts{}
 	lastSync, lsErr := c.cache.LastSync(ctx, forgeType, c.project)
-	if lsErr == nil && !lastSync.IsZero() {
+	compatible, compatibilityErr := c.cache.ProjectCompatible(
+		ctx,
+		forgeType,
+		c.project,
+		CurrentSchemaVersion,
+	)
+	if compatibilityErr != nil {
+		return 0, fmt.Errorf("checking bug cache compatibility for %s: %w", c.project, compatibilityErr)
+	}
+	rebuild := !lastSync.IsZero() && !compatible
+	if lsErr == nil && !lastSync.IsZero() && !rebuild {
 		opts.CreatedSince = lastSync.UTC().Format(time.RFC3339)
 		modifiedSince := lastSync.Add(-incrementalModifiedOverlap)
 		opts.ModifiedSince = modifiedSince.UTC().Format(time.RFC3339)
@@ -106,6 +162,8 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 			"modified_since", opts.ModifiedSince,
 			"modified_overlap", incrementalModifiedOverlap.String(),
 		)
+	} else if rebuild {
+		c.logger.Info("rebuilding incompatible bug cache", "project", c.project)
 	} else {
 		c.logger.Debug("full bug cache sync", "project", c.project)
 	}
@@ -117,8 +175,14 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 
 	// Only fetch bug details for newly returned tasks, not the entire cache.
 	bugIDs := uniqueBugIDs(incoming)
-	bugs := c.fetchBugs(ctx, bugIDs)
-	incoming = enrichTasksWithBugTags(incoming, bugs)
+	bugs, err := c.fetchBugs(ctx, bugIDs)
+	if err != nil {
+		return 0, err
+	}
+	incoming = enrichTasksWithBugMetadata(incoming, bugs)
+	if err := validateVisibilityMetadata(incoming, bugs); err != nil {
+		return 0, err
+	}
 
 	// For incremental sync, merge new tasks with existing cached tasks.
 	tasks := incoming
@@ -127,45 +191,81 @@ func (c *CachedBugTracker) Sync(ctx context.Context) (synced int, err error) {
 		tasks = mergeTasks(existing, incoming)
 	}
 
-	if err := c.cache.StoreBugTasks(ctx, forgeType, c.project, tasks); err != nil {
-		return 0, fmt.Errorf("storing tasks for %s: %w", c.project, err)
-	}
-
-	if len(bugs) > 0 {
-		if err := c.cache.StoreBugs(ctx, bugs); err != nil {
-			return 0, fmt.Errorf("storing bugs for %s: %w", c.project, err)
-		}
-	}
-
-	if err := c.cache.SetLastSync(ctx, forgeType, c.project, time.Now()); err != nil {
-		return 0, fmt.Errorf("recording last sync for %s: %w", c.project, err)
+	if err := c.cache.ReplaceProject(
+		ctx,
+		forgeType,
+		c.project,
+		bugs,
+		tasks,
+		time.Now(),
+		CurrentSchemaVersion,
+	); err != nil {
+		return 0, fmt.Errorf("publishing bug cache snapshot for %s: %w", c.project, err)
 	}
 
 	c.logger.Debug("bug cache sync complete", "project", c.project, "tasks", len(tasks), "bugs", len(bugs))
 	return len(tasks), nil
 }
 
-func enrichTasksWithBugTags(tasks []forge.BugTask, bugs []*forge.Bug) []forge.BugTask {
+// NeedsRebuild reports whether the configured project requires a full cache
+// refresh before it is safe for offline search.
+func (c *CachedBugTracker) NeedsRebuild(ctx context.Context) (bool, error) {
+	compatible, err := c.cache.ProjectCompatible(
+		ctx,
+		c.inner.Type(),
+		c.project,
+		CurrentSchemaVersion,
+	)
+	return !compatible, err
+}
+
+func validateVisibilityMetadata(tasks []forge.BugTask, bugs []*forge.Bug) error {
+	bugsByID := make(map[string]*forge.Bug, len(bugs))
+	for _, bug := range bugs {
+		if bug != nil {
+			bugsByID[bug.ID] = bug
+		}
+	}
+	for _, task := range tasks {
+		bug := bugsByID[task.BugID]
+		if bug == nil {
+			return fmt.Errorf("bug %s has no hydrated details", task.BugID)
+		}
+		if !bug.VisibilityKnown || !task.VisibilityKnown {
+			return fmt.Errorf("bug %s has unknown visibility", task.BugID)
+		}
+	}
+	return nil
+}
+
+func enrichTasksWithBugMetadata(tasks []forge.BugTask, bugs []*forge.Bug) []forge.BugTask {
 	if len(tasks) == 0 || len(bugs) == 0 {
 		return tasks
 	}
-	tagsByBugID := make(map[string][]string, len(bugs))
+	bugsByID := make(map[string]*forge.Bug, len(bugs))
 	for _, bug := range bugs {
-		if bug == nil || len(bug.Tags) == 0 {
+		if bug == nil {
 			continue
 		}
-		tagsByBugID[bug.ID] = bug.Tags
+		bugsByID[bug.ID] = bug
 	}
-	if len(tagsByBugID) == 0 {
+	if len(bugsByID) == 0 {
 		return tasks
 	}
 	enriched := make([]forge.BugTask, len(tasks))
 	copy(enriched, tasks)
 	for i := range enriched {
-		if len(enriched[i].Tags) > 0 {
+		bug := bugsByID[enriched[i].BugID]
+		if bug == nil {
 			continue
 		}
-		enriched[i].Tags = tagsByBugID[enriched[i].BugID]
+		if len(enriched[i].Tags) == 0 {
+			enriched[i].Tags = bug.Tags
+		}
+		enriched[i].Private = bug.Private
+		enriched[i].SecurityRelated = bug.SecurityRelated
+		enriched[i].InformationType = bug.InformationType
+		enriched[i].VisibilityKnown = bug.VisibilityKnown
 	}
 	return enriched
 }
@@ -231,14 +331,15 @@ func mergeTasks(existing, incoming []forge.BugTask) []forge.BugTask {
 	return result
 }
 
-func (c *CachedBugTracker) fetchBugs(ctx context.Context, bugIDs []string) []*forge.Bug {
+func (c *CachedBugTracker) fetchBugs(ctx context.Context, bugIDs []string) ([]*forge.Bug, error) {
 	if len(bugIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	type fetchResult struct {
 		index int
 		bug   *forge.Bug
+		err   error
 	}
 
 	workerCount := min(defaultBugFetchConcurrency, len(bugIDs))
@@ -257,7 +358,7 @@ func (c *CachedBugTracker) fetchBugs(ctx context.Context, bugIDs []string) []*fo
 				id := bugIDs[idx]
 				b, err := c.inner.GetBug(ctx, id)
 				if err != nil {
-					c.logger.Warn("failed to fetch bug details", "id", id, "error", err)
+					results <- fetchResult{index: idx, err: fmt.Errorf("fetching bug %s: %w", id, err)}
 					continue
 				}
 				results <- fetchResult{index: idx, bug: b}
@@ -277,6 +378,9 @@ func (c *CachedBugTracker) fetchBugs(ctx context.Context, bugIDs []string) []*fo
 
 	ordered := make([]*forge.Bug, len(bugIDs))
 	for result := range results {
+		if result.err != nil {
+			return nil, result.err
+		}
 		ordered[result.index] = result.bug
 	}
 
@@ -286,5 +390,5 @@ func (c *CachedBugTracker) fetchBugs(ctx context.Context, bugIDs []string) []*fo
 			bugs = append(bugs, bug)
 		}
 	}
-	return bugs
+	return bugs, nil
 }

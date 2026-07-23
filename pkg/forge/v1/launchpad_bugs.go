@@ -48,14 +48,24 @@ func (l *LaunchpadBugTracker) GetBug(ctx context.Context, id string) (*Bug, erro
 	}
 
 	b := &Bug{
-		Forge:       ForgeLaunchpad,
-		ID:          id,
-		Title:       lpBug.Title,
-		Description: lpBug.Description,
-		Owner:       lpExtractName(lpBug.OwnerLink),
-		Tags:        lpBug.Tags,
-		URL:         lpBug.WebLink,
+		Forge:           ForgeLaunchpad,
+		ID:              id,
+		Title:           lpBug.Title,
+		Description:     lpBug.Description,
+		Owner:           lpExtractName(lpBug.OwnerLink),
+		Tags:            lpBug.Tags,
+		URL:             lpBug.WebLink,
+		Private:         lpBug.Private,
+		SecurityRelated: lpBug.SecurityRelated,
+		InformationType: lpBug.InformationType,
+		VisibilityKnown: true,
 	}
+	b.Links = appendBugLink(b.Links, "duplicate_of", lpBug.DuplicateOfLink)
+	b.Links = appendBugLink(b.Links, "attachments", lpBug.AttachmentsCollectionLink)
+	b.Links = appendBugLink(b.Links, "linked_branches", lpBug.LinkedBranchesCollectionLink)
+	b.Links = appendBugLink(b.Links, "linked_merge_proposals", lpBug.LinkedMergeProposalsCollectionLink)
+	b.Links = appendBugLink(b.Links, "cves", lpBug.CVEsCollectionLink)
+	b.Links = appendBugLink(b.Links, "vulnerabilities", lpBug.VulnerabilitiesCollectionLink)
 	if lpBug.DateCreated != nil {
 		b.CreatedAt = lpBug.DateCreated.Time
 	}
@@ -87,6 +97,13 @@ func (l *LaunchpadBugTracker) GetBug(ctx context.Context, id string) (*Bug, erro
 	}
 
 	return b, nil
+}
+
+func appendBugLink(links []BugLink, relation, rawURL string) []BugLink {
+	if rawURL == "" {
+		return links
+	}
+	return append(links, BugLink{Relation: relation, URL: rawURL})
 }
 
 func (l *LaunchpadBugTracker) ListBugTasks(ctx context.Context, project string, opts ListBugTasksOpts) ([]BugTask, error) {

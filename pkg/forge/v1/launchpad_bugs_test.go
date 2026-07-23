@@ -52,6 +52,10 @@ func TestLaunchpadBugTrackerGetBugIncludesVisibleComments(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(lp.Bug{
 				ID:                     42,
 				Title:                  "Test bug",
+				Private:                true,
+				SecurityRelated:        true,
+				InformationType:        "Private Security",
+				DuplicateOfLink:        "https://api.launchpad.net/devel/bugs/41",
 				MessagesCollectionLink: server.URL + "/bugs/42/messages",
 			})
 		case "/devel/bugs/42/bug_tasks":
@@ -93,6 +97,12 @@ func TestLaunchpadBugTrackerGetBugIncludesVisibleComments(t *testing.T) {
 	}
 	if len(bug.Comments) != 1 {
 		t.Fatalf("comments = %+v, want one visible comment", bug.Comments)
+	}
+	if !bug.VisibilityKnown || !bug.Private || !bug.SecurityRelated || bug.InformationType != "Private Security" {
+		t.Fatalf("sensitivity metadata = %+v", bug)
+	}
+	if len(bug.Links) != 1 || bug.Links[0].Relation != "duplicate_of" {
+		t.Fatalf("links = %+v, want duplicate relationship", bug.Links)
 	}
 	comment := bug.Comments[0]
 	if comment.Author != "alice" || comment.Body != "The upgrade path still fails." || !comment.UpdatedAt.Equal(edited.Time) {

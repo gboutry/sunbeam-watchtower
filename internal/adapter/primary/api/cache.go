@@ -77,7 +77,8 @@ type CacheSyncBugsInput struct {
 // CacheSyncBugsOutput is the response for POST /api/v1/cache/sync/bugs.
 type CacheSyncBugsOutput struct {
 	Body struct {
-		Synced int `json:"synced" doc:"Number of bug tasks synced"`
+		Synced          int      `json:"synced" doc:"Number of bug tasks synced"`
+		RebuiltProjects []string `json:"rebuilt_projects" doc:"Tracker projects fully rebuilt for cache compatibility"`
 	}
 }
 
@@ -294,12 +295,13 @@ func RegisterCacheAPI(api huma.API, application *app.App) {
 		Summary:     "Sync bug caches for configured projects",
 		Tags:        []string{"cache"},
 	}, func(ctx context.Context, input *CacheSyncBugsInput) (*CacheSyncBugsOutput, error) {
-		synced, err := application.SyncBugCache(ctx, input.Body.Projects)
+		synced, rebuiltProjects, err := application.SyncBugCache(ctx, input.Body.Projects)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("bug cache sync failed: %v", err))
 		}
 		out := &CacheSyncBugsOutput{}
 		out.Body.Synced = synced
+		out.Body.RebuiltProjects = rebuiltProjects
 		return out, nil
 	})
 

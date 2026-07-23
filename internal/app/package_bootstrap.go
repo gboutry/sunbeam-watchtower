@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/gboutry/sunbeam-watchtower/internal/adapter/secondary/bugcache"
@@ -93,30 +94,45 @@ func (a *App) BuildCommitSources() (map[string]port.CommitSource, error) {
 
 // SyncBugCache syncs the bug cache for configured projects.
 // If projects is empty, all configured projects are synced.
-func (a *App) SyncBugCache(ctx context.Context, projects []string) (int, error) {
-	trackers, _, err := a.BuildBugTrackers()
+func (a *App) SyncBugCache(ctx context.Context, projects []string) (int, []string, error) {
+	trackers, bindings, err := a.BuildBugTrackers()
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	selected := stringSet(projects)
 	total := 0
-	for _, pbt := range trackers {
-		if len(selected) > 0 && !selected[pbt.ProjectID] {
-			continue
+	var rebuiltProjects []string
+	for key, pbt := range trackers {
+		if len(selected) > 0 {
+			matched := selected[pbt.ProjectID]
+			for _, binding := range bindings[key] {
+				matched = matched || selected[binding.ProjectName]
+			}
+			if !matched {
+				continue
+			}
 		}
 		ct, ok := pbt.Tracker.(*bugcache.CachedBugTracker)
 		if !ok {
 			continue
 		}
+		needsRebuild, rebuildErr := ct.NeedsRebuild(ctx)
+		if rebuildErr != nil {
+			return total, rebuiltProjects, fmt.Errorf("checking %s cache compatibility: %w", pbt.ProjectID, rebuildErr)
+		}
 		synced, sErr := ct.Sync(ctx)
 		if sErr != nil {
-			return total, fmt.Errorf("syncing %s: %w", pbt.ProjectID, sErr)
+			return total, rebuiltProjects, fmt.Errorf("syncing %s: %w", pbt.ProjectID, sErr)
+		}
+		if needsRebuild {
+			rebuiltProjects = append(rebuiltProjects, pbt.ProjectID)
 		}
 		total += synced
 	}
 
-	return total, nil
+	sort.Strings(rebuiltProjects)
+	return total, rebuiltProjects, nil
 }
 
 // BuildPackageSources resolves distro, release, suite, and backport filters against config
