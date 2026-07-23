@@ -494,8 +494,8 @@ func newRootModelWithLogs(session *runtimeadapter.Session, noColor bool, logs *l
 			defaults: packagesFilters{mode: packageModeInventory, backport: "none"},
 		},
 		bugs: bugsModel{
-			filters:  bugsFilters{merge: true},
-			defaults: bugsFilters{merge: true},
+			filters:  bugsFilters{mode: "text", fuzzy: "auto", closed: "include", sort: "relevance", merge: true},
+			defaults: bugsFilters{mode: "text", fuzzy: "auto", closed: "include", sort: "relevance", merge: true},
 		},
 		reviews: reviewsModel{
 			filters:  reviewsFilters{},
@@ -614,6 +614,8 @@ func (m rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bugs.err = errString(msg.err)
 		if msg.err == nil {
 			m.bugs.rows = msg.rows
+			m.bugs.searchResults = msg.searchResults
+			m.bugs.searchOutcome = msg.searchOutcome
 			m.bugs.warnings = msg.warnings
 			m.bugs.index = clampIndex(m.bugs.index, len(m.bugs.rows))
 			if task := selectedBug(m.bugs.rows, m.bugs.index); task != nil {
@@ -2888,6 +2890,10 @@ func syncCacheCmd(session *runtimeadapter.Session, target cacheActionTarget, val
 			if err == nil {
 				action = "Bug cache sync completed"
 				summary = []string{fmt.Sprintf("Synced: %d", result.Synced)}
+				if len(result.RebuiltProjects) > 0 {
+					summary = append(summary,
+						"Rebuilt: "+strings.Join(result.RebuiltProjects, ", "))
+				}
 			}
 		case cacheActionExcuses:
 			var result *frontend.CacheSyncExcusesResponse
@@ -4318,11 +4324,18 @@ func (m rootModel) cacheRows() []string {
 			"reviews       entries=0",
 		}
 	}
+	refreshRequired := 0
+	for _, entry := range status.Bugs.Entries {
+		if entry.NeedsRefresh {
+			refreshRequired++
+		}
+	}
 	return []string{
 		fmt.Sprintf("%-13s repos=%d", "git", len(status.Git.Repos)),
 		fmt.Sprintf("%-13s sources=%d", "packages", len(status.Packages.Sources)),
 		fmt.Sprintf("%-13s repos=%d", "upstream", len(status.Upstream.Repos)),
-		fmt.Sprintf("%-13s entries=%d", "bugs", len(status.Bugs.Entries)),
+		fmt.Sprintf("%-13s entries=%d refresh-required=%d",
+			"bugs", len(status.Bugs.Entries), refreshRequired),
 		fmt.Sprintf("%-13s entries=%d", "excuses", len(status.Excuses.Entries)),
 		fmt.Sprintf("%-13s entries=%d", "releases", len(status.Releases.Entries)),
 		fmt.Sprintf("%-13s entries=%d", "reviews", len(status.Reviews.Entries)),

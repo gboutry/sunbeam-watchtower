@@ -486,7 +486,27 @@ watchtower bug list --status "In Progress" --importance High --assignee alice
 
 # Show a specific bug with its tasks
 watchtower bug show 12345
+
+# Refresh the cache, then search complete bug text with explanations
+watchtower cache sync bugs
+watchtower bug search cinder snapshot lost during service restart
+
+# Require/exclude terms, select fields, and disable fuzzy matching
+watchtower bug search snapshot \
+  --require cinder --exclude noha \
+  --field title --field description --fuzzy=false
+
+# Deterministic regular-expression search and structured agent output
+watchtower bug search 'relation-(changed|departed)' --mode regex -o json
+
+# Open a result using the canonical reference returned by search
+watchtower bug show launchpad:12345
 ```
+
+Bug search is read-only and uses the existing cache; it never refreshes as a
+side effect. Results report cache provenance and explain matching fields,
+terms, fuzzy correspondences, and bounded excerpts. The Bugs TUI uses the same
+workflow: leave its query empty to list tasks, or enter a query to search.
 
 ### `watchtower build`
 

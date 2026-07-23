@@ -80,6 +80,12 @@ type packagesModel struct {
 }
 
 type bugsFilters struct {
+	query      string
+	mode       string
+	fields     string
+	fuzzy      string
+	closed     string
+	sort       string
 	project    string
 	status     string
 	importance string
@@ -91,14 +97,16 @@ type bugsFilters struct {
 }
 
 type bugsModel struct {
-	filters  bugsFilters
-	defaults bugsFilters
-	rows     []forge.BugTask
-	index    int
-	detail   *forge.Bug
-	warnings []string
-	loaded   bool
-	err      string
+	filters       bugsFilters
+	defaults      bugsFilters
+	rows          []forge.BugTask
+	searchResults []dto.BugSearchResult
+	searchOutcome dto.BugSearchOutcome
+	index         int
+	detail        *forge.Bug
+	warnings      []string
+	loaded        bool
+	err           string
 }
 
 type reviewsFilters struct {
@@ -205,9 +213,11 @@ type packageExcuseDetailLoadedMsg struct {
 }
 
 type bugsLoadedMsg struct {
-	rows     []forge.BugTask
-	warnings []string
-	err      error
+	rows          []forge.BugTask
+	searchResults []dto.BugSearchResult
+	searchOutcome dto.BugSearchOutcome
+	warnings      []string
+	err           error
 }
 
 type bugDetailLoadedMsg struct {
@@ -427,6 +437,9 @@ func loadPackageDetailCmd(session *runtimeadapter.Session, packages packagesMode
 }
 
 func loadBugsCmd(session *runtimeadapter.Session, filters bugsFilters) tea.Cmd {
+	if strings.TrimSpace(filters.query) != "" {
+		return loadBugSearchCmd(session, filters)
+	}
 	return guardSessionAction(session, frontend.ActionBugList, func() tea.Msg {
 		limit := 0
 		if strings.TrimSpace(filters.limit) != "" {
@@ -454,6 +467,90 @@ func loadBugsCmd(session *runtimeadapter.Session, filters bugsFilters) tea.Cmd {
 		})
 		return bugsLoadedMsg{rows: result.Tasks, warnings: result.Warnings}
 	})
+}
+
+func loadBugSearchCmd(session *runtimeadapter.Session, filters bugsFilters) tea.Cmd {
+	return guardSessionAction(session, frontend.ActionBugSearch, func() tea.Msg {
+		limit, err := parseNonNegativeLimit(filters.limit, "limit")
+		if err != nil {
+			return bugsLoadedMsg{err: err}
+		}
+		var fuzzy *bool
+		switch strings.ToLower(strings.TrimSpace(filters.fuzzy)) {
+		case "", "auto":
+		case "true":
+			value := true
+			fuzzy = &value
+		case "false":
+			value := false
+			fuzzy = &value
+		default:
+			return bugsLoadedMsg{err: fmt.Errorf("fuzzy must be auto, true, or false")}
+		}
+		merge := filters.merge
+		result, err := session.Frontend.Bugs().Search(context.Background(), frontend.BugSearchRequest{
+			Query:         strings.TrimSpace(filters.query),
+			Mode:          strings.TrimSpace(filters.mode),
+			Fields:        splitCSV(filters.fields),
+			Fuzzy:         fuzzy,
+			Projects:      firstNonEmptySlice(filters.project),
+			Status:        firstNonEmptySlice(filters.status),
+			Importance:    firstNonEmptySlice(filters.importance),
+			Assignee:      filters.assignee,
+			Tags:          firstNonEmptySlice(filters.tag),
+			Closed:        strings.TrimSpace(filters.closed),
+			ModifiedAfter: strings.TrimSpace(filters.since),
+			Merge:         &merge,
+			Sort:          strings.TrimSpace(filters.sort),
+			Limit:         limit,
+		})
+		if err != nil {
+			return bugsLoadedMsg{err: err}
+		}
+		searchRows := result.Results
+		if len(searchRows) == 0 {
+			searchRows = result.Related
+		}
+		return bugsLoadedMsg{
+			rows:          bugSearchTasks(searchRows),
+			searchResults: searchRows,
+			searchOutcome: result.Outcome,
+			warnings:      result.Warnings,
+		}
+	})
+}
+
+func parseNonNegativeLimit(raw string, name string) (int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("%s must be a non-negative integer", name)
+	}
+	return parsed, nil
+}
+
+func bugSearchTasks(results []dto.BugSearchResult) []forge.BugTask {
+	rows := make([]forge.BugTask, 0, len(results))
+	for _, result := range results {
+		if len(result.Tasks) > 0 {
+			task := result.Tasks[0]
+			task.Title = result.Title
+			rows = append(rows, task)
+			continue
+		}
+		rows = append(rows, forge.BugTask{
+			BugID:      result.ID,
+			Title:      result.Title,
+			Project:    strings.Join(result.Projects, ","),
+			Status:     strings.Join(result.Status, ","),
+			Importance: strings.Join(result.Importance, ","),
+			URL:        result.URL,
+			UpdatedAt:  result.UpdatedAt,
+		})
+	}
+	return rows
 }
 
 func loadBugDetailCmd(session *runtimeadapter.Session, task forge.BugTask) tea.Cmd {
@@ -785,21 +882,72 @@ func renderPackages(theme theme, width int, model packagesModel) string {
 func renderBugs(theme theme, width int, model bugsModel) string {
 	const gap = 1
 	listWidth, detailWidth := splitColumns(width, gap)
-	header := theme.panelTitle.Render("Filters") + "\n" +
-		fmt.Sprintf("project=%s  status=%s  importance=%s  assignee=%s  tag=%s  since=%s  merge=%t",
-			emptyAsAny(model.filters.project), emptyAsAny(model.filters.status), emptyAsAny(model.filters.importance),
-			emptyAsAny(model.filters.assignee), emptyAsAny(model.filters.tag), emptyAsAny(model.filters.since), model.filters.merge)
+	header := theme.panelTitle.Render("Filters") + "\n"
+	if strings.TrimSpace(model.filters.query) != "" {
+		header += fmt.Sprintf("query=%q  mode=%s  fields=%s  fuzzy=%s  closed=%s  sort=%s\n",
+			model.filters.query, defaultString(model.filters.mode, "text"),
+			defaultString(model.filters.fields, "all"), defaultString(model.filters.fuzzy, "auto"),
+			defaultString(model.filters.closed, "include"), defaultString(model.filters.sort, "relevance"))
+	}
+	header += fmt.Sprintf("project=%s  status=%s  importance=%s  assignee=%s  tag=%s  since=%s  merge=%t",
+		emptyAsAny(model.filters.project), emptyAsAny(model.filters.status), emptyAsAny(model.filters.importance),
+		emptyAsAny(model.filters.assignee), emptyAsAny(model.filters.tag), emptyAsAny(model.filters.since), model.filters.merge)
+	if len(model.searchResults) > 0 || strings.TrimSpace(model.filters.query) != "" {
+		header += fmt.Sprintf("\noutcome=%s  displayed=%d", model.searchOutcome, len(model.searchResults))
+	}
 	if warnings := renderWarningsInline(theme, model.warnings, innerPanelWidth(theme.panel, listWidth)); warnings != "" {
 		header += "\n\n" + warnings
 	}
 	list := renderBugRows(theme, model.rows, model.index, innerPanelWidth(theme.panel, listWidth), model.loaded)
 	detail := renderBugPane(theme, model.detail, innerPanelWidth(theme.panel, detailWidth))
+	if model.index >= 0 && model.index < len(model.searchResults) {
+		detail = renderBugSearchEvidence(theme, model.searchResults[model.index], innerPanelWidth(theme.panel, detailWidth)) + "\n\n" + detail
+	}
 	if width >= 120 {
 		left := renderPanel(theme.panel, listWidth, theme.panelTitle.Render("Bugs"), header+"\n\n"+list)
 		right := renderPanel(theme.panel, detailWidth, theme.panelTitle.Render("Detail"), detail)
 		return lipJoin(left, right, gap)
 	}
 	return lipVertical(theme, width, header, list, detail, "Bugs", "Detail")
+}
+
+func renderBugSearchEvidence(t theme, result dto.BugSearchResult, width int) string {
+	lines := []string{
+		fmt.Sprintf("Search: %s  score=%.3f", result.Classification, result.Score),
+		fmt.Sprintf("Coverage: %.0f%% (%d/%d clauses)",
+			result.Coverage.Ratio*100,
+			result.Coverage.MatchedClauses,
+			result.Coverage.TotalClauses),
+		"Reference: " + result.Reference,
+	}
+	if len(result.MatchedTasks) > 0 {
+		lines = append(lines, "Matched tasks: "+strings.Join(result.MatchedTasks, ", "))
+	}
+	if len(result.Evidence) > 0 {
+		lines = append(lines, "Evidence:")
+		for _, evidence := range result.Evidence {
+			excerpt := evidence.Excerpt
+			if evidence.TruncatedBefore {
+				excerpt = "…" + excerpt
+			}
+			if evidence.TruncatedAfter {
+				excerpt += "…"
+			}
+			var matches []string
+			for _, match := range evidence.Matches {
+				matches = append(matches, fmt.Sprintf(
+					"%s/%s", match.QueryConcept, match.MatchType))
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s]: %s",
+				evidence.Field, strings.Join(matches, ", "), excerpt))
+		}
+		if result.EvidenceTruncated {
+			lines = append(lines, fmt.Sprintf(
+				"Showing %d of %d evidence excerpts.",
+				len(result.Evidence), result.EvidenceTotal))
+		}
+	}
+	return fitBlock(strings.Join(lines, "\n"), width)
 }
 
 func renderReviews(theme theme, width int, model reviewsModel) string {
@@ -1789,7 +1937,13 @@ func newPackageFilterForm(session *runtimeadapter.Session, model packagesModel) 
 
 func newBugFilterForm(session *runtimeadapter.Session, model bugsModel) formModalModel {
 	s := bugFilterSuggestions(session, model)
-	return newFormModal("Bug Filters", []fieldDef{
+	return newFormModal("Bug List / Search", []fieldDef{
+		{placeholder: "query (empty lists)", value: model.filters.query, resetValue: model.defaults.query},
+		{placeholder: "mode", value: defaultString(model.filters.mode, "text"), resetValue: defaultString(model.defaults.mode, "text"), suggestions: []string{"text", "regex"}, kind: fieldKindEnum},
+		{placeholder: "fields (comma separated)", value: model.filters.fields, resetValue: model.defaults.fields},
+		{placeholder: "fuzzy", value: defaultString(model.filters.fuzzy, "auto"), resetValue: defaultString(model.defaults.fuzzy, "auto"), suggestions: []string{"auto", "true", "false"}, kind: fieldKindEnum},
+		{placeholder: "closed", value: defaultString(model.filters.closed, "include"), resetValue: defaultString(model.defaults.closed, "include"), suggestions: []string{"include", "exclude", "only"}, kind: fieldKindEnum},
+		{placeholder: "sort", value: defaultString(model.filters.sort, "relevance"), resetValue: defaultString(model.defaults.sort, "relevance"), suggestions: []string{"relevance", "updated", "created"}, kind: fieldKindEnum},
 		{placeholder: "project", value: model.filters.project, resetValue: model.defaults.project, suggestions: s.projects},
 		{placeholder: "status", value: model.filters.status, resetValue: model.defaults.status, suggestions: s.statuses, kind: fieldKindEnum},
 		{placeholder: "importance", value: model.filters.importance, resetValue: model.defaults.importance, suggestions: s.importances, kind: fieldKindEnum},
@@ -1915,20 +2069,26 @@ func (m rootModel) updatePackageFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 
 func (m rootModel) updateBugFilterForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	cmd := updateFormModal(msg, &m.bugFilterForm, func(values []string) tea.Cmd {
-		merge, err := strconv.ParseBool(strings.TrimSpace(values[6]))
+		merge, err := strconv.ParseBool(strings.TrimSpace(values[12]))
 		if err != nil {
 			m.bugFilterForm.errorMsg = "merge must be true or false"
 			return nil
 		}
 		m.bugs.filters = bugsFilters{
-			project:    strings.TrimSpace(values[0]),
-			status:     strings.TrimSpace(values[1]),
-			importance: strings.TrimSpace(values[2]),
-			assignee:   strings.TrimSpace(values[3]),
-			tag:        strings.TrimSpace(values[4]),
-			since:      strings.TrimSpace(values[5]),
+			query:      strings.TrimSpace(values[0]),
+			mode:       strings.TrimSpace(values[1]),
+			fields:     strings.TrimSpace(values[2]),
+			fuzzy:      strings.TrimSpace(values[3]),
+			closed:     strings.TrimSpace(values[4]),
+			sort:       strings.TrimSpace(values[5]),
+			project:    strings.TrimSpace(values[6]),
+			status:     strings.TrimSpace(values[7]),
+			importance: strings.TrimSpace(values[8]),
+			assignee:   strings.TrimSpace(values[9]),
+			tag:        strings.TrimSpace(values[10]),
+			since:      strings.TrimSpace(values[11]),
 			merge:      merge,
-			limit:      strings.TrimSpace(values[7]),
+			limit:      strings.TrimSpace(values[13]),
 		}
 		m.bugs.index = 0
 		m.bugs.detail = nil

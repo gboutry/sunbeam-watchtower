@@ -679,7 +679,7 @@ func TestRenderViewsAndOverlays(t *testing.T) {
 		{name: "release-filters", overlay: overlayReleaseFilters, want: "Release Filters"},
 		{name: "build-trigger", overlay: overlayBuildTrigger, want: "Trigger Build"},
 		{name: "package-filters", overlay: overlayPackageFilters, want: "Package Filters"},
-		{name: "bug-filters", overlay: overlayBugFilters, want: "Bug Filters"},
+		{name: "bug-filters", overlay: overlayBugFilters, want: "Bug List / Search"},
 		{name: "review-filters", overlay: overlayReviewFilters, want: "Review Filters"},
 		{name: "commit-filters", overlay: overlayCommitFilters, want: "Commit Filters"},
 		{name: "project-filters", overlay: overlayProjectFilters, want: "Project Filters"},
@@ -1168,16 +1168,16 @@ func TestCtrlRUsesConfiguredPaneDefaults(t *testing.T) {
 	model.bugs.defaults = bugsFilters{project: "snap-openstack", merge: false}
 	model.bugs.filters = bugsFilters{project: "ubuntu-openstack-rocks", merge: true}
 	model.bugFilterForm = newBugFilterForm(nil, model.bugs)
-	model.bugFilterForm.fields[0].SetValue("openstack")
-	model.bugFilterForm.fields[6].SetValue("true")
+	model.bugFilterForm.fields[6].SetValue("openstack")
+	model.bugFilterForm.fields[12].SetValue("true")
 
 	next, _ := model.updateBugFilterForm(tea.KeyMsg{Type: tea.KeyCtrlR})
 	model = next.(rootModel)
 
-	if got := model.bugFilterForm.fields[0].Value(); got != "snap-openstack" {
+	if got := model.bugFilterForm.fields[6].Value(); got != "snap-openstack" {
 		t.Fatalf("bug project after ctrl+r = %q, want preset project", got)
 	}
-	if got := model.bugFilterForm.fields[6].Value(); got != "false" {
+	if got := model.bugFilterForm.fields[12].Value(); got != "false" {
 		t.Fatalf("bug merge after ctrl+r = %q, want preset false", got)
 	}
 }
@@ -1398,6 +1398,40 @@ func assertSuggestionsContain(t *testing.T, suggestions []string, want string) {
 		}
 	}
 	t.Fatalf("suggestions %v do not contain %q", suggestions, want)
+}
+
+func TestBugSearchRowsAndEvidence(t *testing.T) {
+	results := []dto.BugSearchResult{{
+		Reference:      "launchpad:123",
+		ID:             "123",
+		Title:          "Cinder volume attach fails",
+		Projects:       []string{"snap-openstack"},
+		Status:         []string{"New"},
+		Importance:     []string{"High"},
+		Classification: dto.BugSearchDirect,
+		Score:          4.25,
+		Evidence: []dto.BugMatchEvidence{{
+			Field:           "description",
+			Excerpt:         "volume attachment failed",
+			TruncatedBefore: true,
+			Matches: []dto.BugEvidenceMatch{{
+				QueryConcept: "volume",
+				MatchType:    "stem",
+				MatchedText:  "volume",
+			}},
+		}},
+	}}
+
+	rows := bugSearchTasks(results)
+	if len(rows) != 1 || rows[0].BugID != "123" || rows[0].Project != "snap-openstack" {
+		t.Fatalf("bugSearchTasks() = %#v", rows)
+	}
+	rendered := renderBugSearchEvidence(newTheme(), results[0], 100)
+	for _, want := range []string{"direct", "launchpad:123", "description", "volume attachment failed"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("rendered evidence %q does not contain %q", rendered, want)
+		}
+	}
 }
 
 func setSessionTarget(t *testing.T, session *runtimeadapter.Session, target runtimeadapter.TargetInfo) {
