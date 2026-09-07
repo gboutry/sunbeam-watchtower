@@ -24,10 +24,12 @@ parts:
       go build -o $CRAFT_PART_INSTALL/bin/watchtower-tui ./cmd/watchtower-tui
       mkdir -p $CRAFT_PART_INSTALL/etc
       : > $CRAFT_PART_INSTALL/etc/gitconfig
+      install -m 0644 $CRAFT_PART_SRC/watchtower.yaml $CRAFT_PART_INSTALL/etc/watchtower.yaml
     stage-packages:
       - git
 
 environment:
+  WATCHTOWER_CONFIG: $SNAP/etc/watchtower.yaml
   XDG_CONFIG_HOME: $SNAP_USER_COMMON/.config
   XDG_CACHE_HOME: $SNAP_USER_COMMON/.cache
   XDG_RUNTIME_DIR: $SNAP_USER_COMMON/run
