@@ -330,28 +330,55 @@ packages:
           suites: [release]
   sets:
     openstack:
+      - adjutant
+      - adjutant-ui
+      - aetos
       - aodh
       - barbican
+      - barbican-tempest-plugin
+      - blazar
+      - blazar-dashboard
+      - blazar-nova
+      - blazar-tempest-plugin
       - ceilometer
       - cinder
+      - cinder-tempest-plugin
+      - cloudkitty
+      - cloudkitty-dashboard
+      - cloudkitty-tempest-plugin
+      - cyborg
       - designate
       - designate-dashboard
+      - designate-tempest-plugin
       - glance
+      - glance-tempest-plugin
       - gnocchi
       - heat
       - heat-dashboard
+      - heat-tempest-plugin
       - horizon
       - ironic
       - ironic-inspector
+      - ironic-python-agent
+      - ironic-tempest-plugin
       - ironic-ui
       - keystone
+      - keystone-tempest-plugin
+      - liberasurecode
       - magnum
+      - magnum-capi-helm
+      - magnum-tempest-plugin
       - magnum-ui
       - manila
+      - manila-tempest-plugin
       - manila-ui
       - masakari
+      - masakari-dashboard
       - masakari-monitors
       - mistral
+      - mistral-dashboard
+      - mistral-extra
+      - mistral-tempest-plugin
       - monasca-statsd
       - murano
       - murano-agent
@@ -360,6 +387,7 @@ packages:
       - networking-bagpipe
       - networking-baremetal
       - networking-bgpvpn
+      - networking-generic-switch
       - networking-hyperv
       - networking-l2gw
       - networking-mlnx
@@ -373,37 +401,50 @@ packages:
       - neutron-lbaas
       - neutron-lbas-dashboard
       - neutron-taas
+      - neutron-tempest-plugin
       - neutron-vpnaas
+      - neutron-vpnaas-dashboard
       - nova
       - octavia
       - octavia-dashboard
+      - octavia-tempest-plugin
       - openstack-pkg-tools
       - openstack-trove
       - os-faults
       - oslo-sphinx
+      - ovn-bgp-agent
       - ovn-octavia-provider
       - panko
       - placement
       - pydeb-cookiecutter
+      - python-adjutantclient
       - python-aodhclient
       - python-automaton
       - python-barbicanclient
+      - python-bashate
       - python-blazarclient
       - python-castellan
       - python-ceilometerclient
       - python-ceilometermiddleware
       - python-cinderclient
       - python-cliff
+      - python-cloudkittyclient
       - python-congressclient
       - python-cursive
+      - python-cyborgclient
+      - python-debtcollector
       - python-designateclient
       - python-diskimage-builder
       - python-dracclient
+      - python-etcd3gw
       - python-eventlet
+      - python-freezerclient
+      - python-futurist
       - python-glance-store
       - python-glanceclient
       - python-glareclient
       - python-gnocchiclient
+      - python-hacking
       - python-heatclient
       - python-ibmcclient
       - python-ironic-inspector-client
@@ -417,6 +458,7 @@ packages:
       - python-magnumclient
       - python-manilaclient
       - python-masakariclient
+      - python-microversion-parse
       - python-mistral-lib
       - python-mistralclient
       - python-monasca-statsd
@@ -426,6 +468,7 @@ packages:
       - python-neutron-lib
       - python-neutronclient
       - python-novaclient
+      - python-observabilityclient
       - python-octavia-lib
       - python-octaviaclient
       - python-openstackclient
@@ -458,6 +501,7 @@ packages:
       - python-oslo.limit
       - python-oslo.log
       - python-oslo.messaging
+      - python-oslo.metrics
       - python-oslo.middleware
       - python-oslo.policy
       - python-oslo.privsep
@@ -476,12 +520,15 @@ packages:
       - python-pbr
       - python-proliantutils
       - python-pycadf
+      - python-pyeclib
       - python-qinlingclient
+      - python-reno
       - python-saharaclient
       - python-scciclient
       - python-searchlightclient
       - python-senlinclient
       - python-shade
+      - python-sphinx-feature-classification
       - python-sushy
       - python-sushy-oem-idrac
       - python-swiftclient
@@ -499,6 +546,7 @@ packages:
       - python-zaqarclient
       - python-zunclient
       - rally
+      - rally-openstack
       - sahara
       - sahara-dashboard
       - sahara-plugin-spark
@@ -506,13 +554,22 @@ packages:
       - senlin
       - stevedore
       - swift
+      - swift-bench
+      - telemetry-tempest-plugin
+      - tempest
       - trove
       - trove-dashboard
+      - trove-tempest-plugin
+      - virtualbmc
       - vitrage
+      - vitrage-dashboard
+      - vitrage-tempest-plugin
       - vmware-nsx
       - watcher
       - watcher-dashboard
+      - watcher-tempest-plugin
       - zaqar
+      - zaqar-tempest-plugin
       - zaqar-ui
       - zvmcloudconnector
     openstack-services:
